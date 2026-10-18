@@ -1,6 +1,6 @@
 # Vehicoule — Socle + Musique v1 : design
 
-Date : 2026-10-18 · Statut : en relecture (v3)
+Date : 2026-10-18 · Statut : en relecture (v4)
 
 ## 1. But et contexte
 
@@ -27,7 +27,7 @@ premier domaine branché dessus : la musique**. L'anime et les livres auront cha
 | Plateformes v1 | Android + macOS |
 | Télémétrie | Opt-in, minimale : plantages, erreurs typées, quelques mesures de perf. Aucune donnée d'écoute (section 7) |
 | Code hérité | Aucun. Les anciens projets (Auqw, Klaxon) inspirent, rien n'est porté ni compatible |
-| À trancher | Licence, notarisation macOS, nom de domaine (section 12) |
+| Licence | MPL-2.0 pour l'app ; MIT OR Apache-2.0 pour `contract`, `sdk` et plugins officiels (section 12) |
 
 ### Périmètre fonctionnel v1
 
@@ -485,6 +485,7 @@ User-Agent). Conséquences :
    minimal qui importe `http` : le *fuel* et l'*epoch* coupent bien, l'appel HTTP async de
    l'hôte fonctionne, et Wasmtime ajoute **au plus 10 Mo** à l'APK arm64. Sinon → repli de la
    section 4.2 bis.
+   On y vérifie aussi la licence des bibliothèques natives de `media_kit` (section 12).
 2. Si ça passe, on construit le socle (contrat, hôte, bibliothèque, flux) puis les écrans.
 3. Si ça casse, on le sait avant d'avoir construit le socle.
 
@@ -508,21 +509,24 @@ rattraper est conçu dès maintenant.
 | Scrobbling (Last.fm, ListenBrainz) | Table `plays` remplie dès le premier jour |
 | Métadonnées MusicBrainz | Routage par priorité ; un plugin de plus dans le feed officiel |
 
-## 12. Décisions ouvertes
+## 12. Licence, distribution et identité
 
-| Décision | Options | Recommandation |
-|---|---|---|
-| Licence | GPL-3.0 (comme Auqw) · MPL-2.0 · Apache-2.0 | **MPL-2.0** : le code de Vehicoule reste ouvert, sans les conflits de la GPL avec l'App Store si l'option stores revient |
-| Notarisation macOS | Compte Apple Developer (~99 $/an) · pas de notarisation | Pas de notarisation pendant les alphas (contournement Gatekeeper documenté), à revoir avant une bêta publique |
-| Nom de domaine | `vehicoule.app` · `vehicoule.com` · `vehicoule.org` · `vehicoule.io` | **`vehicoule.app`** (voir ci-dessous) |
+| Sujet | Décision |
+|---|---|
+| Licence de l'app et du cœur | **MPL-2.0** : toute modification de nos fichiers redistribuée reste ouverte ; des fichiers sous une autre licence peuvent s'y ajouter (version stores, modules fermés) ; compatible App Store (Firefox iOS) |
+| `contract`, `sdk`, plugins officiels | **MIT OR Apache-2.0** : un plugin compilé avec le SDK choisit librement sa licence |
+| Nom et logo | Marque réservée, `TRADEMARK.md` : les forks prennent un autre nom. C'est la vraie protection contre les clones |
+| Contributions | **DCO** (`Signed-off-by` dans chaque commit), pas de CLA |
+| Notarisation macOS | Pas pendant les alphas (contournement Gatekeeper documenté) ; à revoir avant une bêta publique |
+| Nom de domaine | **`vehicoule.app`**, à acheter avant le premier build (disponibilité à confirmer chez un registrar) |
+| Identifiant de l'app | **`app.vehicoule`** (Android `applicationId`, bundle macOS / iOS). Ne change **jamais** après la première release |
 
-Pourquoi un domaine compte pour l'architecture :
+Adresses embarquées dans l'app : le feed officiel, la vérification de mise à jour et la
+télémétrie pointent vers des sous-domaines (`feeds.vehicoule.app`, `updates.vehicoule.app`,
+`telemetry.vehicoule.app`) qui redirigent vers GitHub ou Sentry. On change d'hébergeur sans
+mettre à jour l'app.
 
-- **Identifiant de l'app** : `app.vehicoule` (Android `applicationId`, bundle macOS / iOS).
-  Il ne peut **jamais** changer après la première release : le fixer avant le premier build.
-- **Adresses embarquées** : le feed officiel, la vérification de mise à jour et la
-  télémétrie pointent vers des sous-domaines (`feeds.vehicoule.app`…) qui redirigent vers
-  GitHub ou Sentry. On peut changer d'hébergeur sans mettre à jour l'app.
-- Le 2026-10-18, `vehicoule.com`, `.org` et `.io` n'apparaissent pas dans le whois et aucun
-  des cinq n'a de serveur DNS : probablement libres, à confirmer chez un registrar.
-
+**À vérifier à l'étape 1** : la licence effective des bibliothèques natives de `media_kit`.
+libmpv et FFmpeg ne sont en LGPL que compilés sans composant GPL ; sinon le binaire
+distribué tombe sous la GPL quelle que soit notre licence. Si c'est le cas, on recompile
+libmpv / FFmpeg en configuration LGPL.
