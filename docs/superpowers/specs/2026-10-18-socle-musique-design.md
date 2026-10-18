@@ -18,7 +18,7 @@ premier domaine branché dessus : la musique**. L'anime et les livres auront cha
 | UI | Flutter, deux coques (mobile, desktop) qui partagent écrans et composants |
 | Cœur | Rust : il possède l'état et les règles. Dart affiche et exécute |
 | Pont | `flutter_rust_bridge` |
-| Plugins | WASM, interprétés par Wasmi |
+| Plugins | Composants WASM (WIT), Wasmtime + Pulley ; repli prévu sur Wasmi + JSON (section 4.2 bis) |
 | Lecture | `media_kit` (vidéo et audio) + `audio_service` (écran verrouillé, service d'arrière-plan). `just_audio` seulement si un problème est mesuré |
 | Design | Material 3 officiel + nos tokens réglés sur M3E ; `material_3_expressive` seulement pour les composants manquants, derrière `app/lib/design/` |
 | Métadonnées | Deezer en principal ; iTunes puis Cover Art Archive en repli pour les pochettes ; YouTube Music pour la lecture et en dernier recours |
@@ -57,8 +57,8 @@ premier domaine branché dessus : la musique**. L'anime et les livres auront cha
 ```
 vehicoule/
 ├── core/                     espace de travail Cargo
-│   ├── contract/             types serde du contrat des plugins ; schémas JSON générés (schemars)
-│   ├── plugin-host/          hôte WASM (Wasmi), budgets, domaines autorisés, signatures, feeds
+│   ├── contract/             fichiers WIT du contrat + bindings hôte générés
+│   ├── plugin-host/          hôte Wasmtime + Pulley, budgets, domaines autorisés, signatures, feeds
 │   ├── stream/               téléchargements par morceaux avec reprise, cache des pochettes
 │   └── core/                 bibliothèque SQLite, règles musique, façade Dart
 ├── app/                      Flutter
@@ -70,7 +70,7 @@ vehicoule/
 │       ├── features/music/   écrans et widgets partagés par les deux coques
 │       ├── shell_mobile/     navigation et mise en page mobile
 │       └── shell_desktop/    navigation et mise en page desktop
-└── sdk/                      crate Rust guest (API async) + doc ; dépend de contract
+└── sdk/                      crate Rust guest (bindings wit-bindgen + aides) + doc ; dépend de contract
 ```
 
 Trois dépôts dès le départ :
@@ -91,8 +91,8 @@ Trois dépôts dès le départ :
 Règles :
 
 - Dart n'appelle que la façade de `core`. `plugin-host` n'est jamais exposé.
-- `contract` est la seule source de vérité du contrat : l'hôte, le SDK et les schémas JSON en
-  dérivent. La doc renvoie aux schémas générés.
+- `contract` est la seule source de vérité du contrat : les fichiers WIT. L'hôte, le SDK et
+  les bindings des autres langages en dérivent.
 - On pose dès le départ la structure finale connue : `plugin-host` (retirable pour la version
   stores) et `stream` (téléchargements, cache, plus tard serveur local) sont des crates.
 - Les coques ne diffèrent que par la navigation, la mise en page et le comportement (survol,
@@ -184,38 +184,64 @@ Le corpus d'environ 100 titres Deezer avec leur `videoId` attendu vit dans le d�
 
 ## 4. Plugins
 
-### 4.1 Exécution
+### 4.1 Exécution : modèle de composants WASM
 
-- Wasmi, sans compilation à la volée (compatible iOS plus tard).
-- Chaque module est **compilé une seule fois** et gardé en cache ; chaque appel crée une
-  **instance neuve**. Budget d'instructions, 30 s maximum, 64 Mo de mémoire, plafonds de
-  nombre d'appels HTTP et d'octets échangés.
-- **Aucun import** : le plugin exporte `memory`, `alloc(len) -> ptr` et
-  `handle(ptr, len) -> u64`. Il dialogue avec l'hôte par messages JSON, une étape à la fois.
-  Entre deux étapes, l'hôte fait ses requêtes asynchrones sans bloquer de thread.
-- Services de l'hôte : `http` (une requête ou un lot de 8), `kv` (espace par plugin), `now`,
-  `log`. Tout nouveau service est un ajout de version mineure.
-- **SDK** : la machine à étapes est cachée derrière une API async (`http.get(url).await`).
-  Le parsing se fait vers des types précis (le JSON en arbre générique épuise le budget).
+- Les plugins sont des **composants WASM** décrits en **WIT**. Moteur : **Wasmtime** avec son
+  interpréteur **Pulley** sur toutes les plateformes. Un seul comportement partout, et c'est
+  compatible iOS (pas de compilation à la volée vers du code natif).
+- Le `.wasm` est compilé en bytecode Pulley **sur l'appareil**, une fois, puis gardé en
+  cache. On ne charge jamais d'artefact précompilé venu d'un feed : désérialiser du code
+  précompilé non fiable n'est pas sûr.
+- Chaque appel crée une **instance neuve**. Budgets : *fuel* (budget d'instructions),
+  *epoch interruption* (30 s maximum), `StoreLimits` (64 Mo de mémoire), plafonds de nombre
+  d'appels HTTP et d'octets échangés.
+- **Les plugins importent des interfaces de l'hôte** et les appellent comme des fonctions
+  normales. Côté hôte, elles sont asynchrones (support async de Wasmtime) : un plugin qui
+  attend une réponse HTTP ne bloque pas de thread.
+- Interfaces de l'hôte : `http` (requête simple ou lot de 8), `kv` (espace par plugin),
+  `clock`, `log`. Plus un **sous-ensemble de WASI sans fichiers ni réseau** (horloges, aléa,
+  sortie standard redirigée vers `log`), pour que les chaînes de compilation non Rust
+  fonctionnent.
+- **Multi-langages** : `wit-bindgen` et les outils de la Bytecode Alliance génèrent les
+  bindings guest pour Rust, C/C++, Go, JS, Python… Pas de SDK maison à maintenir par langage.
+- **SDK Rust** : bindings générés + aides au parsing typé des réponses des fournisseurs (le
+  JSON en arbre générique coûte cher en *fuel*).
 
-### 4.2 Capacités v1
+### 4.2 Le contrat en WIT
 
-`music.search`, `music.suggest`, `music.entity` (album, artiste, playlist), `music.resolve`
-(URL, en-têtes, expiration, candidats, `loudness_db` optionnel), `music.lyrics`,
-`music.radio`. Les pochettes sont des champs des entités ; le repli entre sources est géré
-par le cœur. Les domaines suivants ajouteront `anime.*`, `video.extract`, `books.*` sur le
-même hôte.
+- Paquets versionnés : `vehicoule:host@1.0.0` (interfaces importées) et
+  `vehicoule:music@1.0.0` (interfaces exportées). Plus tard `vehicoule:anime`,
+  `vehicoule:books`.
+- Chaque capacité est **une interface exportée** : `search`, `suggest`, `entity` (album,
+  artiste, playlist), `resolve` (URL, en-têtes, expiration, candidats, `loudness-db`
+  optionnel), `lyrics`, `radio`. Un plugin n'exporte que ce qu'il implémente ; l'hôte lit
+  les exports pour savoir ce qu'il sait faire.
+- Les données sont des `record` et des `variant` WIT, pas du JSON : les erreurs sont typées
+  dès le plugin.
+- Les pochettes sont des champs des entités ; le repli entre sources est géré par le cœur.
+- La crate `contract` contient les fichiers WIT (seule source de vérité) et les bindings hôte
+  générés (`wasmtime::component::bindgen!`).
+
+### 4.2 bis Repli si le modèle de composants ne tient pas
+
+Si l'étape 1 (section 9) montre que Wasmtime + Pulley ne convient pas sur Android (budgets
+inopérants, async cassé, binaire trop lourd), on revient au contrat déjà conçu : modules
+WASM sans import sur **Wasmi**, dialogue par messages JSON étape par étape (`alloc` /
+`handle`), mêmes services, mêmes capacités, SDK Rust qui cache la machine à étapes derrière
+une API async. Le reste de la spec ne change pas.
 
 ### 4.3 Manifeste et sécurité réseau
 
-- Le manifeste déclare id, version, version du contrat, capacités et domaines autorisés,
+- Le manifeste déclare id, version, version du contrat et domaines autorisés (les capacités se lisent dans les exports du composant),
   jokers acceptés (`*.googlevideo.com`). Pas de champ `permissions` tant qu'aucune
   permission n'existe.
 - La liste des domaines est vérifiée **à chaque redirection** et pour toute URL renvoyée par
   le plugin (pochettes comprises).
 - Les adresses IP privées, locales et de bouclage sont refusées après résolution DNS, même
   pour un domaine autorisé (protection contre le DNS rebinding).
-- Compatibilité : même majeure, mineure ≤ celle de l'hôte.
+- Toutes ces vérifications vivent dans l'implémentation hôte de l'interface `http` : le
+  plugin n'a aucun autre accès au réseau.
+- Compatibilité : même version majeure des paquets WIT, mineure ≤ celle de l'hôte.
 
 ### 4.4 Distribution
 
@@ -234,9 +260,9 @@ même hôte.
 ### 4.5 Plan B si YouTube impose du JavaScript
 
 Si la signature `n` ou les jetons PO exigent d'exécuter le JavaScript du lecteur YouTube, un
-moteur JS dans du WASM interprété par Wasmi sera trop lent. Plan prévu : un service hôte
-`js.eval` (QuickJS natif, sans compilation à la volée), ajouté comme version mineure du
-contrat. Non construit en v1.
+moteur JS compilé en WASM et interprété par Pulley sera trop lent. Plan prévu : une
+interface hôte `js` (QuickJS natif, sans compilation à la volée), ajoutée comme version
+mineure de `vehicoule:host`. Non construite en v1.
 
 Aujourd'hui, la lecture fonctionne sans OAuth avec la bonne configuration de client (validé
 dans Auqw). Quand YouTube change sa détection, une nouvelle version du plugin suffit.
@@ -310,7 +336,8 @@ Une enum typée traverse le pont ; l'UI traduit chaque type en message lisible :
 
 - Rust : tests unitaires de la file, du préchargement, de l'identité, du score de
   correspondance, du routage, du schéma de base, des clés d'ordre fractionnaires.
-- `plugin-host` : plugins `echo` et `spin` (les budgets coupent bien) ; tests des domaines
+- `plugin-host` : composants de test `echo` et `spin` (les budgets coupent bien), plus un
+  composant écrit dans un autre langage que Rust (preuve du multi-langages) ; tests des domaines
   autorisés (jokers, redirections, IP privées) et du refus d'un feed plus ancien.
 - Plugins : réponses HTTP enregistrées, sans réseau en CI. Test réel lancé à la main : le
   corpus de correspondance (critère 3) et la latence du premier son (critère 2).
@@ -323,6 +350,8 @@ Une enum typée traverse le pont ; l'UI traduit chaque type en message lisible :
 - `media_kit` et `material_3_expressive` : un seul mainteneur actif chacun (et un compte non
   vérifié pour le second). Versions figées ; on vérifie leur activité avant de commencer et on
   est prêt à les forker. `material_3_expressive` ne s'utilise que derrière `design/`.
+- Wasmtime : une version par mois. On suit les **versions LTS** (deux ans de correctifs de
+  sécurité) et on monte de version délibérément.
 
 ## 9. Ordre de travail
 
@@ -331,6 +360,10 @@ Une enum typée traverse le pont ; l'UI traduit chaque type en message lisible :
    HTTP. On la valide contre le corpus de 100 titres, puis on lit les URLs obtenues avec
    `media_kit` et on tient une heure écran éteint avec `audio_service` sur Android.
    Ce n'est pas du code jetable : le plugin ytmusic enveloppera ensuite cette bibliothèque.
+   **Dans la même étape, on valide Wasmtime + Pulley sur Android arm64** avec un composant
+   minimal qui importe `http` : le *fuel* et l'*epoch* coupent bien, l'appel HTTP async de
+   l'hôte fonctionne, et Wasmtime ajoute **au plus 10 Mo** à l'APK arm64. Sinon → repli de la
+   section 4.2 bis.
 2. Si ça passe, on construit le socle (contrat, hôte, bibliothèque, flux) puis les écrans.
 3. Si ça casse, on le sait avant d'avoir construit le socle.
 
@@ -346,7 +379,7 @@ rattraper est conçu dès maintenant.
 | iOS, Windows, Linux | Flutter + Rust déjà multiplateformes ; compilés en CI dès le départ |
 | Anime, livres | Hôte de plugins générique, capacités préfixées par domaine |
 | Version stores | `plugin-host` est une crate séparée, retirable par une option de compilation |
-| Exécution de JavaScript pour YouTube | Service hôte `js.eval` prévu (section 4.5) |
+| Exécution de JavaScript pour YouTube | Interface hôte `js` prévue (section 4.5) |
 | Cache des octets pendant la lecture | Crate `stream` en place ; le serveur local s'ajoute sans toucher au reste |
 | Accueil éditorial (classements, nouveautés) | Une capacité `music.browse` s'ajoute au contrat |
 | CarPlay, Android Auto, Chromecast | `audio_service` + flux `NowPlaying` déjà en place |
