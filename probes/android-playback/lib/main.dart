@@ -52,8 +52,9 @@ class ProbeHandler extends BaseAudioHandler with QueueHandler {
   Future<void> start() async {
     queue.add([for (final (i, t) in tracks.indexed) MediaItem(id: '$i', title: t['title'] as String)]);
     player.stream.playlist.listen((p) => _onIndex(p.index));
-    player.stream.buffering.listen((b) {
-      if (b || !_loading) return;
+    // Audible start: first position past zero after a track change.
+    player.stream.position.listen((p) {
+      if (!_loading || p <= Duration.zero) return;
       _loading = false;
       _slow?.cancel();
       log('start', _index, '${_loadClock.elapsedMilliseconds}');
