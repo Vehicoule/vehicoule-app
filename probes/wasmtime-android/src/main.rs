@@ -21,10 +21,11 @@ async fn main() {
 
     let cases = [
         ("echo http://example.com", echo, "http://example.com/", Limits::default()),
-        ("echo https://example.com", echo, "https://example.com/", Limits::default()),
         ("spin, default fuel", spin, "", Limits::default()),
         ("spin, unlimited fuel", spin, "", Limits { fuel: u64::MAX, ..Limits::default() }),
         ("hog, 64 MiB", hog, "", Limits::default()),
+        // Last: without JNI init, rustls-platform-verifier panics on Android.
+        ("echo https://example.com", echo, "https://example.com/", Limits::default()),
     ];
     for (label, p, input, limits) in cases {
         let t = Instant::now();
