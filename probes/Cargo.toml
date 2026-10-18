@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+members = ["wasmtime-android", "baseline-android"]
+
+[profile.release]
+strip = false
+
+# Shipping-style profile, same for both binaries.
+[profile.size]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"

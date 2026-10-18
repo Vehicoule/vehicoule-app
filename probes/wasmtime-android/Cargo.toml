@@ -1,0 +1,10 @@
+[package]
+name = "wasmtime-android-probe"
+version = "0.1.0"
+edition = "2024"
+license = "MPL-2.0"
+publish = false
+
+[dependencies]
+plugin-host = { path = "../../core/plugin-host" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
