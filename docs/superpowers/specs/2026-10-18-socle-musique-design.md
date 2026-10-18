@@ -1,6 +1,6 @@
 # Vehicoule — Socle + Musique v1 : design
 
-Date : 2026-10-18 · Statut : en relecture
+Date : 2026-10-18 · Statut : en relecture (v2, après revue externe)
 
 ## 1. But et contexte
 
@@ -23,145 +23,270 @@ premier domaine branché dessus : la musique**. L'anime et les livres auront cha
 | Design | Material 3 officiel + nos tokens réglés sur M3E ; `material_3_expressive` seulement pour les composants manquants, derrière `app/lib/design/` |
 | Métadonnées | Deezer en principal ; iTunes puis Cover Art Archive en repli pour les pochettes ; YouTube Music pour la lecture et en dernier recours |
 | Paroles | LRCLIB |
+| Langues | Français et anglais dès le départ (`gen-l10n` de Flutter) |
 | Plateformes v1 | Android + macOS |
 | Code hérité | Aucun. Les anciens projets (Auqw, Klaxon) inspirent, rien n'est porté ni compatible |
 
 ### Périmètre fonctionnel v1
 
-Chercher (avec suggestions), lire, file d'attente, likes et bibliothèque, playlists perso,
-pages album / artiste / playlist, contrôles écran verrouillé, téléchargements hors ligne,
-paroles (simples et synchronisées). Sur Android et macOS.
+- Chercher (avec suggestions), lire, file d'attente.
+- **Enchaînement sans trou perceptible** entre les pistes (préchargement de la suivante).
+- **Radio en fin de file** : la lecture continue sur des titres proches, désactivable.
+- Likes, bibliothèque, playlists perso, pages album / artiste / playlist.
+- **Import** : copier une playlist publique Deezer ou YouTube Music (coller son lien) dans
+  ses playlists.
+- **Historique d'écoute**, enregistré dès le premier jour.
+- **Accueil** construit sur les données locales : récemment écoutés, likes, playlists,
+  téléchargements.
+- Contrôles écran verrouillé, téléchargements hors ligne (y compris app en arrière-plan sur
+  Android), paroles simples et synchronisées, normalisation du volume.
+- **Premier lancement** guidé (section 4.6).
 
-**Critère de réussite :** l'app sert de lecteur de musique au quotidien sur Android et macOS
-pendant deux semaines sans retour à une autre app.
+### Critères de réussite
+
+1. L'app sert de lecteur de musique au quotidien sur Android et macOS pendant deux semaines
+   sans retour à une autre app.
+2. Moins de 2 s entre le tap et le premier son pour un titre non préchargé, sur une
+   connexion correcte.
+3. Plus de 95 % de bonnes correspondances YouTube Music sur un corpus d'environ 100 titres
+   Deezer dont le `videoId` attendu est connu (section 3.3).
+4. Une heure de lecture écran éteint sur Android sans coupure.
 
 ## 2. Structure du dépôt
 
 ```
 vehicoule/
 ├── core/                     espace de travail Cargo
-│   ├── plugin-host/          hôte WASM (Wasmi), contrat, budgets, domaines autorisés, signatures
-│   ├── stream/               téléchargements par morceaux avec reprise, cache des pochettes
-│   └── core/                 bibliothèque SQLite, règles musique, façade exposée à Dart
+│   ├── contract/             types serde du contrat des plugins ; schémas JSON générés (schemars)
+│   ├── plugin-host/          hôte WASM (Wasmi), budgets, domaines autorisés, signatures, feeds
+│   └── core/                 bibliothèque SQLite, règles musique, module stream, façade Dart
 ├── app/                      Flutter
 │   └── lib/
 │       ├── bridge/           code généré par flutter_rust_bridge (jamais modifié à la main)
 │       ├── design/           tokens + nos composants (seul endroit qui importe material_3_expressive)
-│       ├── platform/         lecteur (media_kit), écran verrouillé (audio_service), chemins
+│       ├── l10n/             traductions FR / EN
+│       ├── platform/         lecteur (media_kit), écran verrouillé (audio_service), services Android, chemins
 │       ├── features/music/   écrans et widgets partagés par les deux coques
 │       ├── shell_mobile/     navigation et mise en page mobile
 │       └── shell_desktop/    navigation et mise en page desktop
-├── sdk/                      contrat des plugins (doc + schémas JSON) + crate Rust guest
-└── plugins/                  plugins officiels : deezer, itunes, ytmusic, lrclib
+├── sdk/                      crate Rust guest (API async) + doc ; dépend de contract
+└── plugins/                  plugins du feed officiel : deezer, itunes, lrclib
 ```
+
+Le plugin **ytmusic vit dans un dépôt et un feed séparés** (`vehicoule-ytmusic`), que
+l'utilisateur ajoute lui-même. L'app et son feed officiel ne contiennent aucune source de
+streaming non autorisée (la leçon de Tachiyomi).
 
 Règles :
 
-- Dart n'appelle que la façade de `core`. `plugin-host` et `stream` ne sont jamais exposés.
+- Dart n'appelle que la façade de `core`. `plugin-host` n'est jamais exposé.
+- `contract` est la seule source de vérité du contrat : l'hôte, le SDK et les schémas JSON en
+  dérivent. La doc renvoie aux schémas générés.
+- `stream` est un module de `core`. Seul `plugin-host` est une crate dès le départ, parce
+  qu'il doit pouvoir être retiré (version stores) ; on découpe le reste quand ça grossit.
 - Les coques ne diffèrent que par la navigation, la mise en page et le comportement (survol,
   clavier, barre de titre macOS). Aucun écran n'est écrit deux fois.
 - Les écrans n'importent jamais `material` ou `material_3_expressive` pour un composant que
   `design/` fournit.
-- On découpe une crate quand un module devient trop gros, pas avant.
 
 ## 3. Flux de données
+
+### 3.1 Lecture
 
 ```
  Flutter (vue + adaptateurs)                 Rust core (état + décisions)
  tap sur un titre ──── play(titre, contexte) ──▶ file mise à jour → flux QueueState
                                                 ├─ téléchargé ? → chemin local
-                                                └─ sinon → music.resolve (plugin ytmusic)
-                                                     correspondance ISRC, sinon titre+artiste+durée
-                                                     → {url, en-têtes, expiration, candidats}
- Lecteur (media_kit) ◀── PlayCommand{url, en-têtes, position}
-        └── PlayerEvent (position, chargement, fin, erreur) ──▶ décide la suite
+                                                └─ sinon → music.resolve (section 3.3)
+ Lecteur (media_kit) ◀── PlayCommand{source, position}
+                     ◀── EnqueueNext{source}   (pré-résolution ~20 s avant la fin)
+                     ◀── ReplaceNext / ClearNext (la file a changé)
+        └── PlayerEvent (début de piste, fin, erreur, seek, position toutes les ~10 s) ──▶
  Écran verrouillé (audio_service) ◀── flux NowPlaying (métadonnées + pochette en cache)
         └── lecture / pause / suivant ──▶ mêmes commandes que l'UI
 ```
 
-- **Rust décide, Dart exécute.** Le lecteur Dart ne choisit jamais la piste suivante.
-- **Pré-résolution** de la piste suivante environ 20 s avant la fin.
+- **Rust décide, Dart exécute.** Le lecteur Dart ne choisit jamais la piste suivante : il
+  joue ce que Rust a poussé dans sa playlist.
+- **Préchargement** : à la pré-résolution, Rust pousse la piste suivante dans la playlist de
+  `media_kit` pour que mpv la précharge. Résultat visé : pas de trou perceptible. Le vrai
+  gapless d'album (zéro échantillon de silence) dépend du remplissage d'encodeur des fichiers
+  source et n'est pas garanti avec les flux YouTube.
+- **Position** : l'UI et les paroles lisent la position côté Dart, directement dans le
+  lecteur. Rust ne reçoit que les événements utiles, plus une position toutes les ~10 s pour
+  reprendre la lecture et compter l'historique.
+- **Normalisation du volume** : si `music.resolve` renvoie `loudness_db`, Dart ajuste le gain
+  du lecteur. Désactivable.
 - **Pas de serveur local en v1** : `media_kit` reçoit directement l'URL et les en-têtes.
-- **Téléchargement** : `download(titre)` → résolution → `stream` récupère par morceaux avec
-  reprise → vérification de taille → pochette en cache → marqué téléchargé. Le fichier local
-  passe toujours en premier à la lecture.
-- **Paroles** : `music.lyrics` (titre, artiste, album, durée) → stockées en base ; les lignes
+
+### 3.2 Fin de file, accueil, import
+
+- **Radio** : quand la file se termine, `core` appelle `music.radio` (graine = dernier titre)
+  et ajoute des titres. Sources : Deezer (radio d'artiste, artistes proches) ; YouTube Music
+  (« à suivre ») en repli. Activée par défaut.
+- **Accueil** : uniquement des données locales (historique, likes, playlists,
+  téléchargements). Pas de flux éditorial en v1.
+- **Import** : l'utilisateur colle le lien d'une playlist publique ; `core` appelle
+  `music.entity` et crée une copie locale.
+
+### 3.3 Correspondance avec YouTube Music
+
+YouTube Music n'expose presque jamais l'ISRC : la correspondance repose en pratique sur titre,
+artiste et durée.
+
+1. Si `external_refs` contient déjà un `videoId` pour ce titre → l'utiliser directement.
+2. Sinon, recherche YouTube Music avec « artiste titre ».
+3. Score de chaque résultat :
+   - préférer les résultats de type « song » (piste audio) aux clips vidéo ;
+   - durée dans ±3 s de la durée Deezer, sinon fortement pénalisé ;
+   - titre et artiste normalisés (casse, accents, « feat. », contenu entre parenthèses)
+     comparés par similarité ;
+   - pénaliser « live », « remix », « cover », « sped up », « instrumental » sauf si le
+     titre Deezer les contient.
+4. Meilleur score au-dessus du seuil → `videoId` enregistré dans `external_refs`. En dessous
+   → erreur `not-found`.
+5. **Correction manuelle** : « ce n'est pas le bon morceau » propose les autres candidats ;
+   le choix est enregistré et prioritaire pour toujours.
+
+Le corpus d'environ 100 titres Deezer avec leur `videoId` attendu vit dans le dépôt
+`vehicoule-ytmusic` et sert de test réel.
+
+### 3.4 Téléchargements et paroles
+
+- `download(titre)` → résolution → module `stream` : récupération par morceaux avec reprise →
+  vérification de taille → pochette en cache → marqué téléchargé. Le fichier local passe
+  toujours en premier à la lecture.
+- **Android** : les téléchargements tournent dans un service de premier plan de type
+  `dataSync`, avec une notification de progression, pour survivre à l'app en arrière-plan.
+  Le service de lecture d'`audio_service` est déclaré de type `mediaPlayback` (Android 14+).
+- **Paroles** : `music.lyrics` (titre, artiste, album, durée) → stockées en base. Les lignes
   synchronisées sont horodatées, Dart surligne selon la position.
 
-### Pont Rust ↔ Dart
+### 3.5 Pont Rust ↔ Dart
 
 - **Commandes** asynchrones : `play`, `enqueue`, `search`, `suggest`, `entity`, `like`,
-  `download`, `lyrics`…
-- **Flux d'état complets** : `QueueState`, `NowPlaying`, `Downloads`, `Library`. L'état entier
-  est renvoyé à chaque changement (pas de différences).
+  `import_playlist`, `download`, `lyrics`, `fix_match`…
+- **Flux d'état complets** pour les petits états : `QueueState`, `NowPlaying`.
+- **Bibliothèque** : requêtes paginées, plus un événement `LibraryChanged{quoi}` pour que
+  l'UI recharge ce qui est visible.
+- **Téléchargements** : progression limitée à ~2 envois par seconde.
 
 ## 4. Plugins
 
-### Exécution
+### 4.1 Exécution
 
 - Wasmi, sans compilation à la volée (compatible iOS plus tard).
-- Une **instance neuve par appel**. Budget d'instructions, 30 s maximum, 64 Mo de mémoire,
-  plafonds de nombre d'appels HTTP et d'octets échangés.
+- Chaque module est **compilé une seule fois** et gardé en cache ; chaque appel crée une
+  **instance neuve**. Budget d'instructions, 30 s maximum, 64 Mo de mémoire, plafonds de
+  nombre d'appels HTTP et d'octets échangés.
 - **Aucun import** : le plugin exporte `memory`, `alloc(len) -> ptr` et
   `handle(ptr, len) -> u64`. Il dialogue avec l'hôte par messages JSON, une étape à la fois.
   Entre deux étapes, l'hôte fait ses requêtes asynchrones sans bloquer de thread.
 - Services de l'hôte : `http` (une requête ou un lot de 8), `kv` (espace par plugin), `now`,
   `log`. Tout nouveau service est un ajout de version mineure.
-- Le SDK impose le parsing vers des types précis (le JSON en arbre générique épuise le budget).
+- **SDK** : la machine à étapes est cachée derrière une API async (`http.get(url).await`).
+  Le parsing se fait vers des types précis (le JSON en arbre générique épuise le budget).
 
-### Capacités v1
+### 4.2 Capacités v1
 
-`music.search`, `music.suggest`, `music.entity` (album, artiste, playlist), `music.resolve`,
-`music.lyrics`. Les pochettes sont des champs des entités ; le repli entre sources est géré
+`music.search`, `music.suggest`, `music.entity` (album, artiste, playlist), `music.resolve`
+(URL, en-têtes, expiration, candidats, `loudness_db` optionnel), `music.lyrics`,
+`music.radio`. Les pochettes sont des champs des entités ; le repli entre sources est géré
 par le cœur. Les domaines suivants ajouteront `anime.*`, `video.extract`, `books.*` sur le
 même hôte.
 
-### Manifeste et sécurité
+### 4.3 Manifeste et sécurité réseau
 
-- Le manifeste déclare id, version, version du contrat, capacités, domaines autorisés,
-  permissions.
-- Toute requête ou URL renvoyée (pochettes comprises) vers un domaine non déclaré est refusée.
+- Le manifeste déclare id, version, version du contrat, capacités et domaines autorisés,
+  jokers acceptés (`*.googlevideo.com`). Pas de champ `permissions` tant qu'aucune
+  permission n'existe.
+- La liste des domaines est vérifiée **à chaque redirection** et pour toute URL renvoyée par
+  le plugin (pochettes comprises).
+- Les adresses IP privées, locales et de bouclage sont refusées après résolution DNS, même
+  pour un domaine autorisé (protection contre le DNS rebinding).
 - Compatibilité : même majeure, mineure ≤ celle de l'hôte.
 
-### Distribution
+### 4.4 Distribution
 
-- `feed.json` signé ed25519 : id, version, contrat, sha256 du `.wasm` et du manifeste.
-  Vérifié en arrière-plan, jamais au démarrage ; un cache valide est chargé en attendant.
-- Dépôts tiers : l'utilisateur ajoute une URL + une clé publique ; l'app affiche l'empreinte,
-  les domaines et les permissions, et demande l'accord avant installation.
-- L'app est livrée **sans aucune source**.
-- SDK v1 : crate Rust + schémas JSON ; plugins de test `echo` et `spin`.
+- Chaque feed est un `feed.json` signé ed25519 : **numéro de séquence croissant**, puis pour
+  chaque plugin id, version, contrat, sha256 du `.wasm` et du manifeste.
+- L'app retient la dernière séquence vue par feed et **refuse un feed plus ancien** (pas de
+  retour forcé vers une version vulnérable).
+- **Deux clés publiques** embarquées pour le feed officiel, pour pouvoir changer de clé sans
+  mise à jour d'urgence.
+- Vérification en arrière-plan, jamais au démarrage ; un cache valide est chargé en attendant.
+- **Feed officiel** (préconfiguré) : deezer, itunes, lrclib.
+- **Feeds tiers** (dont `vehicoule-ytmusic`) : l'utilisateur ajoute une URL + une clé
+  publique ; l'app affiche l'empreinte, les domaines déclarés, et demande l'accord avant
+  installation.
 
-### Risque connu : `music.resolve` YouTube Music
+### 4.5 Plan B si YouTube impose du JavaScript
 
-Pas d'OAuth. Il faut trouver la configuration de client qui évite la détection de bot (déjà
-fait dans Auqw). Quand YouTube change, une nouvelle version du plugin suffit, sans mise à jour
-de l'app. C'est le premier point validé dans le plugin `ytmusic`.
+Si la signature `n` ou les jetons PO exigent d'exécuter le JavaScript du lecteur YouTube, un
+moteur JS dans du WASM interprété par Wasmi sera trop lent. Plan prévu : un service hôte
+`js.eval` (QuickJS natif, sans compilation à la volée), ajouté comme version mineure du
+contrat. Non construit en v1.
+
+Aujourd'hui, la lecture fonctionne sans OAuth avec la bonne configuration de client (validé
+dans Auqw). Quand YouTube change sa détection, une nouvelle version du plugin suffit.
+
+### 4.6 Premier lancement
+
+1. Écran d'accueil : ce qu'est l'app, et le fait qu'elle est livrée sans source de streaming.
+2. Le feed officiel (deezer, itunes, lrclib) est installé : recherche, pages et paroles
+   fonctionnent tout de suite.
+3. Écran « Ajouter un dépôt » : coller une URL + une clé publique, voir l'empreinte et les
+   domaines, accepter. Accessible ensuite depuis les réglages.
+4. Tant qu'aucun plugin ne fournit `music.resolve`, le bouton lecture explique pourquoi et
+   renvoie vers cet écran.
 
 ## 5. Bibliothèque
 
 SQLite via rusqlite dans `core`. Migrations = fichiers SQL numérotés, version suivie par
 `PRAGMA user_version`.
 
-Tables : `recordings` (identité interne, titre, artistes, album, durée, ISRC),
-`external_refs` (fournisseur + id externe → recording), `entities` (cache albums / artistes /
-playlists), `likes`, `playlists`, `playlist_items`, `downloads`, `lyrics`, `plugin_kv`,
-`settings`, `search_history`.
+Tables :
+
+- `recordings` (titre, artistes, album, durée, ISRC), `external_refs` (fournisseur + id
+  externe → recording, avec un drapeau « fixé à la main »), `entities` (cache albums /
+  artistes / playlists).
+- `likes`, `playlists`, `playlist_items`, `downloads`, `lyrics`, `plugin_kv`,
+  `search_history`.
+- `plays` (historique) : recording, début, durée écoutée, source, appareil.
+- `settings_device` (dossier de téléchargement, qualité, tout ce qui est propre à
+  l'appareil) et `settings_shared` (ce qui doit suivre l'utilisateur).
 
 Règles :
 
-- **Les données de l'utilisateur ne dépendent jamais d'un fournisseur.** Likes, playlists et
-  téléchargements pointent vers l'identité interne et survivent à la disparition d'une source.
-  Le cache du catalogue peut être vidé à tout moment.
-- **Prête pour la synchro dès la v1** : chaque table de données utilisateur (`likes`,
-  `playlists`, `playlist_items`, `settings`) porte `updated_at`, `device_id` et une
-  suppression logique (`deleted_at`). La synchro elle-même n'est pas livrée en v1, mais elle
-  n'exigera aucune migration de ces tables.
+- **Les données de l'utilisateur ne dépendent jamais d'un fournisseur.** Likes, playlists,
+  historique et téléchargements pointent vers l'identité interne et survivent à la
+  disparition d'une source. Le cache du catalogue peut être vidé à tout moment.
+- **Identifiants UUIDv7 partout**, `recordings` compris : deux appareils ne génèrent jamais
+  le même id.
+- **Prête pour la synchro** (non livrée en v1, sans migration le jour venu) :
+  - `recordings`, `likes`, `playlists`, `playlist_items`, `plays` et `settings_shared`
+    portent `updated_at`, `device_id` et `deleted_at` (suppression logique) ;
+  - les conflits se départagent par `(updated_at, device_id)` ;
+  - l'ordre dans `playlist_items` est une **clé d'ordre fractionnaire** (une chaîne qu'on
+    peut toujours insérer entre deux autres), pas une position entière ;
+  - deux recordings créées sur deux appareils pour le même morceau seront fusionnées à la
+    synchro quand elles partagent une référence externe ; la règle de fusion fera partie de
+    la spec de synchro.
 
 ## 6. Erreurs
 
-- Une enum typée traverse le pont : `network`, `provider-wall`, `budget-exceeded`,
-  `not-found`, `expired`, `internal`. L'UI traduit chaque type en message lisible.
+Une enum typée traverse le pont ; l'UI traduit chaque type en message lisible :
+
+| Type | Sens |
+|---|---|
+| `network` | pas de connexion, délai réseau dépassé |
+| `provider-wall` | le fournisseur refuse la session : détection de bot, captcha, IP bloquée |
+| `rate-limited` | le fournisseur limite le débit (429 ou équivalent) |
+| `budget-exceeded` | le plugin a dépassé un budget (instructions, temps, mémoire, HTTP) |
+| `not-found` | rien ne correspond (ou correspondance sous le seuil) |
+| `expired` | l'URL de lecture n'est plus valide |
+| `internal` | bug de l'hôte ou du plugin |
+
 - Source en échec → candidat suivant ; tous en échec → piste suivante + message discret.
 - URL expirée (403) → une seule nouvelle résolution, reprise à la même position.
 - Un plugin en échec ne fait jamais planter l'app.
@@ -169,26 +294,45 @@ Règles :
 
 ## 7. Tests
 
-- Rust : tests unitaires de la file, de l'identité, du routage, du schéma de base.
-- `plugin-host` : plugins `echo` et `spin` (les budgets coupent bien).
-- Plugins : réponses HTTP enregistrées, sans réseau en CI ; une tâche de test réel lancée à la
-  main pour détecter un changement chez un fournisseur.
+- Rust : tests unitaires de la file, du préchargement, de l'identité, du score de
+  correspondance, du routage, du schéma de base, des clés d'ordre fractionnaires.
+- `plugin-host` : plugins `echo` et `spin` (les budgets coupent bien) ; tests des domaines
+  autorisés (jokers, redirections, IP privées) et du refus d'un feed plus ancien.
+- Plugins : réponses HTTP enregistrées, sans réseau en CI. Test réel lancé à la main : le
+  corpus de correspondance (critère 3) et la latence du premier son (critère 2).
 - Flutter : un test de démarrage par coque (lancer, chercher sur données fictives, lire).
-- CI : build et tests Android + macOS ; **compilation seule** pour iOS, Windows et Linux, pour
-  repérer tôt ce qui casse sur les plateformes à venir.
-- Validation finale : le critère de réussite de la section 1.
+- CI : build et tests Android + macOS ; **compilation seule** pour iOS, Windows et Linux.
+- Validation finale : les critères de la section 1.
 
-## 8. Hors v1, et pourquoi ce n'est pas un problème
+## 8. Dépendances à surveiller
+
+- `media_kit` et `material_3_expressive` : un seul mainteneur actif chacun (et un compte non
+  vérifié pour le second). Versions figées ; on vérifie leur activité avant de commencer et on
+  est prêt à les forker. `material_3_expressive` ne s'utilise que derrière `design/`.
+
+## 9. Ordre de travail
+
+1. **Résolution native d'abord, sans WASM.** La logique `music.resolve` + correspondance de
+   ytmusic est écrite comme une bibliothèque Rust ordinaire, derrière une petite interface
+   HTTP. On la valide contre le corpus de 100 titres, puis on lit les URLs obtenues avec
+   `media_kit` et on tient une heure écran éteint avec `audio_service` sur Android.
+   Ce n'est pas du code jetable : le plugin ytmusic enveloppera ensuite cette bibliothèque.
+2. Si ça passe, on construit le socle (contrat, hôte, bibliothèque, flux) puis les écrans.
+3. Si ça casse, on le sait avant d'avoir construit le socle.
+
+## 10. Hors v1, et pourquoi ce n'est pas un problème
 
 Chaque élément ci-dessous est **un ajout**, pas une refonte : ce qui serait coûteux à
 rattraper est conçu dès maintenant.
 
 | Hors v1 | Ce qui est déjà prévu dans la v1 |
 |---|---|
-| Synchro entre appareils | Identité interne stable, tables utilisateur avec `updated_at` / `device_id` / suppression logique |
+| Synchro entre appareils | UUIDv7, colonnes de synchro, départage par appareil, ordre fractionnaire, réglages séparés |
 | Fichiers locaux | Bibliothèque indépendante des fournisseurs ; un fournisseur `local` s'ajoute comme les autres |
 | iOS, Windows, Linux | Flutter + Rust déjà multiplateformes ; compilés en CI dès le départ |
 | Anime, livres | Hôte de plugins générique, capacités préfixées par domaine |
 | Version stores | `plugin-host` est une crate séparée, retirable par une option de compilation |
-| Cache des octets pendant la lecture | `stream` existe ; le serveur local s'ajoute sans toucher au reste |
+| Exécution de JavaScript pour YouTube | Service hôte `js.eval` prévu (section 4.5) |
+| Cache des octets pendant la lecture | Module `stream` en place ; le serveur local s'ajoute sans toucher au reste |
+| Accueil éditorial (classements, nouveautés) | Une capacité `music.browse` s'ajoute au contrat |
 | CarPlay, Android Auto, Chromecast | `audio_service` + flux `NowPlaying` déjà en place |
