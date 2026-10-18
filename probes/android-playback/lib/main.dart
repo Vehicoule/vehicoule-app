@@ -26,7 +26,7 @@ Future<void> main() async {
 
   final tracks = (jsonDecode(await File('${dir.path}/playlist.json').readAsString()) as List)
       .cast<Map<String, dynamic>>();
-  final player = Player();
+  final player = Player(configuration: const PlayerConfiguration(logLevel: MPVLogLevel.warn));
   final handler = await AudioService.init(
     builder: () => ProbeHandler(player, tracks),
     config: const AudioServiceConfig(
@@ -59,6 +59,7 @@ class ProbeHandler extends BaseAudioHandler with QueueHandler {
       log('start', _index, '${_loadClock.elapsedMilliseconds}');
     });
     player.stream.error.listen((e) => log('error', _index, e));
+    player.stream.log.listen((l) => log('mpv', _index, '${l.level} ${l.prefix}: ${l.text}'));
     player.stream.completed.listen((done) {
       if (done && _index == tracks.length - 1) log('end', _index);
     });
