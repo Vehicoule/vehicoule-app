@@ -59,7 +59,8 @@ vehicoule/
 ├── core/                     espace de travail Cargo
 │   ├── contract/             types serde du contrat des plugins ; schémas JSON générés (schemars)
 │   ├── plugin-host/          hôte WASM (Wasmi), budgets, domaines autorisés, signatures, feeds
-│   └── core/                 bibliothèque SQLite, règles musique, module stream, façade Dart
+│   ├── stream/               téléchargements par morceaux avec reprise, cache des pochettes
+│   └── core/                 bibliothèque SQLite, règles musique, façade Dart
 ├── app/                      Flutter
 │   └── lib/
 │       ├── bridge/           code généré par flutter_rust_bridge (jamais modifié à la main)
@@ -69,21 +70,31 @@ vehicoule/
 │       ├── features/music/   écrans et widgets partagés par les deux coques
 │       ├── shell_mobile/     navigation et mise en page mobile
 │       └── shell_desktop/    navigation et mise en page desktop
-├── sdk/                      crate Rust guest (API async) + doc ; dépend de contract
-└── plugins/                  plugins du feed officiel : deezer, itunes, lrclib
+└── sdk/                      crate Rust guest (API async) + doc ; dépend de contract
 ```
 
-Le plugin **ytmusic vit dans un dépôt et un feed séparés** (`vehicoule-ytmusic`), que
-l'utilisateur ajoute lui-même. L'app et son feed officiel ne contiennent aucune source de
-streaming non autorisée (la leçon de Tachiyomi).
+Trois dépôts dès le départ :
+
+| Dépôt | Contenu |
+|---|---|
+| `vehicoule` | l'app, le cœur, `contract` et `sdk` |
+| `vehicoule-plugins` | le feed officiel : deezer, itunes, lrclib |
+| `vehicoule-ytmusic` | le plugin ytmusic, son feed, le corpus de correspondance |
+
+- Les deux dépôts de plugins dépendent de `contract` et `sdk` par une dépendance Git épinglée
+  sur un tag de `vehicoule`. Un changement de contrat = un tag, puis une montée de version
+  dans chaque dépôt de plugins. Ils consomment le SDK exactement comme un tiers.
+- **ytmusic n'est jamais avec les plugins légitimes** : une demande de retrait sur son dépôt
+  n'emporte ni l'app ni le feed officiel. L'utilisateur ajoute ce dépôt lui-même (la leçon de
+  Tachiyomi).
 
 Règles :
 
 - Dart n'appelle que la façade de `core`. `plugin-host` n'est jamais exposé.
 - `contract` est la seule source de vérité du contrat : l'hôte, le SDK et les schémas JSON en
   dérivent. La doc renvoie aux schémas générés.
-- `stream` est un module de `core`. Seul `plugin-host` est une crate dès le départ, parce
-  qu'il doit pouvoir être retiré (version stores) ; on découpe le reste quand ça grossit.
+- On pose dès le départ la structure finale connue : `plugin-host` (retirable pour la version
+  stores) et `stream` (téléchargements, cache, plus tard serveur local) sont des crates.
 - Les coques ne diffèrent que par la navigation, la mise en page et le comportement (survol,
   clavier, barre de titre macOS). Aucun écran n'est écrit deux fois.
 - Les écrans n'importent jamais `material` ou `material_3_expressive` pour un composant que
@@ -153,7 +164,7 @@ Le corpus d'environ 100 titres Deezer avec leur `videoId` attendu vit dans le d�
 
 ### 3.4 Téléchargements et paroles
 
-- `download(titre)` → résolution → module `stream` : récupération par morceaux avec reprise →
+- `download(titre)` → résolution → crate `stream` : récupération par morceaux avec reprise →
   vérification de taille → pochette en cache → marqué téléchargé. Le fichier local passe
   toujours en premier à la lecture.
 - **Android** : les téléchargements tournent dans un service de premier plan de type
@@ -215,7 +226,7 @@ même hôte.
 - **Deux clés publiques** embarquées pour le feed officiel, pour pouvoir changer de clé sans
   mise à jour d'urgence.
 - Vérification en arrière-plan, jamais au démarrage ; un cache valide est chargé en attendant.
-- **Feed officiel** (préconfiguré) : deezer, itunes, lrclib.
+- **Feed officiel** (préconfiguré, publié par `vehicoule-plugins`) : deezer, itunes, lrclib.
 - **Feeds tiers** (dont `vehicoule-ytmusic`) : l'utilisateur ajoute une URL + une clé
   publique ; l'app affiche l'empreinte, les domaines déclarés, et demande l'accord avant
   installation.
@@ -266,12 +277,15 @@ Règles :
 - **Prête pour la synchro** (non livrée en v1, sans migration le jour venu) :
   - `recordings`, `likes`, `playlists`, `playlist_items`, `plays` et `settings_shared`
     portent `updated_at`, `device_id` et `deleted_at` (suppression logique) ;
-  - les conflits se départagent par `(updated_at, device_id)` ;
+  - `updated_at` est une **horloge logique hybride** (HLC) encodée en entier 64 bits, pas
+    l'heure murale : l'ordre reste correct même si l'horloge d'un appareil dérive. Les
+    égalités se départagent par `device_id` ;
   - l'ordre dans `playlist_items` est une **clé d'ordre fractionnaire** (une chaîne qu'on
     peut toujours insérer entre deux autres), pas une position entière ;
-  - deux recordings créées sur deux appareils pour le même morceau seront fusionnées à la
-    synchro quand elles partagent une référence externe ; la règle de fusion fera partie de
-    la spec de synchro.
+  - `recordings` porte `merged_into` (nul par défaut) : quand deux recordings partagent une
+    référence externe, la plus récente pointe vers la plus ancienne et toutes les lectures
+    suivent ce lien. Utilisé dès la v1 quand une correction manuelle révèle un doublon ; la
+    synchro réutilisera le même mécanisme.
 
 ## 6. Erreurs
 
@@ -333,6 +347,6 @@ rattraper est conçu dès maintenant.
 | Anime, livres | Hôte de plugins générique, capacités préfixées par domaine |
 | Version stores | `plugin-host` est une crate séparée, retirable par une option de compilation |
 | Exécution de JavaScript pour YouTube | Service hôte `js.eval` prévu (section 4.5) |
-| Cache des octets pendant la lecture | Module `stream` en place ; le serveur local s'ajoute sans toucher au reste |
+| Cache des octets pendant la lecture | Crate `stream` en place ; le serveur local s'ajoute sans toucher au reste |
 | Accueil éditorial (classements, nouveautés) | Une capacité `music.browse` s'ajoute au contrat |
 | CarPlay, Android Auto, Chromecast | `audio_service` + flux `NowPlaying` déjà en place |
