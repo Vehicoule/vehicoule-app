@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = ["contract", "plugin-host"]
+exclude = ["plugin-host/guests"]
+
+[workspace.package]
+edition = "2024"
+
+[workspace.dependencies]
+# Latest LTS series. No `cache` feature: compiled code is never loaded from disk.
+wasmtime = { version = "48.0.6", default-features = false, features = ["std", "runtime", "cranelift", "pulley", "component-model", "async", "anyhow"] }
+wasmtime-wasi = { version = "48.0.6", default-features = false, features = ["p2"] }
