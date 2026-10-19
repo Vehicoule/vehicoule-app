@@ -1,6 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -9,6 +9,7 @@ use contract::{clock, kv, log, types};
 use sha2::{Digest, Sha256};
 use wasmtime::component::{Component, HasSelf, Instance, InstancePre, Linker, ResourceTable};
 use wasmtime::{Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder, Trap};
+use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::calls::Returned;
@@ -16,7 +17,7 @@ use crate::manifest::{Allowlist, Manifest, parse_manifest, validate_contract};
 use crate::net::{HttpBudget, NetPolicy};
 use crate::rate::RateLimiter;
 use crate::storage::{self, Storage};
-use crate::{Budget, CallError, CallReport, Capability, HostConfig, HostEvent, LoadError};
+use crate::{Budget, CallError, CallReport, Capability, HostConfig, HostEvent, LoadError, LogLevel};
 
 const EPOCH_TICK: Duration = Duration::from_millis(100);
 
@@ -64,8 +65,8 @@ pub(crate) struct State {
     wasi: WasiCtx,
     table: ResourceTable,
     memory: MemoryBudget,
-    plugin: String,
-    storage: Arc<dyn Storage>,
+    pub(crate) plugin: String,
+    pub(crate) storage: Arc<dyn Storage>,
     pub(crate) net: NetPolicy,
     pub(crate) allowlist: Arc<Allowlist>,
     pub(crate) max_response_bytes: usize,
@@ -77,6 +78,66 @@ pub(crate) struct State {
     /// This call's own wall-clock cutoff (`tokio::time::timeout` below); a rate-limit wait
     /// that would run past it fails fast instead (see `rate::RateLimiter::acquire`).
     pub(crate) deadline: tokio::time::Instant,
+    /// The capability this call is running: the HTTP cache (`net::fetch`) only applies outside
+    /// `resolve`.
+    pub(crate) capability: Capability,
+    call_log: Arc<CallLog>,
+}
+
+/// Caps `HostEvent::Log` at 200 per call, message truncated to 2 KiB at a UTF-8 boundary. Fed
+/// by `log::Host::log` directly, and by the WASI stdout/stderr capture flushed once the call's
+/// instance has run (see `Host::call`).
+struct CallLog {
+    plugin: String,
+    events: Arc<dyn Fn(HostEvent) + Send + Sync>,
+    remaining: AtomicU32,
+}
+
+const LOG_CAP_EVENTS: u32 = 200;
+const LOG_MAX_MESSAGE: usize = 2 << 10;
+/// Per call, per stream (stdout/stderr): large enough for any plausible plugin output; a
+/// plugin that fills it blocks on its next write instead of overrunning host memory.
+// ponytail: fixed cap, not a ring buffer — a plugin logging more than this in one call stalls
+// on write instead of losing old lines; revisit if that shows up in practice.
+const STDIO_CAPACITY: usize = 1 << 20;
+
+impl CallLog {
+    fn new(plugin: String, events: Arc<dyn Fn(HostEvent) + Send + Sync>) -> Self {
+        CallLog { plugin, events, remaining: AtomicU32::new(LOG_CAP_EVENTS) }
+    }
+
+    fn emit(&self, level: LogLevel, message: &str) {
+        if self.remaining.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |r| r.checked_sub(1)).is_err() {
+            return;
+        }
+        (self.events)(HostEvent::Log { plugin: self.plugin.clone(), level, message: truncate_utf8(message).into() });
+    }
+}
+
+fn truncate_utf8(s: &str) -> &str {
+    if s.len() <= LOG_MAX_MESSAGE {
+        return s;
+    }
+    let mut end = LOG_MAX_MESSAGE;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// Splits WASI stdout/stderr bytes captured over a whole call into lines, flushing a trailing
+/// partial line (no final `\n`) too.
+fn flush_stdio(log: &CallLog, level: LogLevel, buf: &[u8]) {
+    if buf.is_empty() {
+        return;
+    }
+    let mut lines: Vec<&[u8]> = buf.split(|&b| b == b'\n').collect();
+    if buf.ends_with(b"\n") {
+        lines.pop();
+    }
+    for line in lines {
+        log.emit(level, &String::from_utf8_lossy(line));
+    }
 }
 
 /// One memory budget for the whole plugin (`StoreLimits::memory_size` would apply it to
@@ -155,9 +216,16 @@ impl clock::Host for State {
     }
 }
 
-// ponytail: logs and stdout are dropped; task 5 turns them into capped `HostEvent::Log`.
 impl log::Host for State {
-    async fn log(&mut self, _level: log::Level, _message: String) {}
+    async fn log(&mut self, level: log::Level, message: String) {
+        let level = match level {
+            log::Level::Debug => LogLevel::Debug,
+            log::Level::Info => LogLevel::Info,
+            log::Level::Warn => LogLevel::Warn,
+            log::Level::Error => LogLevel::Error,
+        };
+        self.call_log.emit(level, &message);
+    }
 }
 
 impl types::Host for State {}
@@ -261,7 +329,15 @@ impl Host {
     ) -> Result<T, CallError> {
         let start = Instant::now();
         let limits = self.cfg.limits;
-        let wasi = WasiCtx::builder().allow_tcp(false).allow_udp(false).allow_ip_name_lookup(false).build();
+        let call_log = Arc::new(CallLog::new(p.id().into(), self.cfg.events.clone()));
+        let (stdout, stderr) = (MemoryOutputPipe::new(STDIO_CAPACITY), MemoryOutputPipe::new(STDIO_CAPACITY));
+        let wasi = WasiCtx::builder()
+            .allow_tcp(false)
+            .allow_udp(false)
+            .allow_ip_name_lookup(false)
+            .stdout(stdout.clone())
+            .stderr(stderr.clone())
+            .build();
         let user_agent = p
             .manifest()
             .descriptive_user_agent
@@ -284,6 +360,8 @@ impl Host {
             rate_limiter: p.0.rate_limiter.clone(),
             user_agent,
             deadline,
+            capability,
+            call_log: call_log.clone(),
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.memory);
@@ -316,6 +394,11 @@ impl Host {
                 }),
             }
         };
+
+        // Flushed once the instance has finished running: a trailing partial line (no final
+        // `\n`) is included, since this reads the whole buffer rather than streaming it.
+        flush_stdio(&call_log, LogLevel::Info, &stdout.contents());
+        flush_stdio(&call_log, LogLevel::Warn, &stderr.contents());
 
         let report = CallReport {
             plugin: p.id().into(),

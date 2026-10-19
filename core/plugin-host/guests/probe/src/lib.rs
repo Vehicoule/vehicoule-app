@@ -4,7 +4,8 @@
 //! track per result), `cap-batch <url>` (three batches of 8 then one more send, reports how
 //! many of the 24 batched sends and the extra one succeeded), `ua <url> <value>` (one GET with
 //! that `User-Agent` header), `kv-set <k> <v>`, `kv-get <k>`, `print <text>`, `log <text>`,
-//! `art <url>` (a track with that artwork). `resolve` streams `track.title`.
+//! `lines <n>` (n lines to stdout), `art <url>` (a track with that artwork). `resolve` streams
+//! `track.title`.
 wit_bindgen::generate!({
     path: ["../../../contract/wit/host", "../../../contract/wit/music", "../wit"],
     world: "vehicoule:test-guests/test-probe",
@@ -98,6 +99,13 @@ impl search::Guest for Probe {
                 let text = format!("{a} {b}").trim_end().to_string();
                 log::log(log::Level::Info, &text);
                 text
+            }
+            "lines" => {
+                let n = count(a)?;
+                for i in 0..n {
+                    println!("l{i}");
+                }
+                n.to_string()
             }
             "art" => {
                 let mut out = found("art".into());

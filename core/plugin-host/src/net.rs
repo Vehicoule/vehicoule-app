@@ -13,6 +13,8 @@ use tokio::time::Instant;
 
 use crate::manifest::{Allowlist, ends_in_number};
 use crate::rate::RateLimiter;
+use crate::storage::{CachedResponse, Storage};
+use crate::Capability;
 
 const MAX_REDIRECTS: u32 = 5;
 
@@ -272,13 +274,96 @@ pub(crate) enum Body {
     Recorded(Vec<u8>),
 }
 
+/// Context for the per-call HTTP cache: only passed for a plugin's own `send`/`send_batch`,
+/// never for the core's own fetches of URLs a plugin returned (`Host::http_client`).
+#[derive(Clone, Copy)]
+pub(crate) struct CacheCtx<'a> {
+    pub(crate) storage: &'a dyn Storage,
+    pub(crate) plugin: &'a str,
+    pub(crate) capability: Capability,
+}
+
+/// 2 MiB: bodies larger than this are never cached (but can still be fetched, up to the call's
+/// own response-size budget).
+const MAX_CACHED_BODY: usize = 2 << 20;
+
+/// Same as `fetch_uncached`, but for a `GET` outside the `resolve` capability, first consults
+/// `cache`: a hit (not expired) is returned with no network call, no budget or rate-limit token
+/// spent. A miss falls through to the network; a 2xx response within `MAX_CACHED_BODY` and a
+/// non-`None` `cache::ttl_ms` is then stored. On a network error (not an HTTP error status, not
+/// `Denied`), an expired entry — if one exists — is served instead of the error (offline).
+#[allow(clippy::too_many_arguments)] // one more than `fetch_uncached`: the cache context.
+pub(crate) async fn fetch(
+    policy: &NetPolicy,
+    allow: &Allowlist,
+    req: Request,
+    max_body: usize,
+    budget: &Mutex<HttpBudget>,
+    rate_limiter: Option<(&RateLimiter, Instant)>,
+    user_agent: Option<&str>,
+    cache: Option<CacheCtx<'_>>,
+) -> Result<Response, HttpError> {
+    let cache = cache.filter(|c| matches!(req.method, Method::Get) && c.capability != Capability::Resolve);
+    let key = cache.map(|c| crate::cache::cache_key(c.plugin, &req));
+    let cached = match (cache, key) {
+        (Some(c), Some(key)) => c.storage.cache_get(&key),
+        _ => None,
+    };
+    if let Some(entry) = &cached
+        && entry.expires_at_ms > now_ms()
+    {
+        return Ok(cached_response(entry));
+    }
+
+    match fetch_uncached(policy, allow, req, max_body, budget, rate_limiter, user_agent).await {
+        Ok(response) => {
+            if let (Some(c), Some(key)) = (cache, key) {
+                store_if_cacheable(c, &key, &response);
+            }
+            Ok(response)
+        }
+        Err(e @ (HttpError::Network(_) | HttpError::Timeout)) => {
+            cached.map_or(Err(e), |entry| Ok(cached_response(&entry)))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn cached_response(entry: &CachedResponse) -> Response {
+    Response { status: entry.status, url: entry.url.clone(), headers: entry.headers.clone(), body: entry.body.clone() }
+}
+
+fn store_if_cacheable(cache: CacheCtx<'_>, key: &[u8; 32], response: &Response) {
+    if !(200..300).contains(&response.status) || response.body.len() > MAX_CACHED_BODY {
+        return;
+    }
+    let Some(ttl) = crate::cache::ttl_ms(&response.headers, cache.capability) else { return };
+    let now = now_ms();
+    cache.storage.cache_put(
+        key,
+        &CachedResponse {
+            plugin: cache.plugin.to_string(),
+            status: response.status,
+            url: response.url.clone(),
+            headers: response.headers.clone(),
+            body: response.body.clone(),
+            stored_at_ms: now,
+            expires_at_ms: now + ttl,
+        },
+    );
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
 /// Sends `req` under `policy` and `allow`, following up to 5 redirects by hand. Every hop is
 /// charged to `budget` (one call, plus the request bytes it sends; the response's bytes are
 /// charged inside `read` as they arrive) and, when `rate_limiter` is set, waits for a slot
 /// first — or fails fast if that wait would run past the paired deadline. `user_agent`, when
 /// set, overrides any plugin-set `User-Agent` for every hop; when `None` the plugin's own
 /// header (if any) is left alone.
-pub(crate) async fn fetch(
+async fn fetch_uncached(
     policy: &NetPolicy,
     allow: &Allowlist,
     req: Request,
@@ -428,6 +513,7 @@ mod tests {
 
     use super::*;
     use crate::manifest::Allowlist;
+    use crate::storage::MemoryStorage;
 
     fn allow(domains: &[&str]) -> Allowlist {
         Allowlist::new(&domains.iter().map(|d| d.to_string()).collect::<Vec<_>>()).unwrap()
@@ -439,7 +525,7 @@ mod tests {
 
     async fn run(policy: &NetPolicy, allow: &Allowlist, req: Request) -> (Result<Response, HttpError>, u32) {
         let budget = Mutex::new(HttpBudget::new(u32::MAX, usize::MAX));
-        let r = fetch(policy, allow, req, 8 << 20, &budget, None, None).await;
+        let r = fetch(policy, allow, req, 8 << 20, &budget, None, None, None).await;
         (r, budget.into_inner().unwrap().calls)
     }
 
@@ -688,7 +774,7 @@ mod tests {
         let budget = Mutex::new(HttpBudget::new(10, 5));
         let url = base(&server, "api.test");
         let big = Request { body: Some(vec![b'x'; 6]), ..req(Method::Post, &url) };
-        match fetch(&policy, &list, big, 8 << 20, &budget, None, None).await {
+        match fetch(&policy, &list, big, 8 << 20, &budget, None, None, None).await {
             Err(HttpError::BudgetExceeded) => {}
             other => panic!("{:?}", other.map(|r| r.status)),
         }
@@ -697,7 +783,7 @@ mod tests {
             assert_eq!((b.calls, b.bytes), (0, 0), "a request refused for its body size spends no call and no bytes");
         }
         let small = Request { body: Some(vec![b'x'; 5]), ..req(Method::Post, &url) };
-        let r = fetch(&policy, &list, small, 8 << 20, &budget, None, None).await;
+        let r = fetch(&policy, &list, small, 8 << 20, &budget, None, None, None).await;
         assert_eq!(r.unwrap().status, 200);
         assert_eq!(budget.lock().unwrap().calls, 1);
         assert_eq!(server.received_requests().await.unwrap().len(), 1, "only the fitting request was ever sent");
@@ -715,7 +801,7 @@ mod tests {
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let budget = Mutex::new(HttpBudget::new(10, 1 << 20));
         let post = Request { body: Some(vec![b'x'; 10]), ..req(Method::Post, &format!("{api}/a")) };
-        let r = fetch(&policy, &list, post, 8 << 20, &budget, None, None).await;
+        let r = fetch(&policy, &list, post, 8 << 20, &budget, None, None, None).await;
         assert_eq!(r.unwrap().status, 200);
         let b = budget.lock().unwrap();
         assert_eq!(b.calls, 3, "one call per hop, redirects included");
@@ -759,7 +845,7 @@ mod tests {
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let budget = Mutex::new(HttpBudget::new(10, 1 << 30));
         let url = format!("http://api.test:{port}/");
-        match fetch(&policy, &list, req(Method::Get, &url), 8 << 20, &budget, None, None).await {
+        match fetch(&policy, &list, req(Method::Get, &url), 8 << 20, &budget, None, None, None).await {
             Err(HttpError::TooLarge) => {}
             other => panic!("{:?}", other.map(|r| r.status)),
         }
@@ -783,12 +869,101 @@ mod tests {
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let budget = Mutex::new(HttpBudget { calls: 2, bytes: 15 << 20, hit: false, max_calls: 24, max_bytes: 16 << 20 });
         let url = format!("http://api.test:{port}/");
-        match fetch(&policy, &list, req(Method::Get, &url), 8 << 20, &budget, None, None).await {
+        match fetch(&policy, &list, req(Method::Get, &url), 8 << 20, &budget, None, None, None).await {
             Err(HttpError::BudgetExceeded) => {}
             other => panic!("{:?}", other.map(|r| r.status)),
         }
         let bytes = budget.lock().unwrap().bytes;
         assert!(bytes < (16 << 20) + (2 << 20), "{bytes}: should stop within about one chunk past the 16 MiB cap");
         let _ = server.await;
+    }
+
+    async fn run_cached(
+        policy: &NetPolicy,
+        allow: &Allowlist,
+        req: Request,
+        cache: CacheCtx<'_>,
+    ) -> Result<Response, HttpError> {
+        let budget = Mutex::new(HttpBudget::new(u32::MAX, usize::MAX));
+        fetch(policy, allow, req, 8 << 20, &budget, None, None, Some(cache)).await
+    }
+
+    #[tokio::test]
+    async fn get_is_served_from_cache() {
+        let server = MockServer::start().await;
+        let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=60");
+        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let storage = MemoryStorage::default();
+        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let url = format!("{}/x", base(&server, "api.test"));
+
+        assert_eq!(run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap().status, 200);
+        assert_eq!(run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap().status, 200);
+        assert_eq!(server.received_requests().await.unwrap().len(), 1, "the second GET must be served from cache");
+    }
+
+    #[tokio::test]
+    async fn resolve_never_hits_cache() {
+        let server = MockServer::start().await;
+        let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=60");
+        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let storage = MemoryStorage::default();
+        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Resolve };
+        let url = format!("{}/x", base(&server, "api.test"));
+
+        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
+        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
+        assert_eq!(server.received_requests().await.unwrap().len(), 2, "resolve always goes to the network");
+    }
+
+    /// An expired entry, seeded directly through `Storage` (24h is the catalogue's own minimum
+    /// TTL, so a test cannot wait for a real one to expire), is served once nothing answers on
+    /// that port any more — a network error, not an HTTP error status or a `Denied`.
+    #[tokio::test]
+    async fn stale_cache_served_when_offline() {
+        // Bound, then immediately dropped: the port is free but nothing is listening, so a
+        // connection attempt gets a prompt `ECONNREFUSED` instead of racing a server's shutdown.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let url = format!("http://api.test:{port}/x");
+
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let storage = MemoryStorage::default();
+        let key = crate::cache::cache_key("p", &req(Method::Get, &url));
+        storage.cache_put(
+            &key,
+            &CachedResponse {
+                plugin: "p".into(),
+                status: 200,
+                url: url.clone(),
+                headers: vec![],
+                body: b"stale-ok".to_vec(),
+                stored_at_ms: 0,
+                expires_at_ms: 1,
+            },
+        );
+
+        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let resp = run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
+        assert_eq!(resp.body, b"stale-ok");
+    }
+
+    #[tokio::test]
+    async fn fresh_responses_above_2mib_are_not_cached() {
+        let server = MockServer::start().await;
+        let body = vec![b'x'; (2 << 20) + 1];
+        let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=60").set_body_bytes(body);
+        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let storage = MemoryStorage::default();
+        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let url = format!("{}/x", base(&server, "api.test"));
+
+        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
+        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
+        assert_eq!(server.received_requests().await.unwrap().len(), 2, "too large to cache: every GET hits the network");
     }
 }

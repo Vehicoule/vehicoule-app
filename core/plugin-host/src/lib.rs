@@ -1,6 +1,7 @@
 //! Runs WASM component plugins under budgets: fuel, wall-clock epochs, memory, HTTP and
 //! response size. One typed call per capability; compiled components are cached on disk.
 
+mod cache;
 mod calls;
 mod engine;
 mod http;
@@ -20,7 +21,7 @@ pub use manifest::{Allowlist, Manifest, RateLimit, parse_manifest};
 pub use net::{NetPolicy, is_public};
 #[cfg(any(test, feature = "test-util"))]
 pub use storage::MemoryStorage;
-pub use storage::Storage;
+pub use storage::{CachedResponse, Storage};
 
 pub struct HostConfig {
     /// Compiled components; private to the app, only the host writes here.

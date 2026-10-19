@@ -1,5 +1,5 @@
-//! Persistence the core provides (SQLite there). The host enforces the kv limits; task 5
-//! adds the HTTP cache methods.
+//! Persistence the core provides (SQLite there). The host enforces the kv limits; the HTTP
+//! cache (keyed by `cache::cache_key`, ttl from `cache::ttl_ms`) is just a blob store here.
 
 use contract::kv::KvError;
 
@@ -9,6 +9,22 @@ pub trait Storage: Send + Sync {
     fn kv_delete(&self, plugin: &str, key: &str);
     /// Bytes of all keys and values of `plugin`.
     fn kv_usage(&self, plugin: &str) -> u64;
+    fn cache_get(&self, key: &[u8; 32]) -> Option<CachedResponse>;
+    fn cache_put(&self, key: &[u8; 32], entry: &CachedResponse);
+}
+
+/// A cached `GET` response, keyed by `cache::cache_key`. The host decides whether to store (2xx,
+/// body size) and for how long (`cache::ttl_ms`); this struct is just what gets stored.
+#[derive(Debug, Clone)]
+pub struct CachedResponse {
+    pub plugin: String,
+    pub status: u16,
+    /// Final URL (after any redirects the host followed).
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+    pub stored_at_ms: u64,
+    pub expires_at_ms: u64,
 }
 
 const KV_MAX_KEY: usize = 128;
@@ -35,6 +51,7 @@ pub(crate) fn kv_set(storage: &dyn Storage, plugin: &str, key: &str, value: &[u8
 #[derive(Default)]
 pub struct MemoryStorage {
     kv: std::sync::Mutex<std::collections::HashMap<(String, String), Vec<u8>>>,
+    cache: std::sync::Mutex<std::collections::HashMap<[u8; 32], CachedResponse>>,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -54,6 +71,14 @@ impl Storage for MemoryStorage {
     fn kv_usage(&self, plugin: &str) -> u64 {
         let kv = self.kv.lock().unwrap();
         kv.iter().filter(|((p, _), _)| p == plugin).map(|((_, k), v)| (k.len() + v.len()) as u64).sum()
+    }
+
+    fn cache_get(&self, key: &[u8; 32]) -> Option<CachedResponse> {
+        self.cache.lock().unwrap().get(key).cloned()
+    }
+
+    fn cache_put(&self, key: &[u8; 32], entry: &CachedResponse) {
+        self.cache.lock().unwrap().insert(*key, entry.clone());
     }
 }
 

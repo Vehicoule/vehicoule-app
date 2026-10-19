@@ -54,7 +54,9 @@ async fn http_client_rechecks_redirects() {
 #[tokio::test]
 async fn http_call_cap_is_enforced() {
     let server = MockServer::start().await;
-    Mock::given(method("GET")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+    // no-store: this test counts real network calls against the budget, not cache hits.
+    let resp = ResponseTemplate::new(200).insert_header("cache-control", "no-store");
+    Mock::given(method("GET")).respond_with(resp).mount(&server).await;
     let t = TestHost::new(Limits::default());
     let p = t.load("probe");
     let r = t.host.search(&p, query(&format!("count {}/ 30", api(&server)))).await;
@@ -65,7 +67,8 @@ async fn http_call_cap_is_enforced() {
 #[tokio::test]
 async fn guest_ok_after_http_budget_stays_ok() {
     let server = MockServer::start().await;
-    Mock::given(method("GET")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+    let resp = ResponseTemplate::new(200).insert_header("cache-control", "no-store");
+    Mock::given(method("GET")).respond_with(resp).mount(&server).await;
     let t = TestHost::new(Limits::default());
     let p = t.load("probe");
     let r = t.host.search(&p, query(&format!("count-ok {}/ 30", api(&server)))).await;
@@ -103,7 +106,10 @@ async fn batch_runs_concurrently() {
 #[tokio::test]
 async fn concurrent_batches_share_the_call_cap() {
     let server = MockServer::start().await;
-    Mock::given(method("GET")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+    // no-store: 3 sequential batches to the same URL must all be real requests, not the 2nd
+    // and 3rd served from the 1st's cache entry.
+    let resp = ResponseTemplate::new(200).insert_header("cache-control", "no-store");
+    Mock::given(method("GET")).respond_with(resp).mount(&server).await;
     let t = TestHost::new(Limits::default());
     let p = t.load("probe");
     let r = t.host.search(&p, query(&format!("cap-batch {}/", api(&server)))).await.unwrap();
@@ -130,7 +136,9 @@ async fn rate_limit_waits_instead_of_failing() {
     // Real time, not `#[tokio::test(start_paused = true)]`: wiremock listens on a real TCP
     // socket, and the virtual clock does not advance in step with that real I/O.
     let server = MockServer::start().await;
-    Mock::given(method("GET")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+    // no-store: this test times 5 real, rate-limited requests, not cache hits after the 1st.
+    let resp = ResponseTemplate::new(200).insert_header("cache-control", "no-store");
+    Mock::given(method("GET")).respond_with(resp).mount(&server).await;
     let t = TestHost::new(Limits::default());
     let p = t.host.load(&manifest_ex("probe", Some((2, 1)), false), &guest("probe")).unwrap();
     let start = Instant::now();
@@ -143,7 +151,11 @@ async fn rate_limit_waits_instead_of_failing() {
 #[tokio::test]
 async fn descriptive_user_agent_is_set() {
     let server = MockServer::start().await;
-    Mock::given(method("GET")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+    // no-store: the cache key ignores `user-agent` by design (ruling 3), so without this the
+    // 2nd request (different UA, same URL otherwise) would be served from the 1st's cache entry
+    // and never reach the server.
+    let resp = ResponseTemplate::new(200).insert_header("cache-control", "no-store");
+    Mock::given(method("GET")).respond_with(resp).mount(&server).await;
     let t = TestHost::new(Limits::default());
     let url = format!("{}/ plugin-agent/1", api(&server));
 

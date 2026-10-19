@@ -9,7 +9,9 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn mock(status: u16) -> MockServer {
     let server = MockServer::start().await;
-    Mock::given(method("GET")).respond_with(ResponseTemplate::new(status)).mount(&server).await;
+    // no-store: these tests count real calls/report fields, not cache hits.
+    let resp = ResponseTemplate::new(status).insert_header("cache-control", "no-store");
+    Mock::given(method("GET")).respond_with(resp).mount(&server).await;
     server
 }
 
