@@ -291,7 +291,7 @@ tâche 7 demande aussi les plans 4 et 5 (app sur le téléphone).
 #[test] fn artwork_is_upscaled_to_1000()
 #[test] fn itunes_403_is_rate_limited()
 #[test] fn album_and_track_links_are_recognised()
-#[tokio::test] async fn album_entity_lists_tracks_in_order() // rejeu lookup ; ordre par trackNumber puis discNumber
+#[tokio::test] async fn album_entity_lists_tracks_in_order() // rejeu lookup ; ordre par discNumber puis trackNumber
 ```
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
 - [ ] **Step 3 : implémenter.**
