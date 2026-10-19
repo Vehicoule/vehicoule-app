@@ -4,6 +4,7 @@
 mod cache;
 mod calls;
 mod engine;
+mod feed;
 mod http;
 mod manifest;
 mod net;
@@ -17,6 +18,7 @@ use std::sync::Arc;
 
 pub use contract::{music, types};
 pub use engine::{Host, Plugin};
+pub use feed::{Feed, FeedEntry, FeedError, fingerprint, sha256_matches, sign_feed, verify_feed};
 pub use manifest::{Allowlist, Manifest, RateLimit, parse_manifest};
 pub use net::{NetPolicy, is_public};
 #[cfg(any(test, feature = "test-util"))]
