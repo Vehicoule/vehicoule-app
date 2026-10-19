@@ -93,7 +93,7 @@ impl Allowlist {
     }
 }
 
-/// Lowercase labels, letters/digits/hyphen only, no literal IP, no port.
+/// Lowercase labels, letters/digits/hyphen only, no literal IP, no port, no disguised IP.
 fn validate_host(host: &str) -> Result<(), String> {
     if host.parse::<IpAddr>().is_ok() {
         return Err(format!("domain must not be a literal IP: {host:?}"));
@@ -102,7 +102,25 @@ fn validate_host(host: &str) -> Result<(), String> {
         && host
             .split('.')
             .all(|label| !label.is_empty() && label.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'-')));
-    if valid { Ok(()) } else { Err(format!("invalid domain: {host:?}")) }
+    if !valid {
+        return Err(format!("invalid domain: {host:?}"));
+    }
+    if ends_in_number(host) {
+        return Err(format!("domain must not end in a number (disguised IP): {host:?}"));
+    }
+    Ok(())
+}
+
+/// WHATWG URL's "ends in a number" rule: the last label is all decimal digits, or `0x`/`0X`
+/// followed by zero or more hex digits (octal, e.g. `017`, is covered by the all-digits case).
+/// This is exactly what the `url` crate would fold into a literal IPv4, e.g. `1.2.3.4`,
+/// `2130706433`, `017.0.0.1`, `0x7f.0x0.0x0.0x1`. Reused by task 3 for request hosts.
+fn ends_in_number(host: &str) -> bool {
+    let last = host.rsplit('.').next().unwrap_or("");
+    if let Some(hex) = last.strip_prefix("0x").or_else(|| last.strip_prefix("0X")) {
+        return hex.bytes().all(|b| b.is_ascii_hexdigit());
+    }
+    !last.is_empty() && last.bytes().all(|b| b.is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -128,8 +146,28 @@ mod tests {
 
     #[test]
     fn invalid_domains_are_rejected() {
-        for domain in ["*", "*.com", "a.*.com", "127.0.0.1", "[::1]", "x.com:443", ""] {
+        for domain in [
+            "*",
+            "*.com",
+            "a.*.com",
+            "127.0.0.1",
+            "[::1]",
+            "x.com:443",
+            "",
+            "0x7f.1",
+            "2130706433",
+            "017.0.0.1",
+            "0x7f.0x0.0x0.0x1",
+            "1.2.3.4",
+        ] {
             assert!(Allowlist::new(&[domain.into()]).is_err(), "{domain:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn hosts_that_merely_contain_digits_are_accepted() {
+        for domain in ["123.example.com", "x0.example.com"] {
+            assert!(Allowlist::new(&[domain.into()]).is_ok(), "{domain:?} should be accepted");
         }
     }
 
