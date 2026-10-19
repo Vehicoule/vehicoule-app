@@ -1183,6 +1183,7 @@ dependencies = [
  "anyhow",
  "contract",
  "reqwest",
+ "tokio",
  "wasmtime",
  "wasmtime-wasi",
 ]
