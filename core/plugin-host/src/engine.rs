@@ -40,7 +40,7 @@ pub(crate) struct State {
     wasi: WasiCtx,
     table: ResourceTable,
     limits: Budget,
-    kv: HashMap<String, Vec<u8>>,
+    kv: Kv,
     pub(crate) http: reqwest::Client,
     pub(crate) max_response_bytes: usize,
 }
@@ -101,19 +101,56 @@ impl WasiView for State {
     }
 }
 
-// ponytail: minimal kv, clock and log; plan 2 brings persistence, quotas and logging.
-impl kv::Host for State {
-    async fn get(&mut self, key: String) -> Option<Vec<u8>> {
-        self.kv.get(&key).cloned()
+const KV_MAX_KEY: usize = 128;
+const KV_MAX_VALUE: usize = 64 << 10;
+const KV_MAX_TOTAL: usize = 1 << 20;
+
+/// In-memory kv, capped: it lives outside the guest's memory budget.
+#[derive(Default)]
+struct Kv {
+    entries: HashMap<String, Vec<u8>>,
+    /// Bytes of all keys and values.
+    total: usize,
+}
+
+impl Kv {
+    fn get(&self, key: &str) -> Option<Vec<u8>> {
+        self.entries.get(key).cloned()
     }
 
-    async fn set(&mut self, key: String, value: Vec<u8>) -> Result<(), kv::KvError> {
-        self.kv.insert(key, value);
+    fn set(&mut self, key: String, value: Vec<u8>) -> Result<(), kv::KvError> {
+        if key.len() > KV_MAX_KEY || value.len() > KV_MAX_VALUE {
+            return Err(kv::KvError::TooLarge);
+        }
+        let old = self.entries.get(&key).map_or(0, |v| key.len() + v.len());
+        let total = self.total - old + key.len() + value.len();
+        if total > KV_MAX_TOTAL {
+            return Err(kv::KvError::QuotaExceeded);
+        }
+        self.total = total;
+        self.entries.insert(key, value);
         Ok(())
     }
 
+    fn delete(&mut self, key: &str) {
+        if let Some(v) = self.entries.remove(key) {
+            self.total -= key.len() + v.len();
+        }
+    }
+}
+
+// ponytail: kv is per call and not persisted, clock and log are minimal; plan 2 replaces them.
+impl kv::Host for State {
+    async fn get(&mut self, key: String) -> Option<Vec<u8>> {
+        self.kv.get(&key)
+    }
+
+    async fn set(&mut self, key: String, value: Vec<u8>) -> Result<(), kv::KvError> {
+        self.kv.set(key, value)
+    }
+
     async fn delete(&mut self, key: String) {
-        self.kv.remove(&key);
+        self.kv.delete(&key);
     }
 }
 
@@ -172,7 +209,7 @@ impl Host {
             wasi,
             table: ResourceTable::new(),
             limits: Budget::new(limits.memory_bytes),
-            kv: HashMap::new(),
+            kv: Kv::default(),
             http: self.http.clone(),
             max_response_bytes: limits.max_response_bytes,
         };
@@ -217,6 +254,24 @@ impl Host {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kv_enforces_key_value_and_total_caps() {
+        let mut kv = Kv::default();
+        assert!(matches!(kv.set("k".repeat(129), vec![]), Err(kv::KvError::TooLarge)));
+        assert!(matches!(kv.set("k".into(), vec![0; (64 << 10) + 1]), Err(kv::KvError::TooLarge)));
+
+        // 15 entries of 1 + 64 KiB fit in 1 MiB; the 16th does not.
+        for i in 0..15 {
+            kv.set(format!("{i:x}"), vec![0; 64 << 10]).unwrap();
+        }
+        assert!(matches!(kv.set("f".into(), vec![0; 64 << 10]), Err(kv::KvError::QuotaExceeded)));
+        // Overwriting frees the old value, deleting frees the entry.
+        kv.set("0".into(), vec![0; 64 << 10]).unwrap();
+        kv.delete("0");
+        kv.set("f".into(), vec![0; 64 << 10]).unwrap();
+        assert_eq!(kv.get("f").map(|v| v.len()), Some(64 << 10));
+    }
 
     #[test]
     fn memory_budget_is_shared_by_all_memories() {
