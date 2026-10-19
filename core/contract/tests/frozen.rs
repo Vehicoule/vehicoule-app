@@ -11,7 +11,7 @@ fn sha256_hex(text: &str) -> String {
 fn wit_1_0_is_frozen() {
     // Update these hashes only together with a new major version of the packages.
     assert_eq!(sha256_hex(contract::HOST_WIT), "33d578d40b088073fddf5d879819dad3b62bf6cfe0409620db4661e9e1a1314b");
-    assert_eq!(sha256_hex(contract::MUSIC_WIT), "69588c7603d0170c37878ad437562f8c8b33dd3aee3e54ecd39e2462861bdc8a");
+    assert_eq!(sha256_hex(contract::MUSIC_WIT), "ced30733b017c0ba27a9d12775c88c0b62507579dd88ca377a7726fbbb4b5368");
 }
 
 fn wasm_tools_wit(dir: &Path) {

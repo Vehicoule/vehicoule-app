@@ -224,7 +224,7 @@ impl Host {
         let req = search::SearchRequest {
             query: query.into(),
             kinds: vec![types::EntityKind::Track],
-            region: String::new(),
+            region: "FR".into(),
             limit: 1,
             cursor: None,
         };

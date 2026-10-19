@@ -74,6 +74,12 @@ export!(Paroles);
 Les imports de l'hôte sont synchrones côté plugin : `vehicoule_sdk::block_on` conduit un
 futur qui n'attend jamais (il panique sur `Pending`).
 
+## Limites de l'hôte
+
+- `http.send-batch` : **8** requêtes au plus par lot.
+- `kv` : clé ≤ **128 octets** et valeur ≤ **64 Kio**, sinon `too-large` ; **1 Mio** par plugin
+  (clés et valeurs cumulées), sinon `quota-exceeded`.
+
 ## Vendorisation vérifiée
 
 Un dépôt de plugin qui dérive du tag compilerait contre un autre contrat que l'hôte. Il
