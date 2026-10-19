@@ -3,9 +3,10 @@
 //! sequential GETs, errors counted but swallowed), `batch <url> <n>` (one `send-batch`, one
 //! track per result), `cap-batch <url>` (three batches of 8 then one more send, reports how
 //! many of the 24 batched sends and the extra one succeeded), `ua <url> <value>` (one GET with
-//! that `User-Agent` header), `kv-set <k> <v>`, `kv-get <k>`, `print <text>`, `log <text>`,
-//! `lines <n>` (n lines to stdout), `art <url>` (a track with that artwork). `resolve` streams
-//! `track.title`.
+//! that `User-Agent` header), `kv-set <k> <v>`, `kv-get <k>`, `print <text>` (stdout),
+//! `eprint <text>` (stderr), `log <text>`, `lines <n>` (n ~6 KiB lines to stdout), `crlf <text>`
+//! (one `<text>\r\n` line), `partial <text>` (no trailing newline, explicitly flushed),
+//! `art <url>` (a track with that artwork). `resolve` streams `track.title`.
 wit_bindgen::generate!({
     path: ["../../../contract/wit/host", "../../../contract/wit/music", "../wit"],
     world: "vehicoule:test-guests/test-probe",
@@ -102,10 +103,33 @@ impl search::Guest for Probe {
             }
             "lines" => {
                 let n = count(a)?;
+                // ~6 KiB/line: `n=500` is ~3 MiB total, over any one-call buffer a host might
+                // (no longer) keep.
+                let padding = "x".repeat(6000);
                 for i in 0..n {
-                    println!("l{i}");
+                    println!("l{i}:{padding}");
                 }
                 n.to_string()
+            }
+            "eprint" => {
+                let text = format!("{a} {b}").trim_end().to_string();
+                eprintln!("{text}");
+                text
+            }
+            "crlf" => {
+                // An explicit `\r` right before `println!`'s own `\n`: the host must drop it,
+                // not just the final `\n`.
+                println!("{a}\r");
+                a.to_string()
+            }
+            "partial" => {
+                // No trailing newline: Rust's stdout line-buffers, so this needs an explicit
+                // flush to actually reach the host before the call returns.
+                let text = format!("{a} {b}").trim_end().to_string();
+                print!("{text}");
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+                text
             }
             "art" => {
                 let mut out = found("art".into());

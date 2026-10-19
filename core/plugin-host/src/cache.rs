@@ -59,7 +59,7 @@ pub(crate) fn ttl_ms(headers: &[(String, String)], capability: Capability) -> Op
         .or_else(|| directives.iter().find(|(name, _)| name.eq_ignore_ascii_case("max-age")))
         .and_then(|(_, v)| v.and_then(|v| v.parse::<u64>().ok()))
         .unwrap_or(0);
-    Some((seconds * 1000).max(MIN_CATALOG_TTL_MS))
+    Some(seconds.saturating_mul(1000).max(MIN_CATALOG_TTL_MS))
 }
 
 #[cfg(test)]
@@ -75,6 +75,12 @@ mod tests {
         assert_eq!(ttl_ms(&headers(&[("cache-control", "max-age=60")]), Capability::Search), Some(86_400_000));
         assert_eq!(ttl_ms(&headers(&[("cache-control", "max-age=172800")]), Capability::Search), Some(172_800_000));
         assert_eq!(ttl_ms(&headers(&[]), Capability::Suggest), Some(86_400_000));
+    }
+
+    #[test]
+    fn huge_max_age_saturates_instead_of_overflowing() {
+        let h = headers(&[("cache-control", "max-age=99999999999999999")]);
+        assert_eq!(ttl_ms(&h, Capability::Search), Some(u64::MAX));
     }
 
     #[test]

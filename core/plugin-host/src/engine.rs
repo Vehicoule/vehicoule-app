@@ -4,12 +4,15 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use bytes::Bytes;
 use contract::music::{entity, lyrics, radio, resolve, search, suggest};
 use contract::{clock, kv, log, types};
 use sha2::{Digest, Sha256};
 use wasmtime::component::{Component, HasSelf, Instance, InstancePre, Linker, ResourceTable};
 use wasmtime::{Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder, Trap};
-use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
+use wasmtime_wasi::async_trait;
+use wasmtime_wasi::cli::{IsTerminal, StdoutStream};
+use wasmtime_wasi::p2::{OutputStream, Pollable, StreamResult};
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::calls::Returned;
@@ -85,8 +88,8 @@ pub(crate) struct State {
 }
 
 /// Caps `HostEvent::Log` at 200 per call, message truncated to 2 KiB at a UTF-8 boundary. Fed
-/// by `log::Host::log` directly, and by the WASI stdout/stderr capture flushed once the call's
-/// instance has run (see `Host::call`).
+/// by `log::Host::log` directly, and by `LogStream` (the WASI stdout/stderr capture) as lines
+/// complete.
 struct CallLog {
     plugin: String,
     events: Arc<dyn Fn(HostEvent) + Send + Sync>,
@@ -95,15 +98,16 @@ struct CallLog {
 
 const LOG_CAP_EVENTS: u32 = 200;
 const LOG_MAX_MESSAGE: usize = 2 << 10;
-/// Per call, per stream (stdout/stderr): large enough for any plausible plugin output; a
-/// plugin that fills it blocks on its next write instead of overrunning host memory.
-// ponytail: fixed cap, not a ring buffer — a plugin logging more than this in one call stalls
-// on write instead of losing old lines; revisit if that shows up in practice.
-const STDIO_CAPACITY: usize = 1 << 20;
 
 impl CallLog {
     fn new(plugin: String, events: Arc<dyn Fn(HostEvent) + Send + Sync>) -> Self {
         CallLog { plugin, events, remaining: AtomicU32::new(LOG_CAP_EVENTS) }
+    }
+
+    /// `true` once the 200-event cap has been spent: `LogStream` uses this to stop buffering
+    /// and processing bytes at all, instead of doing that work only to have `emit` drop it.
+    fn exhausted(&self) -> bool {
+        self.remaining.load(Ordering::Relaxed) == 0
     }
 
     fn emit(&self, level: LogLevel, message: &str) {
@@ -125,18 +129,115 @@ fn truncate_utf8(s: &str) -> &str {
     &s[..end]
 }
 
-/// Splits WASI stdout/stderr bytes captured over a whole call into lines, flushing a trailing
-/// partial line (no final `\n`) too.
-fn flush_stdio(log: &CallLog, level: LogLevel, buf: &[u8]) {
-    if buf.is_empty() {
-        return;
+/// The largest valid-UTF-8 prefix of `buf` (at most `buf.len()`). `buf` may end mid-character
+/// (the partial-line buffer below is capped at `LOG_MAX_MESSAGE` *bytes*, which can land inside
+/// a multi-byte character); unlike `String::from_utf8_lossy`, this drops that trailing
+/// incomplete sequence instead of replacing it with U+FFFD. A non-trailing invalid byte (never
+/// produced by a well-formed guest `println!`, since WIT strings are valid UTF-8 by
+/// construction) is handled the same way: everything from that byte on is dropped.
+fn valid_utf8_prefix(buf: &[u8]) -> &str {
+    match std::str::from_utf8(buf) {
+        Ok(s) => s,
+        // `valid_up_to()` is exactly the length of the valid prefix `from_utf8` found, so this
+        // always succeeds; a rare error path, not worth an `unsafe` skip of the recheck.
+        Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).unwrap(),
     }
-    let mut lines: Vec<&[u8]> = buf.split(|&b| b == b'\n').collect();
-    if buf.ends_with(b"\n") {
-        lines.pop();
+}
+
+/// WASI stdout/stderr, wired to feed a call's `CallLog` one line at a time as bytes arrive —
+/// rather than buffering the whole call's output and splitting it at the end — so a plugin
+/// cannot make a call fail just by printing a lot: `write` never errors, and once the log's
+/// 200-event cap is spent, bytes are dropped instead of accumulated. Cheap to clone (an `Arc`
+/// inside); `Host::call` keeps one clone to flush the trailing partial line once the instance
+/// has run, while another is installed as the WASI stream.
+#[derive(Clone)]
+struct LogStream {
+    log: Arc<CallLog>,
+    level: LogLevel,
+    /// The current line, not yet terminated by `\n`; capped at `LOG_MAX_MESSAGE` bytes (extra
+    /// bytes of an over-long line are dropped, but scanning continues so the next `\n` still
+    /// starts a fresh line).
+    partial: Arc<Mutex<Vec<u8>>>,
+}
+
+impl LogStream {
+    fn new(log: Arc<CallLog>, level: LogLevel) -> Self {
+        LogStream { log, level, partial: Arc::new(Mutex::new(Vec::new())) }
     }
-    for line in lines {
-        log.emit(level, &String::from_utf8_lossy(line));
+
+    fn feed(&self, bytes: &[u8]) {
+        if self.log.exhausted() {
+            return;
+        }
+        let mut partial = self.partial.lock().unwrap();
+        for &b in bytes {
+            if b == b'\n' {
+                if partial.last() == Some(&b'\r') {
+                    partial.pop();
+                }
+                self.log.emit(self.level, valid_utf8_prefix(&partial));
+                partial.clear();
+                if self.log.exhausted() {
+                    partial.clear();
+                    return;
+                }
+            } else if partial.len() < LOG_MAX_MESSAGE {
+                partial.push(b);
+            }
+        }
+    }
+
+    /// Flushes a trailing partial line (no final `\n`) once the call's instance has run.
+    fn flush_partial(&self) {
+        let mut partial = self.partial.lock().unwrap();
+        if !partial.is_empty() {
+            self.log.emit(self.level, valid_utf8_prefix(&partial));
+            partial.clear();
+        }
+    }
+}
+
+impl IsTerminal for LogStream {
+    fn is_terminal(&self) -> bool {
+        false
+    }
+}
+
+impl StdoutStream for LogStream {
+    fn p2_stream(&self) -> Box<dyn OutputStream> {
+        Box::new(self.clone())
+    }
+
+    /// Unreachable in practice: this host only ever runs under `wasmtime_wasi::p2`, which calls
+    /// `p2_stream` above for `wasi:cli/stdout` and `stderr` (never this wasip1-oriented path).
+    fn async_stream(&self) -> Box<dyn tokio::io::AsyncWrite + Send + Sync> {
+        Box::new(tokio::io::sink())
+    }
+}
+
+/// The permit `check_write` hands out: a plugin's actual write size is bounded by its own
+/// output buffering (e.g. libc's stdio), not by this value, and `write` never errors — there is
+/// nothing here for a permit to protect against.
+const LOG_STREAM_PERMIT: usize = 64 << 10;
+
+#[async_trait]
+impl Pollable for LogStream {
+    async fn ready(&mut self) {}
+}
+
+#[async_trait]
+impl OutputStream for LogStream {
+    fn write(&mut self, bytes: Bytes) -> StreamResult<()> {
+        self.feed(&bytes);
+        Ok(())
+    }
+
+    fn flush(&mut self) -> StreamResult<()> {
+        Ok(())
+    }
+
+    fn check_write(&mut self) -> StreamResult<usize> {
+        Ok(LOG_STREAM_PERMIT)
     }
 }
 
@@ -330,7 +431,8 @@ impl Host {
         let start = Instant::now();
         let limits = self.cfg.limits;
         let call_log = Arc::new(CallLog::new(p.id().into(), self.cfg.events.clone()));
-        let (stdout, stderr) = (MemoryOutputPipe::new(STDIO_CAPACITY), MemoryOutputPipe::new(STDIO_CAPACITY));
+        let stdout = LogStream::new(call_log.clone(), LogLevel::Info);
+        let stderr = LogStream::new(call_log.clone(), LogLevel::Warn);
         let wasi = WasiCtx::builder()
             .allow_tcp(false)
             .allow_udp(false)
@@ -395,10 +497,10 @@ impl Host {
             }
         };
 
-        // Flushed once the instance has finished running: a trailing partial line (no final
-        // `\n`) is included, since this reads the whole buffer rather than streaming it.
-        flush_stdio(&call_log, LogLevel::Info, &stdout.contents());
-        flush_stdio(&call_log, LogLevel::Warn, &stderr.contents());
+        // Lines are emitted as bytes arrive (`LogStream::feed`); only the trailing partial line
+        // (no final `\n`) is left to flush once the instance has run.
+        stdout.flush_partial();
+        stderr.flush_partial();
 
         let report = CallReport {
             plugin: p.id().into(),

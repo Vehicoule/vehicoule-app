@@ -291,7 +291,9 @@ const MAX_CACHED_BODY: usize = 2 << 20;
 /// `cache`: a hit (not expired) is returned with no network call, no budget or rate-limit token
 /// spent. A miss falls through to the network; a 2xx response within `MAX_CACHED_BODY` and a
 /// non-`None` `cache::ttl_ms` is then stored. On a network error (not an HTTP error status, not
-/// `Denied`), an expired entry — if one exists — is served instead of the error (offline).
+/// `Denied`), an expired entry — if one exists — is served instead of the error (offline). Any
+/// entry served (fresh or stale) is rechecked against `policy`/`allow` first: the allowlist can
+/// have narrowed since it was stored, and a cache hit must not bypass that.
 #[allow(clippy::too_many_arguments)] // one more than `fetch_uncached`: the cache context.
 pub(crate) async fn fetch(
     policy: &NetPolicy,
@@ -309,6 +311,9 @@ pub(crate) async fn fetch(
         (Some(c), Some(key)) => c.storage.cache_get(&key),
         _ => None,
     };
+    // A failing recheck is treated as a miss: `fetch_uncached` below runs its own `policy.check`
+    // and will `Deny` it properly, instead of a stale/no-longer-allowed entry being served.
+    let cached = cached.filter(|entry| cache_hit_allowed(policy, allow, &req.url, &entry.url));
     if let Some(entry) = &cached
         && entry.expires_at_ms > now_ms()
     {
@@ -327,6 +332,13 @@ pub(crate) async fn fetch(
         }
         Err(e) => Err(e),
     }
+}
+
+/// Both the original request URL and the entry's (final, post-redirect) URL must still check
+/// out under the current `allow`/`policy` before a cached entry is served.
+fn cache_hit_allowed(policy: &NetPolicy, allow: &Allowlist, req_url: &str, entry_url: &str) -> bool {
+    let ok = |u: &str| Url::parse(u).is_ok_and(|url| policy.check(allow, &url).is_ok());
+    ok(req_url) && ok(entry_url)
 }
 
 fn cached_response(entry: &CachedResponse) -> Response {
@@ -348,7 +360,7 @@ fn store_if_cacheable(cache: CacheCtx<'_>, key: &[u8; 32], response: &Response) 
             headers: response.headers.clone(),
             body: response.body.clone(),
             stored_at_ms: now,
-            expires_at_ms: now + ttl,
+            expires_at_ms: now.saturating_add(ttl),
         },
     );
 }
@@ -965,5 +977,82 @@ mod tests {
         run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
         run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
         assert_eq!(server.received_requests().await.unwrap().len(), 2, "too large to cache: every GET hits the network");
+    }
+
+    /// A fresh entry stored while the plugin's allowlist included the domain must not be served
+    /// once the allowlist has narrowed: it has to be rechecked at hit time, not just at store
+    /// time.
+    #[tokio::test]
+    async fn cache_hit_rechecks_the_allowlist() {
+        let url = "http://evil.test/x";
+        let storage = MemoryStorage::default();
+        let key = crate::cache::cache_key("p", &req(Method::Get, url));
+        storage.cache_put(
+            &key,
+            &CachedResponse {
+                plugin: "p".into(),
+                status: 200,
+                url: url.into(),
+                headers: vec![],
+                body: b"ok".to_vec(),
+                stored_at_ms: 0,
+                expires_at_ms: u64::MAX,
+            },
+        );
+        let policy = NetPolicy::for_tests();
+        let narrowed = allow(&["other.test"]); // no longer includes evil.test
+        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let r = run_cached(&policy, &narrowed, req(Method::Get, url), cache).await;
+        assert!(matches!(r, Err(HttpError::Denied(_))), "{:?}", r.map(|r| r.status));
+    }
+
+    /// Same as above but through the stale-on-error path: an expired entry whose domain the
+    /// current allowlist no longer covers must not be served even though the server is
+    /// unreachable (a real `Denied` is more correct here than silently serving stale data to a
+    /// now-disallowed host).
+    #[tokio::test]
+    async fn stale_cache_hit_also_rechecks_the_allowlist() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let url = format!("http://api.test:{port}/x");
+
+        let storage = MemoryStorage::default();
+        let key = crate::cache::cache_key("p", &req(Method::Get, &url));
+        storage.cache_put(
+            &key,
+            &CachedResponse {
+                plugin: "p".into(),
+                status: 200,
+                url: url.clone(),
+                headers: vec![],
+                body: b"stale-ok".to_vec(),
+                stored_at_ms: 0,
+                expires_at_ms: 1,
+            },
+        );
+        let policy = NetPolicy::for_tests();
+        let narrowed = allow(&["other.test"]); // no longer includes api.test
+        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let r = run_cached(&policy, &narrowed, req(Method::Get, &url), cache).await;
+        assert!(matches!(r, Err(HttpError::Denied(_))), "{:?}", r.map(|r| r.status));
+    }
+
+    /// `cache.rs`'s own unit test covers `ttl_ms` directly; this covers the same overflow
+    /// end-to-end through `store_if_cacheable`'s `now.saturating_add(ttl)`.
+    #[tokio::test]
+    async fn huge_max_age_does_not_overflow() {
+        let server = MockServer::start().await;
+        let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=99999999999999999");
+        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let storage = MemoryStorage::default();
+        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let url = format!("{}/x", base(&server, "api.test"));
+
+        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
+        let key = crate::cache::cache_key("p", &req(Method::Get, &url));
+        let entry = storage.cache_get(&key).unwrap();
+        assert_eq!(entry.expires_at_ms, u64::MAX);
     }
 }

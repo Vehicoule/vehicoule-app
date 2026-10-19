@@ -69,12 +69,16 @@ async fn stdout_and_log_reach_events() {
     );
 }
 
+/// ~3 MiB of stdout (500 lines of ~6 KiB each — `probe`'s `lines` command) must not make the
+/// call fail: the streaming capture (`engine::LogStream`) never errors, it just stops buffering
+/// once the 200-event cap is spent.
 #[tokio::test]
 async fn log_lines_are_capped() {
     let t = TestHost::new(Limits::default());
     let p = t.load("probe");
 
-    t.host.search(&p, query("lines 500")).await.unwrap();
+    let r = t.host.search(&p, query("lines 500")).await;
+    assert!(r.is_ok(), "{r:?}");
     assert_eq!(logs(&t.events.lock().unwrap()).len(), 200, "500 lines, capped at 200 events");
 
     t.events.lock().unwrap().clear();
@@ -84,4 +88,46 @@ async fn log_lines_are_capped() {
     assert_eq!(got.len(), 1);
     assert!(got[0].2.len() <= 2048, "{}", got[0].2.len());
     assert_eq!(got[0].2, &long[..got[0].2.len()], "truncated, not replaced");
+}
+
+#[tokio::test]
+async fn stderr_lines_map_to_warn() {
+    let t = TestHost::new(Limits::default());
+    let p = t.load("probe");
+    t.host.search(&p, query("eprint oops")).await.unwrap();
+    let got = logs(&t.events.lock().unwrap());
+    assert_eq!(got, vec![("probe".to_string(), LogLevel::Warn, "oops".to_string())]);
+}
+
+/// A trailing partial line (no final `\n`) is only flushed once the instance has finished
+/// running (`LogStream::flush_partial`, called from `Host::call`).
+#[tokio::test]
+async fn trailing_partial_line_is_flushed() {
+    let t = TestHost::new(Limits::default());
+    let p = t.load("probe");
+    t.host.search(&p, query("partial no-newline")).await.unwrap();
+    let got = logs(&t.events.lock().unwrap());
+    assert_eq!(got, vec![("probe".to_string(), LogLevel::Info, "no-newline".to_string())]);
+}
+
+/// `\r\n` is a single line break: the `\r` must not leak into the message.
+#[tokio::test]
+async fn crlf_line_has_no_trailing_cr() {
+    let t = TestHost::new(Limits::default());
+    let p = t.load("probe");
+    t.host.search(&p, query("crlf hi")).await.unwrap();
+    let got = logs(&t.events.lock().unwrap());
+    assert_eq!(got, vec![("probe".to_string(), LogLevel::Info, "hi".to_string())]);
+}
+
+/// A line of exactly 2047 ASCII bytes followed by the 2-byte `é`: the 2048-byte cap lands right
+/// on `é`'s lead byte, which must be dropped whole, not replaced with U+FFFD.
+#[tokio::test]
+async fn truncation_drops_an_incomplete_trailing_char_cleanly() {
+    let t = TestHost::new(Limits::default());
+    let p = t.load("probe");
+    let text = format!("{}é", "x".repeat(2047));
+    t.host.search(&p, query(&format!("print {text}"))).await.unwrap();
+    let got = logs(&t.events.lock().unwrap());
+    assert_eq!(got, vec![("probe".to_string(), LogLevel::Info, "x".repeat(2047))]);
 }
