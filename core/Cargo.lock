@@ -1270,9 +1270,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "contract",
+ "plugin-host",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "wasmtime",
  "wasmtime-wasi",

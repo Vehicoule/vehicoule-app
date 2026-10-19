@@ -7,6 +7,8 @@ const MAX_BATCH: usize = 8;
 impl Host for State {
     /// Reads the body as a stream and stops at `max_response_bytes`.
     async fn send(&mut self, req: Request) -> Result<Response, HttpError> {
+        // ponytail: counted for `CallReport` only; task 4 enforces `max_http_calls`/`max_http_bytes`.
+        self.http_calls += 1;
         let method = match req.method {
             Method::Get => reqwest::Method::GET,
             Method::Head => reqwest::Method::HEAD,

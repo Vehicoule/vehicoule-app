@@ -1,4 +1,4 @@
-// Mirrors the Rust `echo` guest (../echo/src/lib.rs): GET the query URL and return
+// Mirrors `get` of the Rust `probe` guest (../probe/src/lib.rs): GET the query URL and return
 // the HTTP status as the title of the only track found. Proof that a non-Rust
 // language binds the same WIT world (task 4, contract WIT 1.0).
 #include "test_search.h"

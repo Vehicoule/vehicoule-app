@@ -7,6 +7,7 @@ exclude = ["plugin-host/guests"]
 edition = "2024"
 
 [workspace.dependencies]
-# Latest LTS series. No `cache` feature: compiled code is never loaded from disk.
+# Latest LTS series. No `cache` feature: compiled code only comes from this device:
+# plugin-host's own compile cache.
 wasmtime = { version = "48.0.6", default-features = false, features = ["std", "runtime", "cranelift", "pulley", "component-model", "async", "anyhow"] }
 wasmtime-wasi = { version = "48.0.6", default-features = false, features = ["p2"] }

@@ -43,7 +43,7 @@ fn validate_id(id: &str) -> Result<(), String> {
 }
 
 /// Only major 1, minor 0 is accepted by this host.
-fn validate_contract(contract: &str) -> Result<(), String> {
+pub(crate) fn validate_contract(contract: &str) -> Result<(), String> {
     let (major, minor) = contract.split_once('.').ok_or_else(|| format!("invalid contract: {contract:?}"))?;
     let major: u32 = major.parse().map_err(|_| format!("invalid contract: {contract:?}"))?;
     let minor: u32 = minor.parse().map_err(|_| format!("invalid contract: {contract:?}"))?;

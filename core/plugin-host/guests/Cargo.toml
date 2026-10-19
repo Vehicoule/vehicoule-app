@@ -1,7 +1,7 @@
 # Test components, built for wasm32-wasip2 by the plugin-host tests.
 [workspace]
 resolver = "3"
-members = ["echo", "spin", "hog", "sleepy", "lyrics-only"]
+members = ["probe", "spin", "hog", "sleepy", "lyrics-only"]
 
 [workspace.dependencies]
 wit-bindgen = "0.63"

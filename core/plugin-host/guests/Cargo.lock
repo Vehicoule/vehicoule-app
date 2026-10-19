@@ -15,14 +15,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
-name = "echo"
-version = "0.1.0"
-dependencies = [
- "vehicoule-sdk",
- "wit-bindgen",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -141,6 +133,14 @@ checksum = "2bfe0f4c752e450fc2faf62654f1c134747922825d5b04ca717b8874f41a40c0"
 dependencies = [
  "proc-macro2",
  "syn",
+]
+
+[[package]]
+name = "probe"
+version = "0.1.0"
+dependencies = [
+ "vehicoule-sdk",
+ "wit-bindgen",
 ]
 
 [[package]]

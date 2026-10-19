@@ -1,6 +1,6 @@
 # c-echo
 
-A C implementation of the `echo` test guest (see `../echo/src/lib.rs`): GET the
+A C implementation of the old `echo` test guest (the `get` command of `../probe/src/lib.rs`): GET the
 URL in `search-request.query`, return the HTTP status as the title of the one
 track found. It exists to prove the WIT contract binds from a language other
 than Rust, not to add a capability.
