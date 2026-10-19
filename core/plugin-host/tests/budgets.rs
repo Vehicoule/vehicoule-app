@@ -110,6 +110,22 @@ async fn oversized_chunked_response_is_rejected() {
     assert!(sent.await.unwrap() < 16, "host kept reading past the cap");
 }
 
+/// Proof that a non-Rust guest works too: the committed fixture, built by
+/// `guests/c-echo/build.sh`, behaves exactly like the Rust `echo` guest.
+#[tokio::test]
+async fn c_component_runs_like_a_rust_one() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET")).respond_with(ResponseTemplate::new(204)).mount(&server).await;
+    let wasm = std::fs::read(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/c-echo.wasm"),
+    )
+    .expect("c-echo.wasm fixture missing; run guests/c-echo/build.sh");
+    let host = Host::new().unwrap();
+    let plugin = host.compile(&wasm).unwrap();
+    let r = host.search(&plugin, &server.uri(), Limits::default()).await;
+    assert_eq!(r, Ok("204".to_string()));
+}
+
 /// lrclib-style plugin: only `lyrics`. It must load, with only that capability listed.
 #[test]
 fn partial_exports_are_detected() {
