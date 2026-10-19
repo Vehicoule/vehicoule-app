@@ -340,7 +340,8 @@ tâche 7 demande aussi les plans 4 et 5 (app sur le téléphone).
   directement sur `feeds.vehicoule.app` si l'hébergement existe ; ajouter le feed ytmusic
   dans l'app par « Ajouter un dépôt » (empreinte vérifiée à l'œil).
 - [ ] **Step 2 : sur le téléphone de l'utilisateur** (build `--profile`), 30 lectures de
-  titres non résolus + 30 recherches + 20 pages + 20 paroles ; exporter les journaux
+  titres non résolus + 30 recherches + 20 pages (dont des pages de playlist ytmusic d'environ
+  100 titres, sans doute l'appel le plus coûteux) + 20 paroles ; exporter les journaux
   (`exportLogs`) et extraire les lignes `call <capacité> fuel=… wall=…`.
 - [ ] **Step 3 : fixer le fuel** : nouvelle valeur = **4 × le p95** le plus élevé parmi les
   capacités, arrondie à la dizaine de millions supérieure ; vérifier qu'elle tient en temps

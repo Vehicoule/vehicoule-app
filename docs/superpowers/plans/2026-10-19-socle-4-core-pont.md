@@ -241,6 +241,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
                       pub async fn file(&self, client: &reqwest::Client, url: &url::Url) -> Result<PathBuf, StreamError>;
                       pub fn prune(&self) -> std::io::Result<()>; }                 // plus anciens (mtime) d'abord
   ```
+- Pages d'entité : l'en-tête (titre, propriétaire) vient de la première page seulement ; les
+  pages suivantes (ytmusic) ont un titre vide.
 - Pochette choisie : fournisseurs dans l'ordre de la capacité pochettes, la plus petite
   largeur ≥ `size` (sinon la plus grande) ; URL contrôlée par `host.check_url` du plugin
   d'origine avant tout téléchargement, avec le client `host.http_client(&plugin)` (plugin-host : IP littérales refusées, chaque redirection re-vérifiée).
@@ -362,7 +364,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub(crate) async fn on_event(e: PlayerEvent);
   pub(crate) async fn skip_next(); pub(crate) async fn previous(position_ms: u64);
   pub(crate) async fn edit(op: QueueOp) -> Result<(), CoreError>;  // enqueue next/last, remove, move, shuffle, repeat, jump
-  pub(crate) async fn fix_match(item: &str) -> Result<Vec<Candidate>, CoreError>; // candidats de la dernière résolution
+  pub(crate) async fn fix_match(item: &str) -> Result<Vec<Candidate>, CoreError>; // candidats de la dernière résolution ; s'il n'y en a pas (référence déjà connue), `resolve` avec `tried = [id courant]` pour en obtenir
   pub(crate) async fn choose_match(item: &str, candidate_id: &str) -> Result<(), CoreError>; // refs::pin, puis rejoue si c'est la piste courante
   pub(crate) async fn restore();                      // au démarrage : file restaurée, Play { autoplay: false } à la position sauvée
   pub(crate) fn set_online(online: bool);
