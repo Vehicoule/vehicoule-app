@@ -25,6 +25,10 @@ pub struct RateLimit {
     pub per_seconds: u32,
 }
 
+/// Upper bound on `rate_limit.requests`: the limiter keeps one timestamp per request in the
+/// window, so an unbounded manifest value is an unbounded allocation.
+const MAX_RATE_REQUESTS: u32 = 10_000;
+
 /// Parses and validates a manifest: id shape, contract version, domain syntax, rate limit.
 pub fn parse_manifest(json: &[u8]) -> Result<Manifest, String> {
     let manifest: Manifest = serde_json::from_slice(json).map_err(|e| e.to_string())?;
@@ -36,10 +40,15 @@ pub fn parse_manifest(json: &[u8]) -> Result<Manifest, String> {
     {
         return Err(format!("rate_limit requests and per_seconds must both be nonzero: {rl:?}"));
     }
+    if let Some(rl) = manifest.rate_limit
+        && rl.requests > MAX_RATE_REQUESTS
+    {
+        return Err(format!("rate_limit requests must be at most {MAX_RATE_REQUESTS}: {rl:?}"));
+    }
     Ok(manifest)
 }
 
-fn validate_id(id: &str) -> Result<(), String> {
+pub(crate) fn validate_id(id: &str) -> Result<(), String> {
     let bytes = id.as_bytes();
     let ok = (2..=40).contains(&bytes.len())
         && matches!(bytes[0], b'a'..=b'z' | b'0'..=b'9')
@@ -212,5 +221,17 @@ mod tests {
         assert!(parse_manifest(with(5, 0).as_bytes()).is_err());
         assert!(parse_manifest(with(0, 0).as_bytes()).is_err());
         assert!(parse_manifest(with(5, 5).as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn rate_limit_requests_are_bounded() {
+        let with = |requests: u32| {
+            format!(
+                r#"{{"id":"xx","name":"x","version":"1.0.0","contract":"1.0","domains":["x.com"],"rate_limit":{{"requests":{requests},"per_seconds":5}}}}"#
+            )
+        };
+        assert!(parse_manifest(with(10_000).as_bytes()).is_ok());
+        assert!(parse_manifest(with(10_001).as_bytes()).is_err());
+        assert!(parse_manifest(with(u32::MAX).as_bytes()).is_err());
     }
 }

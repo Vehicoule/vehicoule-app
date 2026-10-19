@@ -34,8 +34,11 @@ async fn spin_hits_epoch_deadline_with_unlimited_fuel() {
 
 #[tokio::test]
 async fn deadline_holds_while_the_guest_waits_on_the_host() {
+    let host = TestHost::new(Limits { epoch_ticks: 2, ..Limits::default() });
+    let plugin = host.load("sleepy");
+    // Timed from here: guest build and compile are not part of the call's deadline.
     let t = std::time::Instant::now();
-    let r = run("sleepy", "", Limits { epoch_ticks: 2, ..Limits::default() }).await;
+    let r = host.host.search(&plugin, query("")).await.map(|r| r.tracks[0].title.clone());
     assert_eq!(r, Err(CallError::BudgetExceeded(Budget::Time)));
     assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
 }

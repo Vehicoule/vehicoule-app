@@ -52,7 +52,7 @@ struct SigEntry {
 
 /// Parses and validates a signed feed: envelope shape, a signature from a trusted key over
 /// the exact payload bytes (`verify_strict`, rejects malleable/small-order signatures), no
-/// duplicate plugin ids, no absolute non-https URL, and sequence not older than `last_sequence`.
+/// invalid or duplicate plugin ids, no absolute non-https URL, and sequence not older than `last_sequence`.
 pub fn verify_feed(bytes: &[u8], trusted: &[[u8; 32]], last_sequence: Option<u64>) -> Result<Feed, FeedError> {
     let envelope: Envelope = serde_json::from_slice(bytes).map_err(|e| FeedError::Malformed(e.to_string()))?;
     let payload = BASE64.decode(&envelope.payload).map_err(|e| FeedError::Malformed(e.to_string()))?;
@@ -76,6 +76,8 @@ pub fn verify_feed(bytes: &[u8], trusted: &[[u8; 32]], last_sequence: Option<u64
 
     let mut seen_ids = HashSet::new();
     for plugin in &feed.plugins {
+        // The id names files on disk: the manifest's id rule also rules out path traversal.
+        crate::manifest::validate_id(&plugin.id).map_err(FeedError::Malformed)?;
         if !seen_ids.insert(plugin.id.as_str()) {
             return Err(FeedError::Malformed(format!("duplicate plugin id: {}", plugin.id)));
         }
@@ -248,6 +250,21 @@ mod tests {
         let bytes = sign_feed(&feed, &key);
         let trusted = [key.verifying_key().to_bytes()];
         assert!(matches!(verify_feed(&bytes, &trusted, None), Err(FeedError::Malformed(_))));
+    }
+
+    #[test]
+    fn invalid_plugin_ids_are_rejected() {
+        let key = SigningKey::from_bytes(&[1u8; 32]);
+        let trusted = [key.verifying_key().to_bytes()];
+        for bad_id in ["../x", "Deezer"] {
+            let mut feed = sample_feed(1);
+            feed.plugins[0].id = bad_id.into();
+            let bytes = sign_feed(&feed, &key);
+            assert!(
+                matches!(verify_feed(&bytes, &trusted, None), Err(FeedError::Malformed(_))),
+                "{bad_id:?} should be rejected"
+            );
+        }
     }
 
     #[test]

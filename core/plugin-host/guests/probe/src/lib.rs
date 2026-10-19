@@ -6,7 +6,8 @@
 //! that `User-Agent` header), `kv-set <k> <v>`, `kv-get <k>`, `print <text>` (stdout),
 //! `eprint <text>` (stderr), `log <text>`, `lines <n>` (n ~6 KiB lines to stdout), `crlf <text>`
 //! (one `<text>\r\n` line), `partial <text>` (no trailing newline, explicitly flushed),
-//! `art <url>` (a track with that artwork). `resolve` streams `track.title`.
+//! `art <url>` (a track with that artwork). `resolve` streams `track.title`, with `Host`,
+//! `Connection`, `Proxy-Authorization` and `Referer` headers (the host must strip all but the last).
 wit_bindgen::generate!({
     path: ["../../../contract/wit/host", "../../../contract/wit/music", "../wit"],
     world: "vehicoule:test-guests/test-probe",
@@ -146,7 +147,9 @@ impl resolve::Guest for Probe {
     fn resolve(req: ResolveRequest) -> Result<Resolved, Error> {
         let source = Source {
             url: req.track.title,
-            headers: vec![],
+            headers: [("Host", "evil.test"), ("Connection", "close"), ("Proxy-Authorization", "x"), ("Referer", "r")]
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .into(),
             expires_at_ms: None,
             mime: "audio/mpeg".into(),
             bitrate: 128_000,

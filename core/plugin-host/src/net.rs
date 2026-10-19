@@ -80,7 +80,11 @@ impl Default for NetPolicy {
 
 impl NetPolicy {
     fn new(resolver: Resolver, strict_urls: bool) -> NetPolicy {
-        let client = builder(resolver).redirect(reqwest::redirect::Policy::none()).build().expect("http client");
+        let client = builder(resolver)
+            .timeout(Duration::from_secs(20))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("http client");
         NetPolicy {
             client,
             resolver,
@@ -106,7 +110,15 @@ impl NetPolicy {
             }
         });
         let gate = tower::filter::FilterLayer::new(gate(self.clone(), allow));
-        builder(self.resolver).redirect(redirect).connector_layer(gate).build().expect("http client")
+        // No total timeout: a whole-track download over a weak mobile link can legitimately
+        // take minutes. A stalled connect or a silent read still fails.
+        builder(self.resolver)
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(20))
+            .redirect(redirect)
+            .connector_layer(gate)
+            .build()
+            .expect("http client")
     }
 
     /// http and any port allowed; `rebind.test` resolves to 10.0.0.1 (refused), any other
@@ -196,7 +208,7 @@ enum Lookup {
 }
 
 fn builder(resolver: Resolver) -> reqwest::ClientBuilder {
-    reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(20)).dns_resolver(Arc::new(resolver))
+    reqwest::Client::builder().no_proxy().dns_resolver(Arc::new(resolver))
 }
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -287,7 +299,8 @@ pub(crate) struct CacheCtx<'a> {
 /// own response-size budget).
 const MAX_CACHED_BODY: usize = 2 << 20;
 
-/// Same as `fetch_uncached`, but for a `GET` outside the `resolve` capability, first consults
+/// Same as `fetch_uncached`, but for a bodyless `GET` outside the `resolve` capability, without a
+/// request `cache-control: no-cache`/`no-store`, first consults
 /// `cache`: a hit (not expired) is returned with no network call, no budget or rate-limit token
 /// spent. A miss falls through to the network; a 2xx response within `MAX_CACHED_BODY` and a
 /// non-`None` `cache::ttl_ms` is then stored. On a network error (not an HTTP error status, not
@@ -305,7 +318,9 @@ pub(crate) async fn fetch(
     user_agent: Option<&str>,
     cache: Option<CacheCtx<'_>>,
 ) -> Result<Response, HttpError> {
-    let cache = cache.filter(|c| matches!(req.method, Method::Get) && c.capability != Capability::Resolve);
+    let cache = cache.filter(|c| {
+        matches!(req.method, Method::Get) && c.capability != Capability::Resolve && request_is_cacheable(&req)
+    });
     let key = cache.map(|c| crate::cache::cache_key(c.plugin, &req));
     let cached = match (cache, key) {
         (Some(c), Some(key)) => c.storage.cache_get(&key),
@@ -332,6 +347,18 @@ pub(crate) async fn fetch(
         }
         Err(e) => Err(e),
     }
+}
+
+/// A request with a body, or whose own `cache-control` asks for `no-cache`/`no-store`, neither
+/// reads nor writes the cache.
+fn request_is_cacheable(req: &Request) -> bool {
+    req.body.is_none()
+        && !req.headers.iter().any(|(k, v)| {
+            k.eq_ignore_ascii_case("cache-control") && {
+                let v = v.to_ascii_lowercase();
+                v.contains("no-cache") || v.contains("no-store")
+            }
+        })
 }
 
 /// Both the original request URL and the entry's (final, post-redirect) URL must still check
@@ -387,12 +414,7 @@ async fn fetch_uncached(
     let mut url = Url::parse(&req.url).map_err(|e| HttpError::Denied(format!("{}: {e}", req.url)))?;
     let mut method = req.method;
     let mut headers = req.headers;
-    // A plugin never sets framing or routing headers: `Host` would front past the allowlist.
-    headers.retain(|(k, _)| {
-        let k = k.to_ascii_lowercase();
-        !matches!(k.as_str(), "host" | "connection" | "transfer-encoding" | "te" | "upgrade" | "content-length")
-            && !k.starts_with("proxy-")
-    });
+    strip_routing_headers(&mut headers);
     if let Some(ua) = user_agent {
         headers.retain(|(k, _)| !k.eq_ignore_ascii_case(USER_AGENT.as_str()));
         headers.push((USER_AGENT.as_str().to_string(), ua.to_string()));
@@ -434,6 +456,17 @@ async fn fetch_uncached(
         }
         url = next;
     }
+}
+
+/// A plugin never sets framing or routing headers: `Host` would front past the allowlist (to
+/// another vhost on an allowed CDN). Applied to plugin requests and to the headers a plugin
+/// returns with a stream source, which the core's own client sends.
+pub(crate) fn strip_routing_headers(headers: &mut Vec<(String, String)>) {
+    headers.retain(|(k, _)| {
+        let k = k.to_ascii_lowercase();
+        !matches!(k.as_str(), "host" | "connection" | "transfer-encoding" | "te" | "upgrade" | "content-length")
+            && !k.starts_with("proxy-")
+    });
 }
 
 fn header<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
@@ -928,6 +961,42 @@ mod tests {
         run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
         run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
         assert_eq!(server.received_requests().await.unwrap().len(), 2, "resolve always goes to the network");
+    }
+
+    /// A body or a request `cache-control: no-cache`/`no-store` skips the cache both ways: a
+    /// warm entry is not served, and the response is not stored.
+    #[tokio::test]
+    async fn request_body_or_no_cache_bypasses_the_cache() {
+        let server = MockServer::start().await;
+        let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=60");
+        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let url = format!("{}/x", base(&server, "api.test"));
+        let with_body = Request { body: Some(b"q".to_vec()), ..req(Method::Get, &url) };
+        let cc = |v: &str| Request { headers: vec![("Cache-Control".into(), v.into())], ..req(Method::Get, &url) };
+
+        for bypass in [with_body, cc("no-cache"), cc("max-age=0, No-Store")] {
+            let storage = MemoryStorage::default();
+            let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+            // Lookup skipped: an entry under this exact key is not served.
+            let key = crate::cache::cache_key("p", &bypass);
+            storage.cache_put(
+                &key,
+                &CachedResponse {
+                    plugin: "p".into(),
+                    status: 299,
+                    url: url.clone(),
+                    headers: vec![],
+                    body: vec![],
+                    stored_at_ms: 0,
+                    expires_at_ms: u64::MAX,
+                },
+            );
+            assert_eq!(run_cached(&policy, &list, bypass, cache).await.unwrap().status, 200);
+            // Store skipped: the 200 did not overwrite the entry under the same key.
+            assert_eq!(storage.cache_get(&key).unwrap().status, 299);
+        }
+        assert_eq!(server.received_requests().await.unwrap().len(), 3);
     }
 
     /// An expired entry, seeded directly through `Storage` (24h is the catalogue's own minimum

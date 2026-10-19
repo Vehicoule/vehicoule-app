@@ -121,10 +121,13 @@ impl Returned for Vec<Track> {
 }
 
 impl Returned for Resolved {
-    fn checked(self, host: &Host, p: &Plugin) -> Result<Self, CallError> {
-        match host.check_url(p, &self.source.url) {
-            Ok(_) => Ok(self),
-            Err(_) => Err(CallError::Internal("stream url outside allowlist".into())),
+    /// The stream URL must pass the allowlist; its headers lose framing/routing ones (`Host`
+    /// would steer the core's download to another vhost on the same CDN).
+    fn checked(mut self, host: &Host, p: &Plugin) -> Result<Self, CallError> {
+        if host.check_url(p, &self.source.url).is_err() {
+            return Err(CallError::Internal("stream url outside allowlist".into()));
         }
+        crate::net::strip_routing_headers(&mut self.source.headers);
+        Ok(self)
     }
 }

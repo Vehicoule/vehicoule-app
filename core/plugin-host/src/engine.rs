@@ -132,9 +132,9 @@ fn truncate_utf8(s: &str) -> &str {
 /// The largest valid-UTF-8 prefix of `buf` (at most `buf.len()`). `buf` may end mid-character
 /// (the partial-line buffer below is capped at `LOG_MAX_MESSAGE` *bytes*, which can land inside
 /// a multi-byte character); unlike `String::from_utf8_lossy`, this drops that trailing
-/// incomplete sequence instead of replacing it with U+FFFD. A non-trailing invalid byte (never
-/// produced by a well-formed guest `println!`, since WIT strings are valid UTF-8 by
-/// construction) is handled the same way: everything from that byte on is dropped.
+/// incomplete sequence instead of replacing it with U+FFFD. Guest stdout is a `list<u8>`, not a
+/// WIT string, so it can carry any bytes: a non-trailing invalid byte is handled the same way,
+/// everything from that byte on is dropped.
 fn valid_utf8_prefix(buf: &[u8]) -> &str {
     match std::str::from_utf8(buf) {
         Ok(s) => s,
@@ -338,6 +338,7 @@ impl Host {
         config.consume_fuel(true);
         config.epoch_interruption(true);
         let engine = Engine::new(&config)?;
+        // DefaultHasher is not stable across toolchains: a new one only invalidates the cache.
         let mut hasher = DefaultHasher::new();
         engine.precompile_compatibility_hash().hash(&mut hasher);
         let engine_hash = hasher.finish();
@@ -398,9 +399,9 @@ impl Host {
         }
         let component = Component::new(&self.engine, wasm)?;
         // Reloaded from the file when the write succeeds, so the first load behaves like every
-        // later one: a file-backed component uses less fuel per call than an in-memory one
-        // (probe: ~5k vs ~71k, likely its copy-on-write memory image). A failed write only
-        // costs a recompile on the next load.
+        // later one: measured, a non-file-backed component costs a fixed +65,537 fuel per
+        // instantiation (negligible against the 200M default, but it would make the first load
+        // differ from every later one). A failed write only costs a recompile on the next load.
         match write_atomic(&path, &component.serialize()?) {
             Ok(()) => cached().or(Ok(component)),
             Err(_) => Ok(component),
@@ -515,11 +516,17 @@ impl Host {
     }
 }
 
-/// Temp file then rename: readers never see a partial file.
+/// Temp file, fsync, then rename: readers never see a partial file, even after a power loss
+/// (the rename cannot reach disk ahead of the data it points at).
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     static N: AtomicU64 = AtomicU64::new(0);
     let tmp: PathBuf = path.with_extension(format!("{}.{}.tmp", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
-    let r = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
+    let write = || {
+        let mut file = std::fs::File::create(&tmp)?;
+        std::io::Write::write_all(&mut file, bytes)?;
+        file.sync_all()
+    };
+    let r = write().and_then(|()| std::fs::rename(&tmp, path));
     if r.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }

@@ -29,7 +29,7 @@ pub struct RateLimiter {
 impl RateLimiter {
     pub fn new(limit: RateLimit) -> Self {
         RateLimiter {
-            log: Arc::new(Mutex::new(VecDeque::with_capacity(limit.requests as usize))),
+            log: Arc::new(Mutex::new(VecDeque::new())),
             capacity: limit.requests as usize,
             window: Duration::from_secs(u64::from(limit.per_seconds)),
         }

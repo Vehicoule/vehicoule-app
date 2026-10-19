@@ -58,6 +58,7 @@ async fn returned_urls_are_checked() {
     assert_eq!(r.unwrap_err(), CallError::Internal("stream url outside allowlist".into()));
     let ok = t.host.resolve(&p, resolve("http://api.test/a.mp3")).await.unwrap();
     assert_eq!(ok.source.url, "http://api.test/a.mp3");
+    assert_eq!(ok.source.headers, [("Referer".to_string(), "r".to_string())], "routing headers stripped");
 
     let evil = t.host.search(&p, query("art https://evil.test/a.jpg")).await.unwrap();
     assert!(evil.tracks[0].artwork.is_empty());
