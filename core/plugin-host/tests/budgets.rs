@@ -26,7 +26,7 @@ fn guest(name: &str) -> Vec<u8> {
 async fn run(name: &str, input: &str, limits: Limits) -> Result<String, RunError> {
     let host = Host::new().unwrap();
     let plugin = host.compile(&guest(name)).unwrap();
-    host.run(&plugin, input, limits).await
+    host.search(&plugin, input, limits).await
 }
 
 #[tokio::test]
@@ -51,8 +51,10 @@ async fn spin_hits_epoch_deadline_with_unlimited_fuel() {
 
 #[tokio::test]
 async fn deadline_holds_while_the_guest_waits_on_the_host() {
+    let host = Host::new().unwrap();
+    let plugin = host.compile(&guest("sleepy")).unwrap();
     let t = std::time::Instant::now();
-    let r = run("sleepy", "", Limits { epoch_ticks: 2, ..Limits::default() }).await;
+    let r = host.search(&plugin, "", Limits { epoch_ticks: 2, ..Limits::default() }).await;
     assert_eq!(r, Err(RunError::Deadline));
     assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
 }
@@ -75,7 +77,7 @@ async fn oversized_response_is_rejected() {
     let body = vec![b'x'; 9 << 20];
     Mock::given(method("GET")).respond_with(ResponseTemplate::new(200).set_body_bytes(body)).mount(&server).await;
     let r = run("echo", &server.uri(), Limits::default()).await;
-    assert_eq!(r, Err(RunError::Guest("HttpError::TooLarge".into())));
+    assert_eq!(r, Err(RunError::Guest(r#"Error::Internal("response too large")"#.into())));
 }
 
 /// No Content-Length: the cap must trip while streaming.
@@ -104,8 +106,16 @@ async fn oversized_chunked_response_is_rejected() {
         sent
     });
     let r = run("echo", &format!("http://{addr}/"), Limits::default()).await;
-    assert_eq!(r, Err(RunError::Guest("HttpError::TooLarge".into())));
+    assert_eq!(r, Err(RunError::Guest(r#"Error::Internal("response too large")"#.into())));
     assert!(sent.await.unwrap() < 16, "host kept reading past the cap");
+}
+
+/// lrclib-style plugin: only `lyrics`. It must load, with only that capability listed.
+#[test]
+fn partial_exports_are_detected() {
+    let host = Host::new().unwrap();
+    assert_eq!(host.compile(&guest("lyrics_only")).unwrap().exports(), ["lyrics"]);
+    assert_eq!(host.compile(&guest("echo")).unwrap().exports(), ["search"]);
 }
 
 #[test]

@@ -26,7 +26,7 @@ pub enum RunError {
     OutOfFuel,
     Deadline,
     Memory,
-    /// The plugin returned an error.
+    /// The plugin returned an error: `Debug` of its `types::Error`.
     Guest(String),
     Internal(String),
 }

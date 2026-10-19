@@ -1,0 +1,11 @@
+package vehicoule:test-guests;
+
+world test-search {
+    include vehicoule:host/imports@1.0.0;
+    export vehicoule:music/search@1.0.0;
+}
+
+world test-lyrics {
+    include vehicoule:host/imports@1.0.0;
+    export vehicoule:music/lyrics@1.0.0;
+}

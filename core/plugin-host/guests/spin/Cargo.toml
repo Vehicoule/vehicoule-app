@@ -10,3 +10,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wit-bindgen.workspace = true
+vehicoule-sdk.workspace = true

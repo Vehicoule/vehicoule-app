@@ -1,7 +1,9 @@
-use std::time::Duration;
+use std::collections::HashMap;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use contract::Probe;
-use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
+use contract::music::{entity, lyrics, radio, resolve, search, suggest};
+use contract::{clock, kv, log, types};
+use wasmtime::component::{Component, HasSelf, InstancePre, Linker, ResourceTable};
 use wasmtime::{Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder, Trap};
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
@@ -16,13 +18,29 @@ pub struct Host {
 }
 
 pub struct Plugin {
-    component: Component,
+    pre: InstancePre<State>,
+}
+
+impl Plugin {
+    /// Capabilities this component exports, e.g. `["search", "lyrics"]`.
+    pub fn exports(&self) -> Vec<&'static str> {
+        let found = [
+            ("search", search::GuestIndices::new(&self.pre).is_ok()),
+            ("suggest", suggest::GuestIndices::new(&self.pre).is_ok()),
+            ("entity", entity::GuestIndices::new(&self.pre).is_ok()),
+            ("resolve", resolve::GuestIndices::new(&self.pre).is_ok()),
+            ("lyrics", lyrics::GuestIndices::new(&self.pre).is_ok()),
+            ("radio", radio::GuestIndices::new(&self.pre).is_ok()),
+        ];
+        found.into_iter().filter_map(|(name, ok)| ok.then_some(name)).collect()
+    }
 }
 
 pub(crate) struct State {
     wasi: WasiCtx,
     table: ResourceTable,
     limits: Budget,
+    kv: HashMap<String, Vec<u8>>,
     pub(crate) http: reqwest::Client,
     pub(crate) max_response_bytes: usize,
 }
@@ -83,6 +101,34 @@ impl WasiView for State {
     }
 }
 
+// ponytail: minimal kv, clock and log; plan 2 brings persistence, quotas and logging.
+impl kv::Host for State {
+    async fn get(&mut self, key: String) -> Option<Vec<u8>> {
+        self.kv.get(&key).cloned()
+    }
+
+    async fn set(&mut self, key: String, value: Vec<u8>) -> Result<(), kv::KvError> {
+        self.kv.insert(key, value);
+        Ok(())
+    }
+
+    async fn delete(&mut self, key: String) {
+        self.kv.remove(&key);
+    }
+}
+
+impl clock::Host for State {
+    async fn now_ms(&mut self) -> u64 {
+        SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+    }
+}
+
+impl log::Host for State {
+    async fn log(&mut self, _level: log::Level, _message: String) {}
+}
+
+impl types::Host for State {}
+
 impl Host {
     pub fn new() -> anyhow::Result<Host> {
         let mut config = Config::new();
@@ -103,7 +149,7 @@ impl Host {
         let mut linker = Linker::new(&engine);
         // WASI subset: no preopened directories, no sockets.
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
-        Probe::add_to_linker::<_, HasSelf<State>>(&mut linker, |s| s)?;
+        contract::Plugin::add_to_linker::<_, HasSelf<State>>(&mut linker, |s| s)?;
 
         let http = reqwest::Client::builder().timeout(Duration::from_secs(20)).build()?;
         Ok(Host { engine, linker, http })
@@ -115,16 +161,18 @@ impl Host {
 
     /// Compiles on this device; precompiled artifacts are never loaded.
     pub fn compile(&self, wasm: &[u8]) -> anyhow::Result<Plugin> {
-        Ok(Plugin { component: Component::new(&self.engine, wasm)? })
+        let component = Component::new(&self.engine, wasm)?;
+        Ok(Plugin { pre: self.linker.instantiate_pre(&component)? })
     }
 
-    /// One fresh instance per call.
-    pub async fn run(&self, p: &Plugin, input: &str, limits: Limits) -> Result<String, RunError> {
+    /// One fresh instance per call. Returns the title of the first track found.
+    pub async fn search(&self, p: &Plugin, query: &str, limits: Limits) -> Result<String, RunError> {
         let wasi = WasiCtx::builder().allow_tcp(false).allow_udp(false).allow_ip_name_lookup(false).build();
         let state = State {
             wasi,
             table: ResourceTable::new(),
             limits: Budget::new(limits.memory_bytes),
+            kv: HashMap::new(),
             http: self.http.clone(),
             max_response_bytes: limits.max_response_bytes,
         };
@@ -136,16 +184,26 @@ impl Host {
         // Epochs only interrupt running wasm; a guest blocked in a host call (WASI poll,
         // slow HTTP) is cut by this wall-clock timeout instead.
         let wall = EPOCH_TICK.saturating_mul(u32::try_from(limits.epoch_ticks).unwrap_or(u32::MAX));
+        let req = search::SearchRequest {
+            query: query.into(),
+            kinds: vec![types::EntityKind::Track],
+            region: String::new(),
+            limit: 1,
+            cursor: None,
+        };
         let call = async {
-            let probe = Probe::instantiate_async(&mut store, &p.component, &self.linker).await?;
-            probe.call_run(&mut store, input).await
+            let instance = p.pre.instantiate_async(&mut store).await?;
+            let guest = search::GuestIndices::new(&p.pre)?.load(&mut store, &instance)?;
+            guest.call_search(&mut store, &req).await
         };
         let Ok(result) = tokio::time::timeout(wall, call).await else {
             return Err(RunError::Deadline);
         };
         match result {
-            Ok(Ok(out)) => Ok(out),
-            Ok(Err(msg)) => Err(RunError::Guest(msg)),
+            Ok(Ok(found)) => {
+                found.tracks.into_iter().next().map(|t| t.title).ok_or_else(|| RunError::Internal("no track".into()))
+            }
+            Ok(Err(e)) => Err(RunError::Guest(format!("{e:?}"))),
             Err(_) if store.data().limits.memory_denied => Err(RunError::Memory),
             Err(e) => Err(match e.downcast_ref::<Trap>() {
                 Some(Trap::OutOfFuel) => RunError::OutOfFuel,
