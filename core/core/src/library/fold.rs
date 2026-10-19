@@ -26,7 +26,7 @@ pub fn fold(s: &str) -> String {
 }
 
 fn is_latin(c: char) -> bool {
-    matches!(c, 'a'..='z' | 'A'..='Z' | '\u{00C0}'..='\u{024F}' | '\u{1E00}'..='\u{1EFF}')
+    matches!(c, 'a'..='z' | '\u{00C0}'..='\u{024F}' | '\u{1E00}'..='\u{1EFF}')
 }
 
 #[cfg(test)]

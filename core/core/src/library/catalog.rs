@@ -2,7 +2,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::items::{canonical, fts_rowid};
+use super::items::{canonical, fts_rowid, invalid};
 use super::{ItemId, Kind, Page, Tx, fold, refs};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,7 +84,7 @@ pub fn upsert_track(tx: &Tx, provider: &str, t: &TrackData) -> rusqlite::Result<
         .as_deref()
         .map(|s| s.trim().to_ascii_uppercase())
         .filter(|s| !s.is_empty());
-    let found = match refs::lookup(c, provider, &t.ext_id, Some(Kind::Track))? {
+    let found = match refs::item_for(c, provider, Kind::Track, &t.ext_id)? {
         Some(id) => Some(id),
         None => match &isrc {
             Some(isrc) => c
@@ -102,7 +102,7 @@ pub fn upsert_track(tx: &Tx, provider: &str, t: &TrackData) -> rusqlite::Result<
     let album = match &t.album {
         Some((ext, title)) => {
             let key = ext.clone().unwrap_or_else(|| name_key(title));
-            let found = refs::lookup(c, provider, &key, Some(Kind::Album))?;
+            let found = refs::item_for(c, provider, Kind::Album, &key)?;
             let album = ensure(tx, Kind::Album, provider, &key, title, found)?;
             c.execute(
                 "INSERT OR IGNORE INTO music_albums (item_id) VALUES (?1)",
@@ -127,7 +127,7 @@ pub fn upsert_track(tx: &Tx, provider: &str, t: &TrackData) -> rusqlite::Result<
 }
 
 pub fn upsert_album(tx: &Tx, provider: &str, a: &AlbumData) -> rusqlite::Result<ItemId> {
-    let found = refs::lookup(&tx.tx, provider, &a.ext_id, Some(Kind::Album))?;
+    let found = refs::item_for(&tx.tx, provider, Kind::Album, &a.ext_id)?;
     let id = ensure(tx, Kind::Album, provider, &a.ext_id, &a.title, found)?;
     tx.tx.execute(
         "INSERT INTO music_albums (item_id, year, track_count) VALUES (?1, ?2, ?3)
@@ -144,8 +144,11 @@ pub fn upsert_album(tx: &Tx, provider: &str, a: &AlbumData) -> rusqlite::Result<
 /// Without `ext_id` the artist is keyed `name:` + fold(name): same-name artists of one
 /// provider are one item.
 pub fn upsert_artist(tx: &Tx, provider: &str, a: &ArtistData) -> rusqlite::Result<ItemId> {
+    if a.name.trim().is_empty() {
+        return Err(invalid(format!("upsert_artist: blank name ({provider})")));
+    }
     let key = a.ext_id.clone().unwrap_or_else(|| name_key(&a.name));
-    let found = refs::lookup(&tx.tx, provider, &key, Some(Kind::Artist))?;
+    let found = refs::item_for(&tx.tx, provider, Kind::Artist, &key)?;
     let id = ensure(tx, Kind::Artist, provider, &key, &a.name, found)?;
     tx.tx.execute(
         "INSERT OR IGNORE INTO music_artists (item_id) VALUES (?1)",
@@ -157,7 +160,7 @@ pub fn upsert_artist(tx: &Tx, provider: &str, a: &ArtistData) -> rusqlite::Resul
 }
 
 pub fn upsert_playlist(tx: &Tx, provider: &str, p: &PlaylistData) -> rusqlite::Result<ItemId> {
-    let found = refs::lookup(&tx.tx, provider, &p.ext_id, Some(Kind::Playlist))?;
+    let found = refs::item_for(&tx.tx, provider, Kind::Playlist, &p.ext_id)?;
     let id = ensure(tx, Kind::Playlist, provider, &p.ext_id, &p.title, found)?;
     tx.tx.execute(
         "INSERT INTO music_playlists (item_id, owner, description, track_count) VALUES (?1, ?2, ?3, ?4)
@@ -180,10 +183,18 @@ pub fn set_children(
     let c = &tx.tx;
     let parent = canonical(c, parent)?;
     let Some((table, col)) = children_table(c, parent)? else {
-        return Err(rusqlite::Error::InvalidParameterName(format!(
-            "set_children: {parent} is not an album or playlist"
+        return Err(invalid(format!(
+            "set_children: {parent} is not a provider album or playlist"
         )));
     };
+    for &t in tracks {
+        let kind: Option<String> = c
+            .query_row("SELECT kind FROM items WHERE id = ?1", [t], |r| r.get(0))
+            .optional()?;
+        if kind.as_deref() != Some(Kind::Track.as_str()) {
+            return Err(invalid(format!("set_children: {t} is not a track")));
+        }
+    }
     if !append {
         c.execute(&format!("DELETE FROM {table} WHERE {col} = ?1"), [parent])?;
     }
@@ -304,7 +315,7 @@ pub fn collection(c: &Connection, id: ItemId) -> rusqlite::Result<Option<Collect
     }))
 }
 
-/// Tracks of an album or provider playlist, as roots. Other kinds have none.
+/// Tracks of a provider album or playlist, as roots. Other items have none.
 pub fn children(c: &Connection, parent: ItemId, page: Page) -> rusqlite::Result<Vec<ItemId>> {
     let parent = canonical(c, parent)?;
     let Some((table, col)) = children_table(c, parent)? else {
@@ -389,6 +400,7 @@ fn set_artists(
 ) -> rusqlite::Result<()> {
     let ids = list
         .iter()
+        .filter(|a| !a.name.trim().is_empty())
         .map(|a| upsert_artist(tx, provider, a))
         .collect::<rusqlite::Result<Vec<_>>>()?;
     tx.tx
@@ -456,7 +468,10 @@ fn index(tx: &Tx, id: ItemId) -> rusqlite::Result<()> {
         _ => {}
     }
     let rowid = fts_rowid(id);
-    c.execute("DELETE FROM library_fts WHERE rowid = ?1", [rowid])?;
+    c.execute(
+        "DELETE FROM library_fts WHERE rowid = ?1 AND item_id = ?2",
+        params![rowid, id],
+    )?;
     c.execute(
         "INSERT INTO library_fts (rowid, item_id, title, subtitle) VALUES (?1, ?2, ?3, ?4)",
         params![rowid, id, fold(&title), fold(&parts.join(" "))],
@@ -468,15 +483,19 @@ fn children_table(
     c: &Connection,
     parent: ItemId,
 ) -> rusqlite::Result<Option<(&'static str, &'static str)>> {
-    let kind: Option<String> = c
-        .query_row("SELECT kind FROM items WHERE id = ?1", [parent], |r| {
-            r.get(0)
-        })
-        .optional()?;
-    Ok(match kind.as_deref().and_then(Kind::parse) {
-        Some(Kind::Album) => Some(("music_album_tracks", "album_id")),
-        Some(Kind::Playlist) => Some(("music_playlist_tracks", "playlist_id")),
-        _ => None,
+    // Provider collections only: user playlists (no `music_playlists` row) live in Task 4 tables.
+    let (album, playlist): (bool, bool) = c.query_row(
+        "SELECT EXISTS (SELECT 1 FROM music_albums WHERE item_id = ?1),
+                EXISTS (SELECT 1 FROM music_playlists WHERE item_id = ?1)",
+        [parent],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    Ok(if album {
+        Some(("music_album_tracks", "album_id"))
+    } else if playlist {
+        Some(("music_playlist_tracks", "playlist_id"))
+    } else {
+        None
     })
 }
 
@@ -645,12 +664,18 @@ pub(crate) mod tests {
             assert_eq!(names, ["Édith Piaf", "Orchestre"]);
             let album = row.album.clone().unwrap();
             assert_eq!(album.1, "Best Of");
-            assert_eq!(refs::item_for(c, "deezer", "name:best of")?, Some(album.0));
             assert_eq!(
-                refs::item_for(c, "deezer", "name:orchestre")?,
+                refs::item_for(c, "deezer", Kind::Album, "name:best of")?,
+                Some(album.0)
+            );
+            assert_eq!(
+                refs::item_for(c, "deezer", Kind::Artist, "name:orchestre")?,
                 Some(row.artists[1].0)
             );
-            assert_eq!(refs::item_for(c, "deezer", "a1")?, Some(row.artists[0].0));
+            assert_eq!(
+                refs::item_for(c, "deezer", Kind::Artist, "a1")?,
+                Some(row.artists[0].0)
+            );
             assert_eq!(row.duration_ms, Some(200_000));
             assert_eq!(row.isrc.as_deref(), Some("FRZ039800212"));
             assert!(row.explicit && !row.liked && !row.downloaded);
@@ -774,6 +799,110 @@ pub(crate) mod tests {
                 (Kind::Playlist, Some("Deezer"), Some(50), false)
             );
             assert_eq!(collection(c, ids[2])?, None);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn isrc_is_normalised() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let a = upsert_track(tx, "deezer", &track_data("1", Some(" frz039800212 ")))?;
+            let b = upsert_track(tx, "itunes", &track_data("9", Some("FRZ039800212")))?;
+            assert_eq!(a, b);
+            assert_eq!(
+                track(&tx.tx, a)?.unwrap().isrc.as_deref(),
+                Some("FRZ039800212")
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn blank_artists_are_skipped() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let mut t = track_data("1", None);
+            t.artists.insert(
+                0,
+                ArtistData {
+                    ext_id: None,
+                    name: "  ".into(),
+                    artwork: vec![],
+                },
+            );
+            let id = upsert_track(tx, "deezer", &t)?;
+            let names: Vec<String> = track(&tx.tx, id)?
+                .unwrap()
+                .artists
+                .into_iter()
+                .map(|a| a.1)
+                .collect();
+            assert_eq!(names, ["Artist"]);
+            let blank = ArtistData {
+                ext_id: Some("x".into()),
+                name: " ".into(),
+                artwork: vec![],
+            };
+            assert!(upsert_artist(tx, "deezer", &blank).is_err());
+            assert_eq!(
+                count(&tx.tx, "SELECT count(*) FROM items WHERE kind = 'artist'"),
+                1
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn set_children_rejects_bad_parent_or_child() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let c = &tx.tx;
+            let t = upsert_track(tx, "deezer", &track_data("1", None))?;
+            let artist = track(c, t)?.unwrap().artists[0].0;
+            let album = upsert_album(
+                tx,
+                "deezer",
+                &AlbumData {
+                    ext_id: "al".into(),
+                    title: "Album".into(),
+                    artists: vec![],
+                    year: None,
+                    track_count: None,
+                    artwork: vec![],
+                },
+            )?;
+            // A user playlist: kind playlist, no music_playlists row.
+            let user = ItemId::new();
+            c.execute(
+                "INSERT INTO items (id, kind, title, updated_at, device_id) VALUES (?1, 'playlist', 'mine', 0, x'00')",
+                [user],
+            )?;
+            assert!(set_children(tx, user, &[t], false).is_err());
+            assert!(set_children(tx, t, &[t], false).is_err());
+            assert!(set_children(tx, album, &[artist], false).is_err());
+            assert!(set_children(tx, album, &[ItemId::new()], false).is_err());
+            assert_eq!(children(c, user, Page { offset: 0, limit: 10 })?, []);
+            set_children(tx, album, &[t], false)?;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn fts_rowid_collision_fails_loudly() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let t = upsert_track(tx, "deezer", &track_data("1", None))?;
+            // Simulate another item owning this item's search rowid.
+            tx.tx.execute(
+                "UPDATE library_fts SET item_id = ?2 WHERE rowid = ?1",
+                params![fts_rowid(t), ItemId::new()],
+            )?;
+            assert!(upsert_track(tx, "deezer", &track_data("1", None)).is_err());
             Ok(())
         })
         .unwrap();

@@ -9,27 +9,19 @@ pub struct ExtRef {
     pub pinned: bool,
 }
 
-/// Root item referenced by `(provider, external_id)`, pinned refs first. Any kind: providers
-/// may reuse an id across kinds, so catalogue code uses the kind-scoped `lookup`.
+/// Root item of `kind` referenced by `(provider, external_id)`, pinned refs first. Scoped
+/// by kind: providers reuse ids across kinds (a Deezer track and album can share one).
 pub fn item_for(
     c: &Connection,
     provider: &str,
+    kind: Kind,
     external_id: &str,
-) -> rusqlite::Result<Option<ItemId>> {
-    lookup(c, provider, external_id, None)
-}
-
-pub(crate) fn lookup(
-    c: &Connection,
-    provider: &str,
-    external_id: &str,
-    kind: Option<Kind>,
 ) -> rusqlite::Result<Option<ItemId>> {
     c.query_row(
         "SELECT COALESCE(i.merged_into, i.id) FROM external_refs r JOIN items i ON i.id = r.item_id
-         WHERE r.provider = ?1 AND r.external_id = ?2 AND (?3 IS NULL OR i.kind = ?3)
+         WHERE r.provider = ?1 AND r.external_id = ?2 AND i.kind = ?3
          ORDER BY r.pinned DESC, i.id LIMIT 1",
-        params![provider, external_id, kind.map(Kind::as_str)],
+        params![provider, external_id, kind.as_str()],
         |r| r.get(0),
     )
     .optional()
@@ -75,8 +67,8 @@ pub fn record(tx: &Tx, item: ItemId, provider: &str, external_id: &str) -> rusql
 }
 
 /// Pins `external_id` as the item's only ref at `provider`. An item of the same kind already
-/// pinned to it is the same item: both merge. Unpinned matches of it on other items of that
-/// kind are dropped. Returns the root.
+/// pinned to it is the same item: both merge. Other items' refs are never touched. Returns
+/// the root.
 pub fn pin(tx: &Tx, item: ItemId, provider: &str, external_id: &str) -> rusqlite::Result<ItemId> {
     let c = &tx.tx;
     let mut root = canonical(c, item)?;
@@ -94,11 +86,11 @@ pub fn pin(tx: &Tx, item: ItemId, provider: &str, external_id: &str) -> rusqlite
     {
         root = merge(tx, root, other)?;
     }
+    // Only the root's own refs at `provider` go: other items keep theirs (they may be liked or
+    // in playlists), and lookups prefer the pinned ref anyway.
     c.execute(
-        "DELETE FROM external_refs WHERE provider = ?2 AND
-           ((item_id = ?1 AND external_id != ?3)
-            OR (item_id != ?1 AND external_id = ?3 AND item_id IN (SELECT id FROM items WHERE kind = ?4)))",
-        params![root, provider, external_id, kind],
+        "DELETE FROM external_refs WHERE item_id = ?1 AND provider = ?2 AND external_id != ?3",
+        params![root, provider, external_id],
     )?;
     c.execute(
         "INSERT INTO external_refs (item_id, provider, external_id, pinned) VALUES (?1, ?2, ?3, 1)
@@ -133,9 +125,9 @@ mod tests {
             assert_eq!(pin(tx, t, "ytmusic", "b")?, t);
             record(tx, t, "ytmusic", "c")?;
             assert_eq!(get(c, t, "ytmusic")?, Some(ext("b", true)));
-            assert_eq!(item_for(c, "ytmusic", "a")?, None);
-            assert_eq!(item_for(c, "ytmusic", "c")?, None);
-            assert_eq!(item_for(c, "ytmusic", "b")?, Some(t));
+            assert_eq!(item_for(c, "ytmusic", Kind::Track, "a")?, None);
+            assert_eq!(item_for(c, "ytmusic", Kind::Track, "c")?, None);
+            assert_eq!(item_for(c, "ytmusic", Kind::Track, "b")?, Some(t));
             let mut refs = all(c, t)?;
             refs.sort_by(|x, y| x.0.cmp(&y.0));
             assert_eq!(
@@ -162,9 +154,9 @@ mod tests {
             assert_eq!(pin(tx, a, "ytmusic", "x")?, a);
             assert_eq!(canonical(c, b)?, a);
             assert_eq!(get(c, a, "ytmusic")?, Some(ext("x", true)));
-            assert_eq!(item_for(c, "ytmusic", "x")?, Some(a));
+            assert_eq!(item_for(c, "ytmusic", Kind::Track, "x")?, Some(a));
             // The newer item's refs moved to the root.
-            assert_eq!(item_for(c, "deezer", "2")?, Some(a));
+            assert_eq!(item_for(c, "deezer", Kind::Track, "2")?, Some(a));
             assert_eq!(
                 catalog::upsert_track(tx, "deezer", &track_data("2", None))?,
                 a
@@ -178,12 +170,12 @@ mod tests {
     fn pin_does_not_merge_across_kinds() {
         let db = Db::open_in_memory().unwrap();
         db.write_blocking(|tx| {
-            let t = catalog::upsert_track(tx, "deezer", &track_data("1", None))?;
+            let t = catalog::upsert_track(tx, "deezer", &track_data("3135556", None))?;
             let album = catalog::upsert_album(
                 tx,
                 "deezer",
                 &catalog::AlbumData {
-                    ext_id: "1".into(),
+                    ext_id: "3135556".into(),
                     title: "Album".into(),
                     artists: vec![],
                     year: None,
@@ -195,6 +187,31 @@ mod tests {
             pin(tx, t, "ytmusic", "x")?;
             assert_eq!(pin(tx, album, "ytmusic", "x")?, album);
             assert_eq!(canonical(&tx.tx, t)?, t);
+            // Providers reuse ids across kinds: lookups are kind-scoped.
+            assert_eq!(item_for(&tx.tx, "deezer", Kind::Track, "3135556")?, Some(t));
+            assert_eq!(
+                item_for(&tx.tx, "deezer", Kind::Album, "3135556")?,
+                Some(album)
+            );
+            assert_eq!(item_for(&tx.tx, "deezer", Kind::Artist, "3135556")?, None);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn pin_keeps_other_items_refs() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let c = &tx.tx;
+            let t2 = catalog::upsert_track(tx, "deezer", &track_data("2", None))?;
+            let t1 = catalog::upsert_track(tx, "deezer", &track_data("1", None))?;
+            record(tx, t2, "ytmusic", "b")?;
+            assert_eq!(pin(tx, t1, "ytmusic", "b")?, t1);
+            // T2 (maybe liked, in playlists) keeps its ref; the pinned one wins lookups.
+            assert_eq!(get(c, t2, "ytmusic")?, Some(ext("b", false)));
+            assert_eq!(canonical(c, t2)?, t2);
+            assert_eq!(item_for(c, "ytmusic", Kind::Track, "b")?, Some(t1));
             Ok(())
         })
         .unwrap();

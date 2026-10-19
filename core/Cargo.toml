@@ -13,3 +13,4 @@ wasmtime = { version = "48.0.6", default-features = false, features = ["std", "r
 wasmtime-wasi = { version = "48.0.6", default-features = false, features = ["p2"] }
 rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 uuid = { version = "1", features = ["v7"] }
+unicode-normalization = "0.1"

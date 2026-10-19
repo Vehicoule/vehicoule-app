@@ -19,18 +19,19 @@ pub fn canonical(c: &Connection, id: ItemId) -> rusqlite::Result<ItemId> {
 pub fn merge(tx: &Tx, a: ItemId, b: ItemId) -> rusqlite::Result<ItemId> {
     let (a, b) = (canonical(&tx.tx, a)?, canonical(&tx.tx, b)?);
     let (root, gone) = if a <= b { (a, b) } else { (b, a) };
+    let (found, kinds): (i64, i64) = tx.tx.query_row(
+        "SELECT count(*), count(DISTINCT kind) FROM items WHERE id IN (?1, ?2)",
+        [root, gone],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    if found != if root == gone { 1 } else { 2 } {
+        return Err(invalid(format!("merge: unknown item {root} or {gone}")));
+    }
+    if kinds != 1 {
+        return Err(invalid(format!("merge: {root} and {gone} differ in kind")));
+    }
     if root == gone {
         return Ok(root);
-    }
-    let same_kind: bool = tx.tx.query_row(
-        "SELECT count(DISTINCT kind) = 1 FROM items WHERE id IN (?1, ?2)",
-        [root, gone],
-        |r| r.get(0),
-    )?;
-    if !same_kind {
-        return Err(rusqlite::Error::InvalidParameterName(format!(
-            "merge: {root} and {gone} differ in kind"
-        )));
     }
     let device = tx.stamp.device_id.as_bytes().as_slice();
     // One hop only: the merged item and everything that pointed at it now point at the root.
@@ -39,6 +40,8 @@ pub fn merge(tx: &Tx, a: ItemId, b: ItemId) -> rusqlite::Result<ItemId> {
          WHERE id = ?2 OR merged_into = ?2",
         params![root, gone, tx.stamp.updated_at, device],
     )?;
+    // `AND true`: an upsert fed by a bare SELECT ... WHERE is ambiguous to SQLite's parser
+    // (ON could start a join constraint); the extra term disambiguates it.
     tx.tx.execute(
         "INSERT INTO external_refs (item_id, provider, external_id, pinned)
          SELECT ?1, provider, external_id, pinned FROM external_refs WHERE item_id = ?2 AND true
@@ -48,8 +51,8 @@ pub fn merge(tx: &Tx, a: ItemId, b: ItemId) -> rusqlite::Result<ItemId> {
     tx.tx
         .execute("DELETE FROM external_refs WHERE item_id = ?1", [gone])?;
     tx.tx.execute(
-        "DELETE FROM library_fts WHERE rowid = ?1",
-        [fts_rowid(gone)],
+        "DELETE FROM library_fts WHERE rowid = ?1 AND item_id = ?2",
+        params![fts_rowid(gone), gone],
     )?;
     Ok(root)
 }
@@ -57,15 +60,22 @@ pub fn merge(tx: &Tx, a: ItemId, b: ItemId) -> rusqlite::Result<ItemId> {
 /// `library_fts` rowid of an item: its 62 random/counter low bits, so lookups and deletes
 /// hit the rowid instead of scanning the UNINDEXED `item_id` column. Unlike `items.rowid`,
 /// it survives VACUUM.
-// ponytail: a 2^-62 collision would overwrite another item's search row; add an index table if it ever matters
+/// Writers delete only `rowid AND item_id`, so a (2^-62) collision makes the insert fail
+/// instead of replacing another item's row.
 pub(crate) fn fts_rowid(id: ItemId) -> i64 {
     let b = id.0.as_bytes();
     i64::from_be_bytes(b[8..].try_into().unwrap())
 }
 
+/// A semantic error (bad argument for the store), as a `rusqlite::Error`.
+pub(crate) fn invalid(msg: String) -> rusqlite::Error {
+    rusqlite::Error::UserFunctionError(msg.into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::library::Kind;
     use crate::library::catalog::{self, tests::track_data};
     use crate::library::{Db, refs};
     use rusqlite::params;
@@ -157,7 +167,7 @@ mod tests {
             assert_eq!(merged_into(c, z), None);
             assert_eq!(canonical(c, b)?, z);
             // Refs moved to the root; the merged item's search row is gone.
-            assert_eq!(refs::item_for(c, "deezer", "b")?, Some(z));
+            assert_eq!(refs::item_for(c, "deezer", Kind::Track, "b")?, Some(z));
             assert_eq!(refs::all(c, z)?.len(), 3);
             let fts: i64 = c.query_row(
                 "SELECT count(*) FROM library_fts f JOIN items i ON i.id = f.item_id WHERE i.kind = 'track'",
@@ -170,6 +180,10 @@ mod tests {
             // Kinds never mix.
             let artist = catalog::track(c, z)?.unwrap().artists[0].0;
             assert!(merge(tx, z, artist).is_err());
+            // Unknown ids are refused, even merged with themselves.
+            let ghost = ItemId::new();
+            assert!(merge(tx, z, ghost).is_err());
+            assert!(merge(tx, ghost, ghost).is_err());
             Ok(())
         })
         .unwrap();

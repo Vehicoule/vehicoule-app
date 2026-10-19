@@ -10,7 +10,7 @@ name = "vehicoule_core"
 [dependencies]
 rusqlite.workspace = true
 uuid.workspace = true
-unicode-normalization = "0.1"
+unicode-normalization.workspace = true
 tokio = { version = "1", features = ["rt"] }
 
 [dev-dependencies]
