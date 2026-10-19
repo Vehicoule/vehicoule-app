@@ -185,6 +185,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sleepy"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
 name = "spin"
 version = "0.1.0"
 dependencies = [

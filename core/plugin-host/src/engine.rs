@@ -27,21 +27,53 @@ pub(crate) struct State {
     pub(crate) max_response_bytes: usize,
 }
 
-/// `StoreLimits` plus a flag telling a memory denial apart from other traps.
+/// One memory budget for the whole plugin (`StoreLimits::memory_size` would apply it to
+/// each linear memory), plus `StoreLimits` for tables and instance counts, plus a flag
+/// telling a memory denial apart from other traps.
 struct Budget {
-    inner: StoreLimits,
+    memory_limit: usize,
+    memory_total: usize,
     memory_denied: bool,
+    inner: StoreLimits,
+}
+
+impl Budget {
+    fn new(memory_limit: usize) -> Self {
+        let inner = StoreLimitsBuilder::new()
+            .table_elements(100_000)
+            .instances(64)
+            .tables(64)
+            .memories(16)
+            .build();
+        Budget { memory_limit, memory_total: 0, memory_denied: false, inner }
+    }
 }
 
 impl ResourceLimiter for Budget {
-    fn memory_growing(&mut self, current: usize, desired: usize, maximum: Option<usize>) -> wasmtime::Result<bool> {
-        let ok = self.inner.memory_growing(current, desired, maximum)?;
-        self.memory_denied |= !ok;
-        Ok(ok)
+    fn memory_growing(&mut self, current: usize, desired: usize, _maximum: Option<usize>) -> wasmtime::Result<bool> {
+        let total = self.memory_total + desired.saturating_sub(current);
+        if total > self.memory_limit {
+            self.memory_denied = true;
+            return Ok(false);
+        }
+        self.memory_total = total;
+        Ok(true)
     }
 
     fn table_growing(&mut self, current: usize, desired: usize, maximum: Option<usize>) -> wasmtime::Result<bool> {
         self.inner.table_growing(current, desired, maximum)
+    }
+
+    fn instances(&self) -> usize {
+        self.inner.instances()
+    }
+
+    fn tables(&self) -> usize {
+        self.inner.tables()
+    }
+
+    fn memories(&self) -> usize {
+        self.inner.memories()
     }
 }
 
@@ -92,10 +124,7 @@ impl Host {
         let state = State {
             wasi,
             table: ResourceTable::new(),
-            limits: Budget {
-                inner: StoreLimitsBuilder::new().memory_size(limits.memory_bytes).build(),
-                memory_denied: false,
-            },
+            limits: Budget::new(limits.memory_bytes),
             http: self.http.clone(),
             max_response_bytes: limits.max_response_bytes,
         };
@@ -104,23 +133,39 @@ impl Host {
         store.set_fuel(limits.fuel).map_err(|e| RunError::Internal(e.to_string()))?;
         store.set_epoch_deadline(limits.epoch_ticks);
 
-        let result = async {
+        // Epochs only interrupt running wasm; a guest blocked in a host call (WASI poll,
+        // slow HTTP) is cut by this wall-clock timeout instead.
+        let wall = EPOCH_TICK.saturating_mul(u32::try_from(limits.epoch_ticks).unwrap_or(u32::MAX));
+        let call = async {
             let probe = Probe::instantiate_async(&mut store, &p.component, &self.linker).await?;
             probe.call_run(&mut store, input).await
-        }
-        .await;
+        };
+        let Ok(result) = tokio::time::timeout(wall, call).await else {
+            return Err(RunError::Deadline);
+        };
         match result {
             Ok(Ok(out)) => Ok(out),
             Ok(Err(msg)) => Err(RunError::Guest(msg)),
-            Err(e) if store.data().limits.memory_denied => {
-                let _ = e;
-                Err(RunError::Memory)
-            }
+            Err(_) if store.data().limits.memory_denied => Err(RunError::Memory),
             Err(e) => Err(match e.downcast_ref::<Trap>() {
                 Some(Trap::OutOfFuel) => RunError::OutOfFuel,
                 Some(Trap::Interrupt) => RunError::Deadline,
                 _ => RunError::Internal(format!("{e:?}")),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn memory_budget_is_shared_by_all_memories() {
+        let mut b = Budget::new(64 << 20);
+        assert!(b.memory_growing(0, 40 << 20, None).unwrap());
+        assert!(!b.memory_growing(0, 40 << 20, None).unwrap(), "second memory pushed the total past 64 MiB");
+        assert!(b.memory_denied);
+        assert!(b.memory_growing(0, 20 << 20, None).unwrap());
     }
 }

@@ -50,6 +50,14 @@ async fn spin_hits_epoch_deadline_with_unlimited_fuel() {
 }
 
 #[tokio::test]
+async fn deadline_holds_while_the_guest_waits_on_the_host() {
+    let t = std::time::Instant::now();
+    let r = run("sleepy", "", Limits { epoch_ticks: 2, ..Limits::default() }).await;
+    assert_eq!(r, Err(RunError::Deadline));
+    assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
+}
+
+#[tokio::test]
 async fn hog_hits_memory_limit() {
     let r = run("hog", "", Limits::default()).await;
     assert_eq!(r, Err(RunError::Memory));
