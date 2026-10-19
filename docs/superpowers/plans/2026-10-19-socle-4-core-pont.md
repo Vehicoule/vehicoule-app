@@ -175,6 +175,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   manifeste + `.wasm`, contrôle sha256, `host.load` (validation), écriture atomique dans
   `<data_dir>/plugins/<id>-<8 premiers hex du sha>.wasm`, ligne `plugins`. Un plugin absent
   du nouveau feed est désactivé, pas supprimé. Échec d'un plugin = journal + on continue.
+  L'id d'une entrée de feed doit être égal à l'id de son manifeste (sinon l'entrée est
+  ignorée) ; `host.load` (compilation synchrone) est appelé dans `spawn_blocking`.
   `refresh_feeds` n'est jamais appelé pendant `init` ; `App` le lance en tâche de fond
   10 s après le démarrage puis toutes les 24 h.
   Chaque `HostEvent::Log` est versé dans `logs::push` (source = id du plugin) ; chaque
@@ -443,7 +445,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub struct LyricLine { pub start_ms: u32, pub text: String }
   pub(crate) async fn lyrics(id: &str) -> Result<Option<LyricsView>, CoreError>;
   ```
-- Règles : 2 téléchargements en parallèle ; qualité `high` ; fichier
+- Règles : client réseau = `host.http_client(&plugin)` du plugin qui a résolu le titre, après
+  `host.check_url` ; 2 téléchargements en parallèle ; qualité `high` ; fichier
   `<downloads_dir>/<item-id>.<webm|m4a selon mime>` ; pochette mise en cache au passage ;
   `Http(403)` en cours de route → nouvelle résolution puis reprise au même octet ;
   progression envoyée au plus **2 fois par seconde** par téléchargement ; `LibraryChanged::Downloads`
