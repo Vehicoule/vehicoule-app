@@ -115,7 +115,7 @@ fn validate_host(host: &str) -> Result<(), String> {
 /// followed by zero or more hex digits (octal, e.g. `017`, is covered by the all-digits case).
 /// This is exactly what the `url` crate would fold into a literal IPv4, e.g. `1.2.3.4`,
 /// `2130706433`, `017.0.0.1`, `0x7f.0x0.0x0.0x1`. Reused by task 3 for request hosts.
-fn ends_in_number(host: &str) -> bool {
+pub(crate) fn ends_in_number(host: &str) -> bool {
     let last = host.rsplit('.').next().unwrap_or("");
     if let Some(hex) = last.strip_prefix("0x").or_else(|| last.strip_prefix("0X")) {
         return hex.bytes().all(|b| b.is_ascii_hexdigit());

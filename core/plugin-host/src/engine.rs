@@ -13,6 +13,7 @@ use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::calls::Returned;
 use crate::manifest::{Allowlist, Manifest, parse_manifest, validate_contract};
+use crate::net::NetPolicy;
 use crate::storage::{self, Storage};
 use crate::{Budget, CallError, CallReport, Capability, HostConfig, HostEvent, LoadError};
 
@@ -23,7 +24,6 @@ pub struct Host {
     /// `Engine::precompile_compatibility_hash`, folded to name cache files.
     engine_hash: u64,
     linker: Linker<State>,
-    http: reqwest::Client,
     cfg: HostConfig,
 }
 
@@ -33,7 +33,7 @@ pub struct Plugin(Arc<Loaded>);
 
 struct Loaded {
     manifest: Manifest,
-    allowlist: Allowlist,
+    allowlist: Arc<Allowlist>,
     pre: InstancePre<State>,
     capabilities: Vec<Capability>,
 }
@@ -63,7 +63,8 @@ pub(crate) struct State {
     memory: MemoryBudget,
     plugin: String,
     storage: Arc<dyn Storage>,
-    pub(crate) http: reqwest::Client,
+    pub(crate) net: NetPolicy,
+    pub(crate) allowlist: Arc<Allowlist>,
     pub(crate) max_response_bytes: usize,
     /// Requests sent during this call, batch members included.
     pub(crate) http_calls: u32,
@@ -178,8 +179,7 @@ impl Host {
         contract::Plugin::add_to_linker::<_, HasSelf<State>>(&mut linker, |s| s)?;
 
         std::fs::create_dir_all(&cfg.cache_dir)?;
-        let http = cfg.net.client();
-        Ok(Host { engine, engine_hash, linker, http, cfg })
+        Ok(Host { engine, engine_hash, linker, cfg })
     }
 
     pub fn is_pulley(&self) -> bool {
@@ -191,7 +191,7 @@ impl Host {
         let raw: Manifest = serde_json::from_slice(manifest_json).map_err(|e| LoadError::Manifest(e.to_string()))?;
         validate_contract(&raw.contract).map_err(LoadError::Contract)?;
         let manifest = parse_manifest(manifest_json).map_err(LoadError::Manifest)?;
-        let allowlist = Allowlist::new(&manifest.domains).map_err(LoadError::Manifest)?;
+        let allowlist = Arc::new(Allowlist::new(&manifest.domains).map_err(LoadError::Manifest)?);
         let component = self.compile(wasm).map_err(|e| LoadError::Compile(format!("{e:#}")))?;
         let pre = self.linker.instantiate_pre(&component).map_err(|e| LoadError::Contract(format!("{e:#}")))?;
         let capabilities = [
@@ -228,21 +228,11 @@ impl Host {
         }
     }
 
-    /// For URLs a plugin returns (stream, artwork): scheme, credentials, host in the allowlist.
+    /// For URLs a plugin returns (stream, artwork): the same checks as plugin requests.
     pub fn check_url(&self, p: &Plugin, url: &str) -> Result<reqwest::Url, String> {
         let parsed = reqwest::Url::parse(url).map_err(|e| format!("{url}: {e}"))?;
-        let scheme = parsed.scheme();
-        if scheme != "https" && (self.cfg.net.https_only || scheme != "http") {
-            return Err(format!("scheme not allowed: {scheme}"));
-        }
-        if !parsed.username().is_empty() || parsed.password().is_some() {
-            return Err("credentials in url".into());
-        }
-        // `domain()` is None for an IP host, which no allowlist can contain anyway.
-        match parsed.domain() {
-            Some(host) if p.0.allowlist.allows(host) => Ok(parsed),
-            _ => Err(format!("{} not allowed", parsed.host_str().unwrap_or(""))),
-        }
+        self.cfg.net.check(&p.0.allowlist, &parsed)?;
+        Ok(parsed)
     }
 
     /// One fresh instance per call, under every budget; reports the call as a `HostEvent`.
@@ -261,7 +251,8 @@ impl Host {
             memory: MemoryBudget::new(limits.memory_bytes),
             plugin: p.id().into(),
             storage: self.cfg.storage.clone(),
-            http: self.http.clone(),
+            net: self.cfg.net.clone(),
+            allowlist: p.0.allowlist.clone(),
             max_response_bytes: limits.max_response_bytes,
             http_calls: 0,
         };

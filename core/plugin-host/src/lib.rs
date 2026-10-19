@@ -6,6 +6,8 @@ mod engine;
 mod http;
 mod manifest;
 mod net;
+#[cfg(any(test, feature = "test-util"))]
+mod replay;
 mod storage;
 
 use std::path::PathBuf;
@@ -14,7 +16,7 @@ use std::sync::Arc;
 pub use contract::{music, types};
 pub use engine::{Host, Plugin};
 pub use manifest::{Allowlist, Manifest, RateLimit, parse_manifest};
-pub use net::NetPolicy;
+pub use net::{NetPolicy, is_public};
 #[cfg(any(test, feature = "test-util"))]
 pub use storage::MemoryStorage;
 pub use storage::Storage;
