@@ -11,7 +11,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 WIT_BINDGEN=${WIT_BINDGEN:-wit-bindgen}
 CLANG=${WASI_CLANG:-/opt/homebrew/opt/llvm/bin/clang}
-SYSROOT=${WASI_SYSROOT:-/opt/homebrew/Cellar/wasi-libc/34/share/wasi-sysroot}
+SYSROOT=${WASI_SYSROOT:-/opt/homebrew/opt/wasi-libc/share/wasi-sysroot}
 WASM_COMPONENT_LD=${WASM_COMPONENT_LD:-$(command -v wasm-component-ld)}
 OUT=../../tests/fixtures/c-echo.wasm
 

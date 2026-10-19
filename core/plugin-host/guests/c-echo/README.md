@@ -23,10 +23,11 @@ over wasi-sdk; that route worked, so wasi-sdk was never needed:
   built in; Homebrew's `clang`, not Apple's, since Apple's lacks `wasm-ld`/the
   matching resource dir.
 - `brew install wasi-libc wasi-runtimes` — the wasi-libc sysroot
-  (`crt1-command.o`, `libc.a`, headers) for `wasm32-wasip2`, under
-  `$(brew --cellar)/wasi-libc/*/share/wasi-sysroot`. `wasi-runtimes` was pulled
-  in for its `libc++`/compiler-rt bits but isn't actually needed for this
-  C-only, no-float component.
+  (`crt1-command.o`, `libc.a`, headers) for `wasm32-wasip2`, under the stable
+  `brew --prefix wasi-libc`/`share/wasi-sysroot` symlink (not the versioned
+  Cellar path, which breaks on `brew upgrade`). `wasi-runtimes` was pulled in
+  for its `libc++`/compiler-rt bits but isn't actually needed for this C-only,
+  no-float component.
 - `brew install lld` — `wasm-ld`, not bundled with the `llvm` formula since
   Homebrew 23.
 - `cargo install wasm-component-ld --locked` — the linker that turns the
