@@ -2,8 +2,10 @@
 
 mod engine;
 mod http;
+mod manifest;
 
 pub use engine::{Host, Plugin};
+pub use manifest::{Allowlist, Manifest, RateLimit, parse_manifest};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {

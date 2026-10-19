@@ -1271,6 +1271,8 @@ dependencies = [
  "anyhow",
  "contract",
  "reqwest",
+ "serde",
+ "serde_json",
  "tokio",
  "wasmtime",
  "wasmtime-wasi",
