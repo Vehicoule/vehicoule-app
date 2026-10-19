@@ -235,6 +235,13 @@ impl Host {
         Ok(parsed)
     }
 
+    /// For the core's own fetches of URLs `p` returned (stream, artwork): refuses literal IPs,
+    /// non-public addresses, and hosts or redirects outside `p`'s allowlist.
+    // ponytail: one client (and connection pool) per call; cache per plugin if it shows up.
+    pub fn http_client(&self, p: &Plugin) -> reqwest::Client {
+        self.cfg.net.client_for(p.0.allowlist.clone())
+    }
+
     /// One fresh instance per call, under every budget; reports the call as a `HostEvent`.
     pub(crate) async fn call<T: Returned>(
         &self,

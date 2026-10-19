@@ -14,6 +14,7 @@ sha2 = "0.10"
 wasmtime.workspace = true
 wasmtime-wasi.workspace = true
 tokio = { version = "1", features = ["time", "net"] }
+tower = { version = "0.5", default-features = false, features = ["filter"] }
 
 [features]
 # Test doubles (`NetPolicy::for_tests`, `MemoryStorage`); never enabled by `core`.

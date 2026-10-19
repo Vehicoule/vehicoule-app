@@ -1276,6 +1276,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tokio",
+ "tower",
  "wasmtime",
  "wasmtime-wasi",
  "wiremock",

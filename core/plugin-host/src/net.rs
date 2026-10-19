@@ -16,7 +16,9 @@ const MAX_REDIRECTS: u32 = 5;
 
 #[derive(Clone)]
 pub struct NetPolicy {
+    /// For plugin `fetch`: no automatic redirects, `fetch` follows and checks them.
     client: reqwest::Client,
+    resolver: Resolver,
     /// https and the scheme's default port only; test policies lift both.
     strict_urls: bool,
     #[cfg(any(test, feature = "test-util"))]
@@ -32,25 +34,33 @@ impl Default for NetPolicy {
 
 impl NetPolicy {
     fn new(resolver: Resolver, strict_urls: bool) -> NetPolicy {
-        let client = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(20))
-            .dns_resolver(Arc::new(resolver))
-            .build()
-            .expect("http client");
+        let client = builder(resolver).redirect(reqwest::redirect::Policy::none()).build().expect("http client");
         NetPolicy {
             client,
+            resolver,
             strict_urls,
             #[cfg(any(test, feature = "test-util"))]
             replay: None,
         }
     }
 
-    /// Filtering resolver, no proxy, no automatic redirects. For plugin requests and for the
-    /// core's own fetches of returned URLs (which must go through `Host::check_url` first).
-    pub fn client(&self) -> reqwest::Client {
-        self.client.clone()
+    /// Safe by construction for the core's own fetches of URLs a plugin returned: every
+    /// connection and every redirect (max 5) goes through `check` with `allow`, and DNS
+    /// answers through the filtering resolver.
+    pub(crate) fn client_for(&self, allow: Arc<Allowlist>) -> reqwest::Client {
+        let (policy, list) = (self.clone(), allow.clone());
+        let redirect = reqwest::redirect::Policy::custom(move |attempt| {
+            // `previous` starts with the initial URL.
+            if attempt.previous().len() > MAX_REDIRECTS as usize {
+                return attempt.error("too many redirects");
+            }
+            match policy.check(&list, attempt.url()) {
+                Ok(()) => attempt.follow(),
+                Err(e) => attempt.error(DeniedAddress(e)),
+            }
+        });
+        let gate = tower::filter::FilterLayer::new(gate(self.clone(), allow));
+        builder(self.resolver).redirect(redirect).connector_layer(gate).build().expect("http client")
     }
 
     /// http and any port allowed; `rebind.test` resolves to 10.0.0.1 (refused), any other
@@ -60,10 +70,10 @@ impl NetPolicy {
         NetPolicy::new(Resolver { lookup: Lookup::Test, allow_loopback: true }, false)
     }
 
-    /// Serves `dir/index.json` recordings, never the network; URL checks still apply.
+    /// Serves `dir/index.json` recordings, never the network; URL checks as strict as `default()`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn replay(dir: &std::path::Path) -> NetPolicy {
-        let mut policy = NetPolicy::new(Resolver { lookup: Lookup::Nothing, allow_loopback: false }, false);
+        let mut policy = NetPolicy::new(Resolver { lookup: Lookup::Nothing, allow_loopback: false }, true);
         policy.replay = Some(Arc::new(crate::replay::Replay::load(dir)));
         policy
     }
@@ -139,7 +149,29 @@ enum Lookup {
     Nothing,
 }
 
+fn builder(resolver: Resolver) -> reqwest::ClientBuilder {
+    reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(20)).dns_resolver(Arc::new(resolver))
+}
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+/// Connector predicate: `check` on every new connection's destination. reqwest hides that
+/// destination in a sealed type whose only accessor is `Debug` (`Unnameable(<uri>)`), so it is
+/// parsed from there; an unexpected shape refuses the connection.
+fn gate<R: std::fmt::Debug>(policy: NetPolicy, allow: Arc<Allowlist>) -> impl Fn(R) -> Result<R, BoxError> + Clone {
+    move |dst| {
+        let debug = format!("{dst:?}");
+        let uri = debug.split_once('(').and_then(|(_, rest)| rest.strip_suffix(')'));
+        let url = uri
+            .and_then(|u| Url::parse(u).ok())
+            .ok_or_else(|| DeniedAddress(format!("unreadable destination {debug}")))?;
+        policy.check(&allow, &url).map_err(DeniedAddress)?;
+        Ok(dst)
+    }
+}
+
 /// Keeps only public addresses (plus loopback when allowed); none left → `Denied`.
+#[derive(Clone, Copy)]
 struct Resolver {
     lookup: Lookup,
     allow_loopback: bool,
@@ -208,6 +240,12 @@ pub(crate) async fn fetch(
     let mut url = Url::parse(&req.url).map_err(|e| HttpError::Denied(format!("{}: {e}", req.url)))?;
     let mut method = req.method;
     let mut headers = req.headers;
+    // A plugin never sets framing or routing headers: `Host` would front past the allowlist.
+    headers.retain(|(k, _)| {
+        let k = k.to_ascii_lowercase();
+        !matches!(k.as_str(), "host" | "connection" | "transfer-encoding" | "te" | "upgrade" | "content-length")
+            && !k.starts_with("proxy-")
+    });
     let mut body = req.body;
     let mut redirects = 0;
     loop {
@@ -516,6 +554,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn plugin_host_header_is_ignored() {
+        let server = MockServer::start().await;
+        Mock::given(path("/")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+        let headers = ["Host", "Connection", "Transfer-Encoding", "TE", "Upgrade", "Proxy-Foo"]
+            .map(|k| (k.to_string(), "exfil.example".to_string()))
+            .to_vec();
+        let r = Request { headers, ..req(Method::Get, &format!("{}/", base(&server, "api.test"))) };
+        let (r, _) = run(&NetPolicy::for_tests(), &allow(&["api.test"]), r).await;
+        assert_eq!(r.unwrap().status, 200);
+        let got = server.received_requests().await.unwrap();
+        let h = &got[0].headers;
+        assert_eq!(h.get("host").unwrap(), &format!("api.test:{}", server.address().port()));
+        for k in ["connection", "transfer-encoding", "te", "upgrade", "proxy-foo"] {
+            assert!(h.get(k).is_none_or(|v| v != "exfil.example"), "{k} forwarded");
+        }
+    }
+
+    #[tokio::test]
     async fn final_url_is_reported() {
         let server = MockServer::start().await;
         let api = base(&server, "api.test");
@@ -550,5 +606,9 @@ mod tests {
         }
         let (r, _) = run(&policy, &list, req(Method::Get, "https://evil.com/search?q=x")).await;
         assert_eq!(denied(r), "evil.com not allowed");
+        let (r, _) = run(&policy, &list, req(Method::Get, "http://api.deezer.com/search?q=x")).await;
+        assert_eq!(denied(r), "scheme not allowed: http");
+        let (r, _) = run(&policy, &list, req(Method::Get, "https://api.deezer.com:8443/search?q=x")).await;
+        assert_eq!(denied(r), "port not allowed: 8443");
     }
 }
