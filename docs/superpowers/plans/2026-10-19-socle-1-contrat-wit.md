@@ -42,6 +42,8 @@ exports qu'il implémente) et réutilise les types du SDK via l'option `with` de
 - Lot HTTP : **8** requêtes au plus par `send-batch`.
 - Noms réservés du modèle de composants async : ne jamais nommer un type `stream` ni
   `future`.
+- `sdk/` dépend du **WIT** de `contract`, pas de la crate (qui tire Wasmtime, inutilisable
+  en guest).
 - Le SDK et les plugins dépendent de ce dépôt par tag Git : tag **`contract-v1.0.0`** posé en
   fin de plan. Tant qu'aucun remote n'existe, les dépôts de plugins utilisent
   `git = "file:///Users/btw/Documents/repo/Vehicoule"`.
@@ -68,8 +70,11 @@ exports qu'il implémente) et réutilise les types du SDK via l'option `with` de
 ### Task 1 : fichiers WIT 1.0 et bindings hôte
 
 **Files :**
-- Replace : `core/contract/wit/host.wit`
-- Create : `core/contract/wit/music.wit`
+- Delete : `core/contract/wit/host.wit` (contrat 0.1)
+- Create : `core/contract/wit/host/host.wit`, `core/contract/wit/music/music.wit` — un
+  dossier par paquet : wit-parser refuse deux paquets dans un même dossier. Tout
+  consommateur passe la liste `[host, music, <son propre dossier>]` : le macro pousse les
+  chemins dans l'ordre et un paquet peut référencer ceux poussés avant lui.
 - Modify : `core/contract/src/lib.rs`, `core/contract/Cargo.toml` (ajout `sha2` en
   dev-dependency)
 - Test : `core/contract/tests/frozen.rs`
@@ -83,8 +88,8 @@ exports qu'il implémente) et réutilise les types du SDK via l'option `with` de
   pub mod music {                                            // exports, un module par capacité
       pub use crate::exports::vehicoule::music::{search, suggest, entity, resolve, lyrics, radio};
   }
-  pub const HOST_WIT: &str;   // include_str!("../wit/host.wit")
-  pub const MUSIC_WIT: &str;  // include_str!("../wit/music.wit")
+  pub const HOST_WIT: &str;   // include_str!("../wit/host/host.wit")
+  pub const MUSIC_WIT: &str;  // include_str!("../wit/music/music.wit")
   ```
   Chaque module de `music` expose `GuestIndices::new(&InstancePre<T>) -> wasmtime::Result<GuestIndices>`
   et `GuestIndices::load(&self, store, &Instance) -> wasmtime::Result<Guest>` (vérifié dans
@@ -341,11 +346,11 @@ fn wit_1_0_is_frozen() {
 }
 
 #[test]
-fn wit_parses_with_wasm_tools() // `wasm-tools component wit core/contract/wit` exits 0 (skip with a clear panic message if wasm-tools is missing)
+fn wit_parses_with_wasm_tools() // `wasm-tools component wit` sur wit/host puis wit/music (avec `--deps`… selon la version) exits 0 ; panique claire si wasm-tools manque
 ```
 
 - [ ] **Step 4 : vérifier l'échec** — `cargo test -p contract` → FAIL (constantes absentes).
-- [ ] **Step 5 : implémenter `lib.rs`** : `bindgen!({ path: "wit", world: "vehicoule:music/plugin",
+- [ ] **Step 5 : implémenter `lib.rs`** : `bindgen!({ path: ["wit/host", "wit/music"], world: "vehicoule:music/plugin",
   imports: { default: async }, exports: { default: async } })`, les ré-exports ci-dessus,
   les deux constantes. Remplir les hashes avec la valeur calculée une fois le texte relu
   contre la spec.
@@ -367,7 +372,7 @@ fn wit_parses_with_wasm_tools() // `wasm-tools component wit core/contract/wit` 
 - Produces :
   ```rust
   pub use wit_bindgen;  pub use serde;  pub use serde_json;
-  pub mod bindings;      // wit_bindgen::generate!({ path: "../core/contract/wit", world: "vehicoule:music/sdk", pub_export_macro: false })
+  pub mod bindings;      // wit_bindgen::generate!({ path: ["../core/contract/wit/host", "../core/contract/wit/music"], world: "vehicoule:music/sdk" })
   pub use bindings::vehicoule::host::{http as host_http, kv, clock, log};
   pub use bindings::vehicoule::music::types;                     // Track, Error, TrackQuery…
   pub const HOST_WIT: &str;  pub const MUSIC_WIT: &str;          // include_str! des mêmes fichiers
@@ -401,8 +406,9 @@ fn wit_parses_with_wasm_tools() // `wasm-tools component wit core/contract/wit` 
   lui-même le résultat par `budget-exceeded` (plan 2).
 - [ ] **Step 4 : vérifier** — `cargo test --manifest-path sdk/Cargo.toml` → PASS ;
   `cargo build --manifest-path sdk/Cargo.toml --target wasm32-wasip2` → OK.
-- [ ] **Step 5 : README** du SDK (FR) : monde d'un plugin type, option `with`, vendorisation
-  de `wit/deps/` vérifiée par test (modèle du plan 6), exemple `get_json`.
+- [ ] **Step 5 : README** du SDK (FR) : monde d'un plugin type, option `with`, liste de
+  chemins `[wit/host, wit/music, wit]`, vendorisation vérifiée par test (modèle du plan 6),
+  exemple `get_json`.
 
 ### Task 3 : `plugin-host` et ses composants de test sur le contrat 1.0
 
@@ -444,7 +450,7 @@ plan 2.
   et les trois autres interfaces hôte avec des implémentations minimales (`kv` en mémoire
   dans `State`, `clock` = `SystemTime`, `log` ignoré) ; le plan 2 les remplace. `exports()`
   essaie `GuestIndices::new` de chaque module de `contract::music` sur un `InstancePre`.
-  Composants : générés avec `wit_bindgen::generate!({ path: "../wit", world: "…", with: {…sdk…} })`.
+  Composants : générés avec `wit_bindgen::generate!({ path: ["../../../contract/wit/host", "../../../contract/wit/music", "../wit"], world: "…", with: {…sdk…} })`.
 - [ ] **Step 4 : vérifier** — `cargo test --manifest-path core/Cargo.toml` → PASS (11 tests
   de l'étape 1 + `partial_exports_are_detected`).
 - [ ] **Step 5 : commit** (tâches 1 à 3 ensemble, l'arbre n'était pas vert avant) :

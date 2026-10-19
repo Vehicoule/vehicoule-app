@@ -177,6 +177,9 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   du nouveau feed est désactivé, pas supprimé. Échec d'un plugin = journal + on continue.
   `refresh_feeds` n'est jamais appelé pendant `init` ; `App` le lance en tâche de fond
   10 s après le démarrage puis toutes les 24 h.
+  Chaque `HostEvent::Log` est versé dans `logs::push` (source = id du plugin) ; chaque
+  `HostEvent::Call` aussi, sous la forme `call <capacité> fuel=<n> http=<n> wall=<ms> <issue>` :
+  c'est ce que lit la calibration du fuel sur téléphone (plan 6).
 
 - [ ] **Step 1 : tests qui échouent**
 

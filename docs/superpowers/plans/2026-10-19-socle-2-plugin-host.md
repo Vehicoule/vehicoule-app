@@ -200,8 +200,9 @@ Remplace l'API provisoire du plan 1 (`compile`, `search(&str)`, `exports()`).
 #[test] fn contract_major_mismatch_is_refused()             // manifeste "contract":"2.0" → LoadError::Contract
 ```
   Migrer `budgets.rs` : `OutOfFuel` → `Err(BudgetExceeded(Fuel))`, `Deadline` →
-  `BudgetExceeded(Time)`, `Memory` → `BudgetExceeded(Memory)` ; le test du composant C du
-  plan 1 garde son entrée `get <url>`.
+  `BudgetExceeded(Time)`, `Memory` → `BudgetExceeded(Memory)` ; le composant C du plan 1
+  garde son comportement (requête = URL) : son test appelle `host.search` avec
+  `query = url` et attend `tracks[0].title == "204"`.
 - [ ] **Step 2 : vérifier l'échec** — `cargo test -p plugin-host` → FAIL.
 - [ ] **Step 3 : implémenter.**
   - `load` : `parse_manifest`, contrôle du contrat, puis cache disque
@@ -409,3 +410,5 @@ l'autre (constat 4 du rapport).
 - [ ] **Step 4 : vérifier** — `cargo test --manifest-path core/Cargo.toml --all-features` → PASS ;
   `cargo clippy --manifest-path core/Cargo.toml --all-targets --all-features -- -D warnings` → OK.
 - [ ] **Step 5 : commit** — `feat(plugin-host): feeds signés et outil vehicoule-feed`.
+- [ ] **Step 6 : tag** — `git tag plugin-host-v1.0.0` (les dépôts de plugins en dépendent
+  en dev-dependency avec la feature `test-util`, pour le rejeu ; plan 6).
