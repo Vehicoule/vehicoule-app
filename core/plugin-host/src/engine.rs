@@ -1,7 +1,7 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use contract::music::{entity, lyrics, radio, resolve, search, suggest};
@@ -13,7 +13,8 @@ use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::calls::Returned;
 use crate::manifest::{Allowlist, Manifest, parse_manifest, validate_contract};
-use crate::net::NetPolicy;
+use crate::net::{HttpBudget, NetPolicy};
+use crate::rate::RateLimiter;
 use crate::storage::{self, Storage};
 use crate::{Budget, CallError, CallReport, Capability, HostConfig, HostEvent, LoadError};
 
@@ -36,6 +37,8 @@ struct Loaded {
     allowlist: Arc<Allowlist>,
     pre: InstancePre<State>,
     capabilities: Vec<Capability>,
+    /// One per plugin, shared by every call it makes; `None` when the manifest asks for none.
+    rate_limiter: Option<RateLimiter>,
 }
 
 impl Plugin {
@@ -66,8 +69,11 @@ pub(crate) struct State {
     pub(crate) net: NetPolicy,
     pub(crate) allowlist: Arc<Allowlist>,
     pub(crate) max_response_bytes: usize,
-    /// Requests sent during this call, batch members included.
-    pub(crate) http_calls: u32,
+    /// Shared by every sequential `send` and every member of a concurrent `send_batch`.
+    pub(crate) http_budget: Mutex<HttpBudget>,
+    pub(crate) rate_limiter: Option<RateLimiter>,
+    /// Forces every outgoing request's `User-Agent` when the manifest asks for it.
+    pub(crate) user_agent: Option<String>,
 }
 
 /// One memory budget for the whole plugin (`StoreLimits::memory_size` would apply it to
@@ -203,7 +209,8 @@ impl Host {
             (Capability::Radio, radio::GuestIndices::new(&pre).is_ok()),
         ];
         let capabilities = capabilities.into_iter().filter_map(|(c, ok)| ok.then_some(c)).collect();
-        Ok(Plugin(Arc::new(Loaded { manifest, allowlist, pre, capabilities })))
+        let rate_limiter = manifest.rate_limit.map(RateLimiter::new);
+        Ok(Plugin(Arc::new(Loaded { manifest, allowlist, pre, capabilities, rate_limiter })))
     }
 
     /// `cache_dir/<sha256(wasm)>-<engine hash>.cwasm`, else compile and write it.
@@ -252,6 +259,10 @@ impl Host {
         let start = Instant::now();
         let limits = self.cfg.limits;
         let wasi = WasiCtx::builder().allow_tcp(false).allow_udp(false).allow_ip_name_lookup(false).build();
+        let user_agent = p
+            .manifest()
+            .descriptive_user_agent
+            .then(|| format!("Vehicoule/{} (+https://vehicoule.app)", self.cfg.app_version));
         let state = State {
             wasi,
             table: ResourceTable::new(),
@@ -261,7 +272,9 @@ impl Host {
             net: self.cfg.net.clone(),
             allowlist: p.0.allowlist.clone(),
             max_response_bytes: limits.max_response_bytes,
-            http_calls: 0,
+            http_budget: Mutex::new(HttpBudget::new(limits.max_http_calls, limits.max_http_bytes)),
+            rate_limiter: p.0.rate_limiter.clone(),
+            user_agent,
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.memory);
@@ -282,6 +295,12 @@ impl Host {
             match tokio::time::timeout(wall, call).await {
                 Err(_) => Err(CallError::BudgetExceeded(Budget::Time)),
                 Ok(Ok(Ok(found))) => found.checked(self, p),
+                // A guest that caught `budget-exceeded` itself and returned `Ok` took the
+                // branch above and keeps that `Ok`; only an `Err` reaching here while the
+                // budget was hit is turned into the typed `BudgetExceeded(Http)`.
+                Ok(Ok(Err(_))) if store.data().http_budget.lock().unwrap().hit => {
+                    Err(CallError::BudgetExceeded(Budget::Http))
+                }
                 Ok(Ok(Err(e))) => Err(e.into()),
                 Ok(Err(_)) if store.data().memory.memory_denied => Err(CallError::BudgetExceeded(Budget::Memory)),
                 Ok(Err(e)) => Err(match e.downcast_ref::<Trap>() {
@@ -296,7 +315,7 @@ impl Host {
             plugin: p.id().into(),
             capability,
             fuel_used: limits.fuel.saturating_sub(store.get_fuel().unwrap_or(limits.fuel)),
-            http_calls: store.data().http_calls,
+            http_calls: store.data().http_budget.lock().unwrap().calls,
             wall_ms: start.elapsed().as_millis() as u64,
             outcome: outcome.as_ref().map(|_| ()).map_err(Clone::clone),
         };

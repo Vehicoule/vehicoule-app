@@ -36,6 +36,17 @@ pub fn manifest(id: &str, contract: &str) -> Vec<u8> {
         .into_bytes()
 }
 
+/// Like `manifest`, with an optional rate limit and a descriptive-User-Agent flag.
+pub fn manifest_ex(id: &str, rate_limit: Option<(u32, u32)>, descriptive_user_agent: bool) -> Vec<u8> {
+    let rl = rate_limit
+        .map(|(requests, per_seconds)| format!(r#","rate_limit":{{"requests":{requests},"per_seconds":{per_seconds}}}"#))
+        .unwrap_or_default();
+    format!(
+        r#"{{"id":"{id}","name":"{id}","version":"1.0.0","contract":"1.0","domains":["api.test"],"descriptive_user_agent":{descriptive_user_agent}{rl}}}"#
+    )
+    .into_bytes()
+}
+
 /// A fresh, empty directory under the system temp dir.
 pub fn temp_dir() -> PathBuf {
     static N: AtomicU32 = AtomicU32::new(0);

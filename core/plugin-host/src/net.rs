@@ -3,16 +3,57 @@
 //! actually connected to), redirects followed by hand and re-checked at every hop.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use contract::http::{HttpError, Method, Request, Response};
 use reqwest::Url;
-use reqwest::header::{HeaderMap, LOCATION};
+use reqwest::header::{HeaderMap, LOCATION, USER_AGENT};
 
 use crate::manifest::{Allowlist, ends_in_number};
+use crate::rate::RateLimiter;
 
 const MAX_REDIRECTS: u32 = 5;
+
+/// Per-call HTTP budget: `max_http_calls` requests (every redirect hop counts as one) and
+/// `max_http_bytes` of request-plus-response bodies. Lives in `State`, one per capability call,
+/// shared (behind a `Mutex`) by every sequential `send` and every member of a concurrent batch.
+pub(crate) struct HttpBudget {
+    pub calls: u32,
+    pub bytes: usize,
+    pub hit: bool,
+    max_calls: u32,
+    max_bytes: usize,
+}
+
+impl HttpBudget {
+    pub fn new(max_calls: u32, max_bytes: usize) -> Self {
+        HttpBudget { calls: 0, bytes: 0, hit: false, max_calls, max_bytes }
+    }
+
+    fn take_call(&mut self) -> Result<(), HttpError> {
+        if self.calls >= self.max_calls {
+            self.hit = true;
+            return Err(HttpError::BudgetExceeded);
+        }
+        self.calls += 1;
+        Ok(())
+    }
+
+    /// `n` more bytes sent or received; a request/response that pushes the running total past
+    /// the cap is still let through (its size could not be known in advance) but is itself
+    /// refused, matching "N MiB exchanged per call".
+    // ponytail: refuses after the oversized body is fully fetched, not before; add a
+    // Content-Length pre-check against the remaining budget if wasting that bandwidth matters.
+    fn add_bytes(&mut self, n: usize) -> Result<(), HttpError> {
+        self.bytes += n;
+        if self.bytes > self.max_bytes {
+            self.hit = true;
+            return Err(HttpError::BudgetExceeded);
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone)]
 pub struct NetPolicy {
@@ -228,14 +269,18 @@ pub(crate) enum Body {
     Recorded(Vec<u8>),
 }
 
-/// Sends `req` under `policy` and `allow`, following up to 5 redirects by hand. Every request
-/// sent (each hop) adds one to `calls`; the body is read up to `max_body` bytes.
+/// Sends `req` under `policy` and `allow`, following up to 5 redirects by hand. Every hop is
+/// charged to `budget` (one call, plus the bytes it sends and receives) and, when `rate_limiter`
+/// is set, waits for a token first. `user_agent`, when set, overrides any plugin-set
+/// `User-Agent` for every hop; when `None` the plugin's own header (if any) is left alone.
 pub(crate) async fn fetch(
     policy: &NetPolicy,
     allow: &Allowlist,
     req: Request,
     max_body: usize,
-    calls: &mut u32,
+    budget: &Mutex<HttpBudget>,
+    rate_limiter: Option<&RateLimiter>,
+    user_agent: Option<&str>,
 ) -> Result<Response, HttpError> {
     let mut url = Url::parse(&req.url).map_err(|e| HttpError::Denied(format!("{}: {e}", req.url)))?;
     let mut method = req.method;
@@ -246,17 +291,29 @@ pub(crate) async fn fetch(
         !matches!(k.as_str(), "host" | "connection" | "transfer-encoding" | "te" | "upgrade" | "content-length")
             && !k.starts_with("proxy-")
     });
+    if let Some(ua) = user_agent {
+        headers.retain(|(k, _)| !k.eq_ignore_ascii_case(USER_AGENT.as_str()));
+        headers.push((USER_AGENT.as_str().to_string(), ua.to_string()));
+    }
     let mut body = req.body;
     let mut redirects = 0;
     loop {
         policy.check(allow, &url).map_err(HttpError::Denied)?;
-        // ponytail: plain counter; task 4 turns it into the per-call HTTP budget.
-        *calls += 1;
+        {
+            let mut b = budget.lock().unwrap();
+            b.take_call()?;
+            b.add_bytes(body.as_ref().map_or(0, Vec::len))?;
+        }
+        if let Some(rate_limiter) = rate_limiter {
+            rate_limiter.acquire().await;
+        }
         let hop = send(policy, method, &url, &headers, body.clone()).await?;
         let redirect = matches!(hop.status, 301..=303 | 307 | 308);
         let location = redirect.then(|| header(&hop.headers, LOCATION.as_str())).flatten();
         let Some(location) = location else {
-            return read(hop, url, max_body).await;
+            let resp = read(hop, url, max_body).await?;
+            budget.lock().unwrap().add_bytes(resp.body.len())?;
+            return Ok(resp);
         };
         if redirects == MAX_REDIRECTS {
             return Err(HttpError::Network("too many redirects".into()));
@@ -370,9 +427,9 @@ mod tests {
     }
 
     async fn run(policy: &NetPolicy, allow: &Allowlist, req: Request) -> (Result<Response, HttpError>, u32) {
-        let mut calls = 0;
-        let r = fetch(policy, allow, req, 8 << 20, &mut calls).await;
-        (r, calls)
+        let budget = Mutex::new(HttpBudget::new(u32::MAX, usize::MAX));
+        let r = fetch(policy, allow, req, 8 << 20, &budget, None, None).await;
+        (r, budget.into_inner().unwrap().calls)
     }
 
     fn denied(r: Result<Response, HttpError>) -> String {

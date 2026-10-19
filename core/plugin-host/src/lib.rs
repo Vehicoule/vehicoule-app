@@ -6,6 +6,7 @@ mod engine;
 mod http;
 mod manifest;
 mod net;
+mod rate;
 #[cfg(any(test, feature = "test-util"))]
 mod replay;
 mod storage;

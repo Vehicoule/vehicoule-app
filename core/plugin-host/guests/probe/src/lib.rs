@@ -1,7 +1,9 @@
 //! Host probe: runs the command in `search-request.query`, reports in the tracks' titles.
-//! `get <url>` (status), `count <url> <n>` (n sequential GETs), `batch <url> <n>` (one
-//! `send-batch`, one track per result), `kv-set <k> <v>`, `kv-get <k>`, `print <text>`,
-//! `log <text>`, `art <url>` (a track with that artwork). `resolve` streams `track.title`.
+//! `get <url>` (status), `count <url> <n>` (n sequential GETs), `count-ok <url> <n>` (n
+//! sequential GETs, errors counted but swallowed), `batch <url> <n>` (one `send-batch`, one
+//! track per result), `ua <url> <value>` (one GET with that `User-Agent` header), `kv-set
+//! <k> <v>`, `kv-get <k>`, `print <text>`, `log <text>`, `art <url>` (a track with that
+//! artwork). `resolve` streams `track.title`.
 wit_bindgen::generate!({
     path: ["../../../contract/wit/host", "../../../contract/wit/music", "../wit"],
     world: "vehicoule:test-guests/test-probe",
@@ -50,6 +52,21 @@ impl search::Guest for Probe {
                     host_http::send(&get(a)).map_err(from_http_error)?;
                 }
                 n.to_string()
+            }
+            "count-ok" => {
+                let n = count(b)?;
+                let mut errs = 0u32;
+                for _ in 0..n {
+                    if host_http::send(&get(a)).is_err() {
+                        errs += 1;
+                    }
+                }
+                format!("errs={errs}")
+            }
+            "ua" => {
+                let req = Request { headers: vec![("User-Agent".into(), b.into())], ..get(a) };
+                let resp = host_http::send(&req).map_err(from_http_error)?;
+                resp.status.to_string()
             }
             "batch" => {
                 let reqs: Vec<Request> = (0..count(b)?).map(|_| get(a)).collect();

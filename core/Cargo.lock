@@ -1270,6 +1270,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "contract",
+ "futures",
  "plugin-host",
  "reqwest",
  "serde",
