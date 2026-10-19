@@ -253,7 +253,7 @@ CREATE VIRTUAL TABLE library_fts USING fts5(item_id UNINDEXED, title, subtitle,
   pub fn children(c: &Connection, parent: ItemId, page: Page) -> rusqlite::Result<Vec<ItemId>>;
   // refs.rs
   pub struct ExtRef { pub external_id: String, pub pinned: bool }
-  pub fn item_for(c: &Connection, provider: &str, external_id: &str) -> rusqlite::Result<Option<ItemId>>; // racine
+  pub fn item_for(c: &Connection, provider: &str, kind: Kind, external_id: &str) -> rusqlite::Result<Option<ItemId>>; // racine ; le même id peut exister pour deux kinds chez un fournisseur
   pub fn get(c: &Connection, item: ItemId, provider: &str) -> rusqlite::Result<Option<ExtRef>>;           // épinglée d'abord
   pub fn all(c: &Connection, item: ItemId) -> rusqlite::Result<Vec<(String, ExtRef)>>;
   pub fn record(tx: &Tx, item: ItemId, provider: &str, external_id: &str) -> rusqlite::Result<()>;        // non épinglée, ignorée si une épinglée existe
@@ -269,7 +269,7 @@ CREATE VIRTUAL TABLE library_fts USING fts5(item_id UNINDEXED, title, subtitle,
   `upsert_*` cherche d'abord `(provider, ext_id)`, puis pour un titre l'ISRC ;
   sinon crée l'item. Il met à jour titre, détails, pochettes du fournisseur et la ligne
   `library_fts` (`title` = `fold(titre)`, `subtitle` = `fold(artistes + album)`). `pin`
-  supprime les autres références de `(item, provider)` ; si `external_id` est déjà
+  supprime les autres références de `(item, provider)` (jamais celles d'autres items) ; si `external_id` est déjà
   **épinglé** sur un autre item du même `kind`, les deux sont fusionnés. `merge` réécrit
   aussi les `merged_into` qui visaient l'item fusionné, pour garder un seul saut.
 
