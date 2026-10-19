@@ -12,3 +12,8 @@ opt-level = "s"
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+
+# Same without panic=abort: panics stay catchable (the bridge can turn them into Dart errors).
+[profile.size-unwind]
+inherits = "size"
+panic = "unwind"
