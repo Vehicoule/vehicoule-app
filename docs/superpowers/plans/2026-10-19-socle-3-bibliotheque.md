@@ -341,6 +341,7 @@ CREATE VIRTUAL TABLE library_fts USING fts5(item_id UNINDEXED, title, subtitle,
 #[test] fn writes_carry_sync_columns()         // likes, playlists, playlist_items, plays : updated_at = stamp HLC, device_id = db.device_id()
 #[test] fn playlist_add_and_move_keep_order()  // add [a,b,c] End ; move c After(a) → [a,c,b] ; add [d] Start → [d,a,c,b]
 #[test] fn equal_order_keys_sort_by_id()       // deux lignes forcées avec la même order_key → ordre = ordre des id, stable entre lectures
+#[test] fn move_next_to_equal_keys_does_not_panic() // add/move_entry prennent les voisins strictement ordonnés et valides (order::is_valid_key)
 #[test] fn deleted_playlist_is_hidden()
 #[test] fn recent_items_are_distinct()         // a, b, a → [a, b]
 #[test] fn queue_roundtrip()                   // save puis load → même JSON ; une seule ligne
