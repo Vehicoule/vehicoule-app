@@ -158,13 +158,14 @@ tâche 7 demande aussi les plans 4 et 5 (app sur le téléphone).
   struct HostHttp;  impl ytmusic_resolve::Http for HostHttp { async fn send(&self, req) -> … } // import sync, pas de Send
   fn to_error(e: ResolveError) -> types::Error;  // Network→network, ProviderWall→provider-wall, RateLimited→rate-limited,
                                                  // NotFound→not-found, NeedsJs→internal("needs js"), Parse(m)→internal(m)
-  fn to_track(c: &Candidate) -> types::Track;    // id = videoId, artwork = https://i.ytimg.com/vi/<id>/hqdefault.jpg
+  fn to_track(c: &Candidate) -> types::Track;    // id = videoId, artistes { id: None, name }, artwork = https://i.ytimg.com/vi/<id>/hqdefault.jpg
   fn to_query(q: &types::TrackQuery) -> TrackQuery;
   ```
 - Règles de `resolve` : visiteur lu dans `kv` (`visitor_data`) puis réécrit s'il a changé ;
   `req.track.id` présent et absent de `tried` → résolution directe ; sinon `find_ranked`,
   premier candidat hors `tried` ; `candidates` = les 5 suivants (score inclus) ;
-  `source.expires-at-ms` = `expires_at_unix × 1000`. `entity` : `playlist` seulement
+  `source.expires-at-ms` = `Some(expires_at_unix × 1000)` ; `bitrate` en bits/s ; `loudness-db`
+  = `loudnessDb` de YouTube (déjà relatif à −14 LUFS). `entity` : `playlist` seulement
   (autres kinds → `not-found`) ; `parse-link` → `parse_playlist_link`. `radio` : graine =
   `seed.id`, sinon `find` ; `up_next` limité à `limit`. `search` : candidats YouTube Music
   en `tracks` ; autres kinds vides.

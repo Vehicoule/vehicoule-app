@@ -227,9 +227,9 @@ CREATE VIRTUAL TABLE library_fts USING fts5(item_id UNINDEXED, title, subtitle,
 - Produces :
   ```rust
   pub struct Image { pub url: String, pub width: Option<u32> }
-  pub struct ArtistData { pub ext_id: String, pub name: String, pub artwork: Vec<Image> }
+  pub struct ArtistData { pub ext_id: Option<String>, pub name: String, pub artwork: Vec<Image> } // None : le fournisseur ne donne que le nom
   pub struct TrackData { pub ext_id: String, pub title: String, pub artists: Vec<ArtistData>,
-                         pub album: Option<(String, String)>,      // (ext_id, titre)
+                         pub album: Option<(Option<String>, String)>, // (ext_id, titre)
                          pub duration_ms: Option<u32>, pub isrc: Option<String>, pub explicit: bool,
                          pub artwork: Vec<Image> }
   pub struct AlbumData { pub ext_id: String, pub title: String, pub artists: Vec<ArtistData>,
@@ -264,7 +264,9 @@ CREATE VIRTUAL TABLE library_fts USING fts5(item_id UNINDEXED, title, subtitle,
   // fold.rs
   pub fn fold(s: &str) -> String;   // minuscules, accents latins retirés (NFD sans marques), ponctuation → espace, espaces compactés ; non-latin conservé
   ```
-- Règles : `upsert_*` cherche d'abord `(provider, ext_id)`, puis pour un titre l'ISRC ;
+- Règles : un artiste ou un album sans `ext_id` est référencé par
+  `(provider, "name:" + fold(nom))` (homonymes fusionnés chez ce seul fournisseur) ;
+  `upsert_*` cherche d'abord `(provider, ext_id)`, puis pour un titre l'ISRC ;
   sinon crée l'item. Il met à jour titre, détails, pochettes du fournisseur et la ligne
   `library_fts` (`title` = `fold(titre)`, `subtitle` = `fold(artistes + album)`). `pin`
   supprime les autres références de `(item, provider)` ; si `external_id` est déjà

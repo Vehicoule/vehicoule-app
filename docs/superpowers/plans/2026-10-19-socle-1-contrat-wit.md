@@ -40,6 +40,8 @@ exports qu'il implémente) et réutilise les types du SDK via l'option `with` de
   candidats déjà essayés ; renvoie URL, en-têtes, expiration, format, candidats,
   `loudness-db` optionnel.
 - Lot HTTP : **8** requêtes au plus par `send-batch`.
+- `.gitattributes` : `*.wit text eol=lf` (les hashes figés ne dépendent pas des fins de
+  ligne).
 - Noms réservés du modèle de composants async : ne jamais nommer un type `stream` ni
   `future`.
 - `sdk/` dépend du **WIT** de `contract`, pas de la crate (qui tire Wasmtime, inutilisable
@@ -178,8 +180,9 @@ interface types {
     }
 
     record image { url: string, width: option<u32>, height: option<u32> }
-    record artist-ref { id: string, name: string }
-    record album-ref { id: string, title: string }
+    /// `id` is none when the provider only gives a name.
+    record artist-ref { id: option<string>, name: string }
+    record album-ref { id: option<string>, title: string }
 
     record track {
         id: string,
@@ -231,8 +234,11 @@ interface search {
     use types.{error, track, album, artist, playlist, entity-kind};
     record search-request {
         query: string,
+        /// Empty = every kind.
         kinds: list<entity-kind>,
+        /// ISO 3166-1 alpha-2, uppercase.
         region: string,
+        /// Per kind.
         limit: u32,
         cursor: option<string>,
     }
@@ -260,7 +266,7 @@ interface entity {
         tracks: list<track>,
         /// An artist's albums; empty for other kinds.
         albums: list<album>,
-        /// Cursor for the next page of `tracks`.
+        /// Cursor for the next page: of `tracks`, or of `albums` for an artist.
         next: option<string>,
     }
     fetch: func(target: entity-ref, region: string, cursor: option<string>) -> result<entity-page, error>;
@@ -281,11 +287,13 @@ interface resolve {
     record source {
         url: string,
         headers: list<tuple<string, string>>,
-        expires-at-ms: u64,
+        /// Unix ms; none = no known expiry.
+        expires-at-ms: option<u64>,
         mime: string,
+        /// Bits per second.
         bitrate: u32,
         content-length: option<u64>,
-        /// Loudness above the platform target, in dB (positive = turn down).
+        /// Loudness in dB above -14 LUFS integrated (positive = turn down).
         loudness-db: option<f32>,
     }
     record candidate {
