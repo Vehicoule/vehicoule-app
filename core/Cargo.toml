@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["contract", "plugin-host"]
+members = ["contract", "core", "plugin-host"]
 exclude = ["plugin-host/guests"]
 
 [workspace.package]
@@ -11,3 +11,5 @@ edition = "2024"
 # plugin-host's own compile cache.
 wasmtime = { version = "48.0.6", default-features = false, features = ["std", "runtime", "cranelift", "pulley", "component-model", "async", "anyhow"] }
 wasmtime-wasi = { version = "48.0.6", default-features = false, features = ["p2"] }
+rusqlite = { version = "0.40", features = ["bundled", "functions"] }
+uuid = { version = "1", features = ["v7"] }
