@@ -241,7 +241,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   ```
 - Pochette choisie : fournisseurs dans l'ordre de la capacité pochettes, la plus petite
   largeur ≥ `size` (sinon la plus grande) ; URL contrôlée par `host.check_url` du plugin
-  d'origine avant tout téléchargement, avec le client `NetPolicy::client()`.
+  d'origine avant tout téléchargement, avec le client `host.http_client(&plugin)` (plugin-host : IP littérales refusées, chaque redirection re-vérifiée).
 - Hors ligne (`App` sait qu'on est hors ligne, tâche 5) : `search`, `suggest` réseau,
   `entity` non caché, `import` → `CoreError::Offline` sans appel.
 
