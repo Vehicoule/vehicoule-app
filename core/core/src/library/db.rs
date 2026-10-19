@@ -190,17 +190,23 @@ impl Db {
                 if !guard.conn.is_autocommit() {
                     let _ = guard.conn.execute_batch("ROLLBACK");
                 }
+                self.inner.clear_poison();
                 guard
             }
         }
     }
 }
 
-/// Resets `PRAGMA query_only` to OFF when dropped, including on panic/error unwind.
+/// Resets `PRAGMA query_only` to OFF when dropped, including on panic/error unwind. Also
+/// rolls back a transaction the closure left open (e.g. a raw `BEGIN` followed by an `Err`
+/// return) — that path never poisons the mutex, so `Db::lock`'s own recovery never runs.
 struct QueryOnlyReset<'c>(&'c Connection);
 
 impl Drop for QueryOnlyReset<'_> {
     fn drop(&mut self) {
+        if !self.0.is_autocommit() {
+            let _ = self.0.execute_batch("ROLLBACK");
+        }
         let _ = self.0.pragma_update(None, "query_only", false);
     }
 }
@@ -350,13 +356,22 @@ mod tests {
     fn reads_run_query_only_and_reset_afterwards() {
         let db = Db::open_in_memory().unwrap();
         let id = ItemId::new();
-        let err = db.read_blocking(|c| {
-            c.execute(
-                "INSERT INTO items (id, kind, title, updated_at, device_id) VALUES (?1, 'track', 't', 0, x'00')",
-                [id],
-            )
-        });
-        assert!(err.is_err(), "write inside read_blocking should fail under query_only");
+        // Capture the sqlite error *code* from inside the closure: `DbError::Sqlite` only
+        // keeps the formatted message, so this is the only place the structured code survives.
+        let code = db
+            .read_blocking(|c| {
+                let result = c.execute(
+                    "INSERT INTO items (id, kind, title, updated_at, device_id) VALUES (?1, 'track', 't', 0, x'00')",
+                    [id],
+                );
+                match result {
+                    Err(rusqlite::Error::SqliteFailure(e, _)) => Ok(e.code),
+                    Err(other) => panic!("expected a sqlite error, got {other:?}"),
+                    Ok(_) => panic!("write inside read_blocking should fail under query_only"),
+                }
+            })
+            .unwrap();
+        assert_eq!(code, rusqlite::ErrorCode::ReadOnly);
         // query_only must be reset to OFF under the same lock, even though the closure errored.
         db.write_blocking(|tx| {
             tx.tx.execute(
@@ -386,9 +401,23 @@ mod tests {
             })
         });
         assert!(result.is_err(), "the closure should have panicked");
-        // The mutex is now poisoned with conn.is_autocommit() == false. Recovery must roll
-        // back before the connection is used again, otherwise this would fail to open its
-        // own transaction ("cannot start a transaction within a transaction").
+        // Either the read-reset guard's own rollback (unwinding through it) or `Db::lock`'s
+        // poison recovery must have rolled this back — one of the two always runs, in that
+        // order — otherwise this would fail to open its own transaction ("cannot start a
+        // transaction within a transaction").
+        db.write_blocking(|_tx| Ok::<(), rusqlite::Error>(())).unwrap();
+    }
+
+    #[test]
+    fn read_closure_erroring_after_begin_rolls_back() {
+        let db = Db::open_in_memory().unwrap();
+        // No panic here, so the mutex is never poisoned: only the read-reset guard's own
+        // rollback-if-open-transaction check (not `Db::lock`'s poison recovery) can save this.
+        let err: Result<(), DbError> = db.read_blocking(|c| {
+            c.execute_batch("BEGIN")?;
+            Err(rusqlite::Error::QueryReturnedNoRows)
+        });
+        assert!(err.is_err());
         db.write_blocking(|_tx| Ok::<(), rusqlite::Error>(())).unwrap();
     }
 
