@@ -9,6 +9,7 @@ use std::time::Duration;
 use contract::http::{HttpError, Method, Request, Response};
 use reqwest::Url;
 use reqwest::header::{HeaderMap, LOCATION, USER_AGENT};
+use tokio::time::Instant;
 
 use crate::manifest::{Allowlist, ends_in_number};
 use crate::rate::RateLimiter;
@@ -31,21 +32,23 @@ impl HttpBudget {
         HttpBudget { calls: 0, bytes: 0, hit: false, max_calls, max_bytes }
     }
 
-    fn take_call(&mut self) -> Result<(), HttpError> {
-        if self.calls >= self.max_calls {
+    /// Reserves one call and `body_len` request bytes, charged together so a request refused
+    /// for its body size spends neither: a call slot and its body are only taken once the
+    /// request is actually about to be sent.
+    fn reserve_request(&mut self, body_len: usize) -> Result<(), HttpError> {
+        if self.calls >= self.max_calls || self.bytes.saturating_add(body_len) > self.max_bytes {
             self.hit = true;
             return Err(HttpError::BudgetExceeded);
         }
         self.calls += 1;
+        self.bytes += body_len;
         Ok(())
     }
 
-    /// `n` more bytes sent or received; a request/response that pushes the running total past
-    /// the cap is still let through (its size could not be known in advance) but is itself
-    /// refused, matching "N MiB exchanged per call".
-    // ponytail: refuses after the oversized body is fully fetched, not before; add a
-    // Content-Length pre-check against the remaining budget if wasting that bandwidth matters.
-    fn add_bytes(&mut self, n: usize) -> Result<(), HttpError> {
+    /// Response bytes, charged as they stream in (see `read`): the chunk that trips this is
+    /// still counted, so the running total is accurate even for a response that errors out
+    /// mid-body — no bytes a plugin actually received ever go uncounted.
+    fn add_response_bytes(&mut self, n: usize) -> Result<(), HttpError> {
         self.bytes += n;
         if self.bytes > self.max_bytes {
             self.hit = true;
@@ -270,16 +273,18 @@ pub(crate) enum Body {
 }
 
 /// Sends `req` under `policy` and `allow`, following up to 5 redirects by hand. Every hop is
-/// charged to `budget` (one call, plus the bytes it sends and receives) and, when `rate_limiter`
-/// is set, waits for a token first. `user_agent`, when set, overrides any plugin-set
-/// `User-Agent` for every hop; when `None` the plugin's own header (if any) is left alone.
+/// charged to `budget` (one call, plus the request bytes it sends; the response's bytes are
+/// charged inside `read` as they arrive) and, when `rate_limiter` is set, waits for a slot
+/// first — or fails fast if that wait would run past the paired deadline. `user_agent`, when
+/// set, overrides any plugin-set `User-Agent` for every hop; when `None` the plugin's own
+/// header (if any) is left alone.
 pub(crate) async fn fetch(
     policy: &NetPolicy,
     allow: &Allowlist,
     req: Request,
     max_body: usize,
     budget: &Mutex<HttpBudget>,
-    rate_limiter: Option<&RateLimiter>,
+    rate_limiter: Option<(&RateLimiter, Instant)>,
     user_agent: Option<&str>,
 ) -> Result<Response, HttpError> {
     let mut url = Url::parse(&req.url).map_err(|e| HttpError::Denied(format!("{}: {e}", req.url)))?;
@@ -299,21 +304,18 @@ pub(crate) async fn fetch(
     let mut redirects = 0;
     loop {
         policy.check(allow, &url).map_err(HttpError::Denied)?;
+        budget.lock().unwrap().reserve_request(body.as_ref().map_or(0, Vec::len))?;
+        if let Some((rate_limiter, deadline)) = rate_limiter
+            && rate_limiter.acquire(deadline).await.is_err()
         {
-            let mut b = budget.lock().unwrap();
-            b.take_call()?;
-            b.add_bytes(body.as_ref().map_or(0, Vec::len))?;
-        }
-        if let Some(rate_limiter) = rate_limiter {
-            rate_limiter.acquire().await;
+            budget.lock().unwrap().hit = true;
+            return Err(HttpError::BudgetExceeded);
         }
         let hop = send(policy, method, &url, &headers, body.clone()).await?;
         let redirect = matches!(hop.status, 301..=303 | 307 | 308);
         let location = redirect.then(|| header(&hop.headers, LOCATION.as_str())).flatten();
         let Some(location) = location else {
-            let resp = read(hop, url, max_body).await?;
-            budget.lock().unwrap().add_bytes(resp.body.len())?;
-            return Ok(resp);
+            return read(hop, url, max_body, budget).await;
         };
         if redirects == MAX_REDIRECTS {
             return Err(HttpError::Network("too many redirects".into()));
@@ -372,8 +374,11 @@ fn pairs(headers: &HeaderMap) -> Vec<(String, String)> {
     headers.iter().map(|(k, v)| (k.to_string(), String::from_utf8_lossy(v.as_bytes()).into_owned())).collect()
 }
 
-/// Reads the body as a stream and stops at `max`.
-async fn read(hop: Hop, url: Url, max: usize) -> Result<Response, HttpError> {
+/// Reads the body as a stream and stops at `max` for this response. Every chunk received is
+/// also charged to the call's cumulative `budget` as it arrives — including the chunk that
+/// trips `TooLarge` or a mid-body network error — so a response that fails partway through
+/// still pays for what it actually transferred (no byte a plugin received goes uncounted).
+async fn read(hop: Hop, url: Url, max: usize, budget: &Mutex<HttpBudget>) -> Result<Response, HttpError> {
     let body = match hop.body {
         Body::Live(mut resp) => {
             if resp.content_length().is_some_and(|n| n > max as u64) {
@@ -381,6 +386,9 @@ async fn read(hop: Hop, url: Url, max: usize) -> Result<Response, HttpError> {
             }
             let mut body = Vec::new();
             while let Some(chunk) = resp.chunk().await.map_err(net_error)? {
+                // Charged before the size check: the chunk that trips `TooLarge` was still
+                // received over the wire and must count, even though it's then discarded.
+                budget.lock().unwrap().add_response_bytes(chunk.len())?;
                 if body.len() + chunk.len() > max {
                     return Err(HttpError::TooLarge);
                 }
@@ -391,7 +399,10 @@ async fn read(hop: Hop, url: Url, max: usize) -> Result<Response, HttpError> {
         #[cfg(any(test, feature = "test-util"))]
         Body::Recorded(body) if body.len() > max => return Err(HttpError::TooLarge),
         #[cfg(any(test, feature = "test-util"))]
-        Body::Recorded(body) => body,
+        Body::Recorded(body) => {
+            budget.lock().unwrap().add_response_bytes(body.len())?;
+            body
+        }
     };
     Ok(Response { status: hop.status, url: url.into(), headers: hop.headers, body })
 }
@@ -667,5 +678,117 @@ mod tests {
         assert_eq!(denied(r), "scheme not allowed: http");
         let (r, _) = run(&policy, &list, req(Method::Get, "https://api.deezer.com:8443/search?q=x")).await;
         assert_eq!(denied(r), "port not allowed: 8443");
+    }
+
+    #[tokio::test]
+    async fn request_body_is_charged_only_when_sent() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let budget = Mutex::new(HttpBudget::new(10, 5));
+        let url = base(&server, "api.test");
+        let big = Request { body: Some(vec![b'x'; 6]), ..req(Method::Post, &url) };
+        match fetch(&policy, &list, big, 8 << 20, &budget, None, None).await {
+            Err(HttpError::BudgetExceeded) => {}
+            other => panic!("{:?}", other.map(|r| r.status)),
+        }
+        {
+            let b = budget.lock().unwrap();
+            assert_eq!((b.calls, b.bytes), (0, 0), "a request refused for its body size spends no call and no bytes");
+        }
+        let small = Request { body: Some(vec![b'x'; 5]), ..req(Method::Post, &url) };
+        let r = fetch(&policy, &list, small, 8 << 20, &budget, None, None).await;
+        assert_eq!(r.unwrap().status, 200);
+        assert_eq!(budget.lock().unwrap().calls, 1);
+        assert_eq!(server.received_requests().await.unwrap().len(), 1, "only the fitting request was ever sent");
+    }
+
+    #[tokio::test]
+    async fn each_redirect_hop_charges_one_call_and_its_bytes() {
+        let server = MockServer::start().await;
+        let api = base(&server, "api.test");
+        // 307/308 keep the method and body across the hop, unlike 301-303.
+        redirect(&server, "/a", 307, &format!("{api}/b")).await;
+        redirect(&server, "/b", 307, &format!("{api}/c")).await;
+        let body = vec![b'y'; 100];
+        Mock::given(path("/c")).respond_with(ResponseTemplate::new(200).set_body_bytes(body)).mount(&server).await;
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let budget = Mutex::new(HttpBudget::new(10, 1 << 20));
+        let post = Request { body: Some(vec![b'x'; 10]), ..req(Method::Post, &format!("{api}/a")) };
+        let r = fetch(&policy, &list, post, 8 << 20, &budget, None, None).await;
+        assert_eq!(r.unwrap().status, 200);
+        let b = budget.lock().unwrap();
+        assert_eq!(b.calls, 3, "one call per hop, redirects included");
+        assert_eq!(b.bytes, 10 * 3 + 100, "the resent 10-byte body is charged on every hop, the response once");
+    }
+
+    /// Writes `n` 1 MiB chunked-encoding frames on `sock`, stopping early if the peer has
+    /// already gone away (the client aborting mid-stream once a cap trips).
+    async fn write_chunks(sock: &mut tokio::net::TcpStream, n: usize) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut buf = [0u8; 4096];
+        let _ = sock.read(&mut buf).await;
+        if sock.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n").await.is_err() {
+            return;
+        }
+        let chunk = vec![b'x'; 1 << 20];
+        for _ in 0..n {
+            let head = format!("{:x}\r\n", chunk.len());
+            if sock.write_all(head.as_bytes()).await.is_err()
+                || sock.write_all(&chunk).await.is_err()
+                || sock.write_all(b"\r\n").await.is_err()
+            {
+                break;
+            }
+        }
+    }
+
+    /// Previously, bytes streamed before a `TooLarge`/network error were never charged, so a
+    /// chunked response (no `Content-Length`, so the cap can only be enforced while streaming)
+    /// that fails partway through left the budget untouched no matter how much it had already
+    /// transferred. Charging each chunk as it arrives — even the one that trips the error —
+    /// fixes that.
+    #[tokio::test]
+    async fn byte_budget_counts_partial_bodies() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            write_chunks(&mut sock, 16).await;
+        });
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let budget = Mutex::new(HttpBudget::new(10, 1 << 30));
+        let url = format!("http://api.test:{port}/");
+        match fetch(&policy, &list, req(Method::Get, &url), 8 << 20, &budget, None, None).await {
+            Err(HttpError::TooLarge) => {}
+            other => panic!("{:?}", other.map(|r| r.status)),
+        }
+        let charged = budget.lock().unwrap().bytes;
+        assert!(charged >= 8 << 20, "{charged}: the ~9 MiB streamed before TooLarge must still be charged");
+        let _ = server.await;
+    }
+
+    /// With most of the call's 16 MiB budget already spent (simulating earlier calls in the
+    /// same capability call), a chunked response that would otherwise run to its own 8 MiB cap
+    /// is cut off as soon as the cumulative total passes 16 MiB — within about one more chunk,
+    /// not after streaming far beyond it.
+    #[tokio::test]
+    async fn cumulative_budget_cuts_a_chunked_response_short() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            write_chunks(&mut sock, 16).await;
+        });
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let budget = Mutex::new(HttpBudget { calls: 2, bytes: 15 << 20, hit: false, max_calls: 24, max_bytes: 16 << 20 });
+        let url = format!("http://api.test:{port}/");
+        match fetch(&policy, &list, req(Method::Get, &url), 8 << 20, &budget, None, None).await {
+            Err(HttpError::BudgetExceeded) => {}
+            other => panic!("{:?}", other.map(|r| r.status)),
+        }
+        let bytes = budget.lock().unwrap().bytes;
+        assert!(bytes < (16 << 20) + (2 << 20), "{bytes}: should stop within about one chunk past the 16 MiB cap");
+        let _ = server.await;
     }
 }

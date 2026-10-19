@@ -74,6 +74,9 @@ pub(crate) struct State {
     pub(crate) rate_limiter: Option<RateLimiter>,
     /// Forces every outgoing request's `User-Agent` when the manifest asks for it.
     pub(crate) user_agent: Option<String>,
+    /// This call's own wall-clock cutoff (`tokio::time::timeout` below); a rate-limit wait
+    /// that would run past it fails fast instead (see `rate::RateLimiter::acquire`).
+    pub(crate) deadline: tokio::time::Instant,
 }
 
 /// One memory budget for the whole plugin (`StoreLimits::memory_size` would apply it to
@@ -263,6 +266,11 @@ impl Host {
             .manifest()
             .descriptive_user_agent
             .then(|| format!("Vehicoule/{} (+https://vehicoule.app)", self.cfg.app_version));
+        // Epochs only interrupt running wasm; a guest blocked in a host call (WASI poll, slow
+        // HTTP) is cut by this wall-clock timeout instead. Computed up front so a rate-limit
+        // wait inside the call can tell whether it would run past it.
+        let wall = EPOCH_TICK.saturating_mul(u32::try_from(limits.epoch_ticks).unwrap_or(u32::MAX));
+        let deadline = tokio::time::Instant::now() + wall;
         let state = State {
             wasi,
             table: ResourceTable::new(),
@@ -275,6 +283,7 @@ impl Host {
             http_budget: Mutex::new(HttpBudget::new(limits.max_http_calls, limits.max_http_bytes)),
             rate_limiter: p.0.rate_limiter.clone(),
             user_agent,
+            deadline,
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.memory);
@@ -285,9 +294,6 @@ impl Host {
         } else if !p.capabilities().contains(&capability) {
             Err(CallError::Unsupported)
         } else {
-            // Epochs only interrupt running wasm; a guest blocked in a host call (WASI poll,
-            // slow HTTP) is cut by this wall-clock timeout instead.
-            let wall = EPOCH_TICK.saturating_mul(u32::try_from(limits.epoch_ticks).unwrap_or(u32::MAX));
             let call = async {
                 let instance = p.pre().instantiate_async(&mut store).await?;
                 f(&mut store, &instance).await

@@ -25,12 +25,17 @@ pub struct RateLimit {
     pub per_seconds: u32,
 }
 
-/// Parses and validates a manifest: id shape, contract version, domain syntax.
+/// Parses and validates a manifest: id shape, contract version, domain syntax, rate limit.
 pub fn parse_manifest(json: &[u8]) -> Result<Manifest, String> {
     let manifest: Manifest = serde_json::from_slice(json).map_err(|e| e.to_string())?;
     validate_id(&manifest.id)?;
     validate_contract(&manifest.contract)?;
     Allowlist::new(&manifest.domains)?;
+    if let Some(rl) = manifest.rate_limit
+        && (rl.requests == 0 || rl.per_seconds == 0)
+    {
+        return Err(format!("rate_limit requests and per_seconds must both be nonzero: {rl:?}"));
+    }
     Ok(manifest)
 }
 
@@ -194,5 +199,18 @@ mod tests {
         assert_eq!(manifest.rate_limit.unwrap().requests, 45);
         assert_eq!(manifest.rate_limit.unwrap().per_seconds, 5);
         assert!(!manifest.descriptive_user_agent);
+    }
+
+    #[test]
+    fn rate_limit_zero_values_are_rejected() {
+        let with = |requests: u32, per_seconds: u32| {
+            format!(
+                r#"{{"id":"xx","name":"x","version":"1.0.0","contract":"1.0","domains":["x.com"],"rate_limit":{{"requests":{requests},"per_seconds":{per_seconds}}}}}"#
+            )
+        };
+        assert!(parse_manifest(with(0, 5).as_bytes()).is_err());
+        assert!(parse_manifest(with(5, 0).as_bytes()).is_err());
+        assert!(parse_manifest(with(0, 0).as_bytes()).is_err());
+        assert!(parse_manifest(with(5, 5).as_bytes()).is_ok());
     }
 }

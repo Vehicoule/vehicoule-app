@@ -93,9 +93,22 @@ async fn batch_runs_concurrently() {
     let t = TestHost::new(Limits::default());
     let p = t.load("probe");
     let start = Instant::now();
-    let r = t.host.search(&p, query(&format!("batch {}/ 8", api(&server)))).await;
-    assert!(r.is_ok(), "{r:?}");
+    let r = t.host.search(&p, query(&format!("batch {}/ 8", api(&server)))).await.unwrap();
+    let titles: Vec<&str> = r.tracks.iter().map(|t| t.title.as_str()).collect();
+    assert_eq!(titles, ["200"; 8], "all 8 must actually have succeeded, not just returned a result");
+    assert_eq!(server.received_requests().await.unwrap().len(), 8);
     assert!(start.elapsed() < Duration::from_millis(1500), "{:?}", start.elapsed());
+}
+
+#[tokio::test]
+async fn concurrent_batches_share_the_call_cap() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+    let t = TestHost::new(Limits::default());
+    let p = t.load("probe");
+    let r = t.host.search(&p, query(&format!("cap-batch {}/", api(&server)))).await.unwrap();
+    assert_eq!(r.tracks[0].title, "ok=24 extra_ok=false", "3 batches of 8 exactly spend the 24-call budget");
+    assert_eq!(server.received_requests().await.unwrap().len(), 24, "the 25th (extra) request is never sent");
 }
 
 #[tokio::test]

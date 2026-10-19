@@ -14,7 +14,7 @@ impl Host for State {
             req,
             self.max_response_bytes,
             &self.http_budget,
-            self.rate_limiter.as_ref(),
+            self.rate_limiter.as_ref().map(|rl| (rl, self.deadline)),
             self.user_agent.as_deref(),
         )
         .await
@@ -28,7 +28,8 @@ impl Host for State {
             return vec![Err(denied); reqs.len()];
         }
         let (net, allow, max_body) = (&self.net, &self.allowlist, self.max_response_bytes);
-        let (budget, rate_limiter, ua) = (&self.http_budget, self.rate_limiter.as_ref(), self.user_agent.as_deref());
+        let (budget, ua) = (&self.http_budget, self.user_agent.as_deref());
+        let rate_limiter = self.rate_limiter.as_ref().map(|rl| (rl, self.deadline));
         join_all(reqs.into_iter().map(|req| fetch(net, allow, req, max_body, budget, rate_limiter, ua))).await
     }
 }

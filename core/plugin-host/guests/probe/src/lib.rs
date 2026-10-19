@@ -1,9 +1,10 @@
 //! Host probe: runs the command in `search-request.query`, reports in the tracks' titles.
 //! `get <url>` (status), `count <url> <n>` (n sequential GETs), `count-ok <url> <n>` (n
 //! sequential GETs, errors counted but swallowed), `batch <url> <n>` (one `send-batch`, one
-//! track per result), `ua <url> <value>` (one GET with that `User-Agent` header), `kv-set
-//! <k> <v>`, `kv-get <k>`, `print <text>`, `log <text>`, `art <url>` (a track with that
-//! artwork). `resolve` streams `track.title`.
+//! track per result), `cap-batch <url>` (three batches of 8 then one more send, reports how
+//! many of the 24 batched sends and the extra one succeeded), `ua <url> <value>` (one GET with
+//! that `User-Agent` header), `kv-set <k> <v>`, `kv-get <k>`, `print <text>`, `log <text>`,
+//! `art <url>` (a track with that artwork). `resolve` streams `track.title`.
 wit_bindgen::generate!({
     path: ["../../../contract/wit/host", "../../../contract/wit/music", "../wit"],
     world: "vehicoule:test-guests/test-probe",
@@ -76,6 +77,15 @@ impl search::Guest for Probe {
                     .map(|r| track(r.map_or_else(|e| format!("{e:?}"), |resp| resp.status.to_string())))
                     .collect();
                 return Ok(out);
+            }
+            "cap-batch" => {
+                let mut ok = 0usize;
+                for _ in 0..3 {
+                    let reqs: Vec<Request> = (0..8).map(|_| get(a)).collect();
+                    ok += host_http::send_batch(&reqs).into_iter().filter(Result::is_ok).count();
+                }
+                let extra_ok = host_http::send(&get(a)).is_ok();
+                format!("ok={ok} extra_ok={extra_ok}")
             }
             "kv-set" => kv::set(a, b.as_bytes()).map_or_else(|e| format!("{e:?}"), |()| "ok".into()),
             "kv-get" => String::from_utf8_lossy(&kv::get(a).ok_or(Error::NotFound)?).into_owned(),
