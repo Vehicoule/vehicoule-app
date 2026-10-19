@@ -1,5 +1,6 @@
+use std::fmt;
 use std::path::Path;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OptionalExtension, Transaction};
@@ -21,6 +22,17 @@ impl From<rusqlite::Error> for DbError {
     }
 }
 
+impl fmt::Display for DbError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DbError::Sqlite(s) => write!(f, "sqlite error: {s}"),
+            DbError::Migration(s) => write!(f, "migration error: {s}"),
+        }
+    }
+}
+
+impl std::error::Error for DbError {}
+
 /// A write transaction; every row it touches carries `stamp`.
 pub struct Tx<'a> {
     pub tx: Transaction<'a>,
@@ -28,6 +40,8 @@ pub struct Tx<'a> {
 }
 
 // ponytail: one connection behind a mutex; add a read connection if UI reads stall behind writes
+/// The lock is not re-entrant: never call `read_blocking`/`write_blocking` from inside a
+/// `write_blocking` (or `read_blocking`) closure — it will deadlock.
 #[derive(Clone)]
 pub struct Db {
     inner: Arc<Mutex<Inner>>,
@@ -129,12 +143,17 @@ impl Db {
         blocking(move || db.write_blocking(f)).await
     }
 
-    /// For short calls from sync code (plugin-host `Storage`).
+    /// For short calls from sync code (plugin-host `Storage`). Runs under `PRAGMA query_only
+    /// = ON` so a closure that tries to write fails loudly instead of silently mutating the
+    /// store; reset to OFF under the same lock before returning, even if `f` errors or panics.
     pub fn read_blocking<R>(
         &self,
         f: impl FnOnce(&Connection) -> rusqlite::Result<R>,
     ) -> Result<R, DbError> {
-        Ok(f(&self.lock().conn)?)
+        let guard = self.lock();
+        guard.conn.pragma_update(None, "query_only", true)?;
+        let _reset = QueryOnlyReset(&guard.conn);
+        Ok(f(&guard.conn)?)
     }
 
     /// One HLC tick per transaction, persisted with it; `f` failing rolls everything back.
@@ -160,9 +179,29 @@ impl Db {
         Ok(r)
     }
 
-    /// A panic while holding the lock leaves the connection valid: recover it.
+    /// A panic while holding the lock leaves the connection valid: recover it. If the panic
+    /// left an explicit transaction open (not in autocommit mode), roll it back first, so the
+    /// connection is usable again.
     fn lock(&self) -> MutexGuard<'_, Inner> {
-        self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+        match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                let guard = poisoned.into_inner();
+                if !guard.conn.is_autocommit() {
+                    let _ = guard.conn.execute_batch("ROLLBACK");
+                }
+                guard
+            }
+        }
+    }
+}
+
+/// Resets `PRAGMA query_only` to OFF when dropped, including on panic/error unwind.
+struct QueryOnlyReset<'c>(&'c Connection);
+
+impl Drop for QueryOnlyReset<'_> {
+    fn drop(&mut self) {
+        let _ = self.0.pragma_update(None, "query_only", false);
     }
 }
 
@@ -305,5 +344,59 @@ mod tests {
             .read_blocking(|c| c.query_row("SELECT count(*) FROM items", [], |r| r.get(0)))
             .unwrap();
         assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn reads_run_query_only_and_reset_afterwards() {
+        let db = Db::open_in_memory().unwrap();
+        let id = ItemId::new();
+        let err = db.read_blocking(|c| {
+            c.execute(
+                "INSERT INTO items (id, kind, title, updated_at, device_id) VALUES (?1, 'track', 't', 0, x'00')",
+                [id],
+            )
+        });
+        assert!(err.is_err(), "write inside read_blocking should fail under query_only");
+        // query_only must be reset to OFF under the same lock, even though the closure errored.
+        db.write_blocking(|tx| {
+            tx.tx.execute(
+                "INSERT INTO items (id, kind, title, updated_at, device_id) VALUES (?1, 'track', 't', ?2, ?3)",
+                rusqlite::params![id, tx.stamp.updated_at, tx.stamp.device_id.as_bytes().as_slice()],
+            )
+        })
+        .unwrap();
+        let n: i64 = db
+            .read_blocking(|c| c.query_row("SELECT count(*) FROM items", [], |r| r.get(0)))
+            .unwrap();
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn poisoned_mutex_rolls_back_an_open_transaction() {
+        let db = Db::open_in_memory().unwrap();
+        let panicking = db.clone();
+        // Leave an explicit BEGIN open, then panic while holding the lock: no `Transaction`
+        // wrapper is involved, so nothing auto-rolls-back on unwind.
+        let result = std::panic::catch_unwind(move || {
+            panicking.read_blocking(|c| {
+                c.execute_batch("BEGIN")?;
+                panic!("simulated panic with an open transaction");
+                #[allow(unreachable_code)]
+                Ok(())
+            })
+        });
+        assert!(result.is_err(), "the closure should have panicked");
+        // The mutex is now poisoned with conn.is_autocommit() == false. Recovery must roll
+        // back before the connection is used again, otherwise this would fail to open its
+        // own transaction ("cannot start a transaction within a transaction").
+        db.write_blocking(|_tx| Ok::<(), rusqlite::Error>(())).unwrap();
+    }
+
+    #[test]
+    fn db_error_is_displayable_and_std_error() {
+        let e = DbError::Migration("database from a newer app version".into());
+        assert_eq!(e.to_string(), "migration error: database from a newer app version");
+        let as_error: &dyn std::error::Error = &e;
+        assert_eq!(as_error.to_string(), e.to_string());
     }
 }

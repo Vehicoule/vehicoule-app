@@ -43,6 +43,12 @@ mod tests {
     }
 
     #[test]
+    fn counter_overflow_carries_into_ms() {
+        let mut h = Hlc::starting_at((1000u64 << 16) | 0xFFFF);
+        assert_eq!(h.tick(1000), 1001u64 << 16);
+    }
+
+    #[test]
     fn hlc_observe_jumps_past_remote() {
         let remote = Hlc::default().tick(5000);
         let mut h = Hlc::default();
