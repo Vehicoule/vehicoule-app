@@ -5,13 +5,15 @@ compile_error!("vehicoule-core needs panic = \"unwind\": the bridge turns panics
 
 #[allow(dead_code, reason = "reached from api/ (task 8)")]
 mod app;
+#[allow(dead_code, reason = "reached from api/ (task 8)")]
+mod catalog;
+mod convert;
 pub mod error;
 pub mod keys;
 pub mod library;
 pub mod logs;
 #[allow(dead_code, reason = "reached from api/ (task 8)")]
 mod plugins;
-#[allow(dead_code, reason = "used by the catalogue (task 3)")]
 mod router;
 mod storage;
 

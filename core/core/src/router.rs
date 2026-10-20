@@ -38,20 +38,25 @@ fn rank(user: &[String], id: &str) -> (usize, usize, String) {
 
 /// Loaded plugins exporting `cap`, in the user's order, else the default one.
 pub(crate) async fn ordered(cap: Capability) -> Vec<Plugin> {
+    sorted(cap_name(cap), |p| p.capabilities().contains(&cap)).await
+}
+
+/// Artwork sources: every loaded plugin, in the user's `artwork` order, else the default one
+/// (deezer, itunes...).
+pub(crate) async fn ordered_artwork() -> Vec<Plugin> {
+    sorted("artwork", |_| true).await
+}
+
+async fn sorted(name: &'static str, keep: impl Fn(&Plugin) -> bool) -> Vec<Plugin> {
     let user = app()
         .db
-        .read(move |c| capability_order(c, cap_name(cap)))
+        .read(move |c| capability_order(c, name))
         .await
         .unwrap_or_else(|e| {
             logs::push("error", "router", &e.to_string());
             Vec::new()
         });
-    let mut plugins: Vec<Plugin> = app()
-        .plugins
-        .loaded()
-        .into_iter()
-        .filter(|p| p.capabilities().contains(&cap))
-        .collect();
+    let mut plugins: Vec<Plugin> = app().plugins.loaded().into_iter().filter(keep).collect();
     plugins.sort_by_key(|p| rank(&user, p.id()));
     plugins
 }

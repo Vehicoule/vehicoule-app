@@ -2628,6 +2628,17 @@ dependencies = [
  "tokio",
  "unicode-normalization",
  "uuid",
+ "vehicoule-stream",
+ "wiremock",
+]
+
+[[package]]
+name = "vehicoule-stream"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "sha2 0.10.9",
+ "tokio",
  "wiremock",
 ]
 

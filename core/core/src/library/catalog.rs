@@ -338,6 +338,22 @@ pub fn collection(c: &Connection, id: ItemId) -> rusqlite::Result<Option<Collect
     }))
 }
 
+/// `(provider, image)` of the root item, in stored order.
+pub fn artwork_by_provider(c: &Connection, id: ItemId) -> rusqlite::Result<Vec<(String, Image)>> {
+    let mut st =
+        c.prepare("SELECT provider, url, width FROM artwork WHERE item_id = ?1 ORDER BY rowid")?;
+    st.query_map([canonical(c, id)?], |r| {
+        Ok((
+            r.get(0)?,
+            Image {
+                url: r.get(1)?,
+                width: r.get(2)?,
+            },
+        ))
+    })?
+    .collect()
+}
+
 /// Tracks of a provider album or playlist, as roots. Other items have none.
 pub fn children(c: &Connection, parent: ItemId, page: Page) -> rusqlite::Result<Vec<ItemId>> {
     let parent = canonical(c, parent)?;

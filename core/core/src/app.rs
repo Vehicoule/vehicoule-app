@@ -1,7 +1,10 @@
 //! The global `App`, built once by `init`.
 
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock, PoisonError};
+
+use vehicoule_stream::artwork::ArtworkCache;
 
 use crate::error::CoreError;
 use crate::library::Db;
@@ -37,6 +40,20 @@ pub(crate) struct App {
     pub rt: tokio::runtime::Runtime,
     pub cfg: AppConfig,
     pub plugins: Plugins,
+    /// `<cache_dir>/artwork`, 256 MiB.
+    pub artwork: ArtworkCache,
+    /// Set by the app (task 5); offline, the catalogue makes no plugin call.
+    online: AtomicBool,
+}
+
+impl App {
+    pub fn is_online(&self) -> bool {
+        self.online.load(Ordering::Relaxed)
+    }
+
+    pub fn set_online(&self, online: bool) {
+        self.online.store(online, Ordering::Relaxed);
+    }
 }
 
 static APP: OnceLock<App> = OnceLock::new();
@@ -67,11 +84,14 @@ pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
     plugins::seed_official(&db)?;
     rt.block_on(plugins.load_installed(&db))?;
     crate::install_panic_hook();
+    let artwork = ArtworkCache::new(Path::new(&cfg.cache_dir).join("artwork"), 256 << 20);
     let _ = APP.set(App {
         db,
         rt,
         cfg,
         plugins,
+        artwork,
+        online: AtomicBool::new(true),
     });
     // Never during init: 10 s after startup, then every 24 h. Not in unit tests (network).
     #[cfg(not(test))]
@@ -87,29 +107,40 @@ pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// The one `App` of a test binary (FR region, temp dirs kept). Initialised from a plain
+/// thread: `init` blocks on its own runtime, which a `#[tokio::test]` thread cannot do.
+#[cfg(test)]
+pub(crate) fn test_app() -> &'static App {
+    if let Some(app) = APP.get() {
+        return app;
+    }
+    let dir = std::env::temp_dir().join(format!("vehicoule-test-app-{}", std::process::id()));
+    let cfg = AppConfig {
+        data_dir: dir.join("data").display().to_string(),
+        cache_dir: dir.join("cache").display().to_string(),
+        downloads_dir: dir.join("downloads").display().to_string(),
+        app_version: "0.1.0".into(),
+        region: "FR".into(),
+        platform: Platform::MacOs,
+    };
+    std::thread::spawn(move || init(cfg).unwrap())
+        .join()
+        .unwrap();
+    app()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn init_is_idempotent() {
-        let dir = std::env::temp_dir().join(format!("vehicoule-app-{}", uuid::Uuid::now_v7()));
-        let cfg = AppConfig {
-            data_dir: dir.join("data").display().to_string(),
-            cache_dir: dir.join("cache").display().to_string(),
-            downloads_dir: dir.join("downloads").display().to_string(),
-            app_version: "0.1.0".into(),
-            region: "FR".into(),
-            platform: Platform::MacOs,
-        };
-        init(cfg.clone()).unwrap();
-        let db = &app().db;
-        let mut other = cfg;
+        let first = test_app();
+        let mut other = first.cfg.clone();
         other.region = "US".into();
         init(other).unwrap();
-        assert!(std::ptr::eq(db, &app().db));
+        assert!(std::ptr::eq(first, app()));
         assert_eq!(app().cfg.region, "FR");
         assert_eq!(app().rt.block_on(async { 1 + 1 }), 2);
-        let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -88,6 +88,11 @@ impl Plugins {
             .clone()
     }
 
+    #[cfg(test)]
+    pub(crate) fn replace_loaded(&self, plugins: Vec<Plugin>) {
+        *self.loaded.write().unwrap_or_else(PoisonError::into_inner) = plugins;
+    }
+
     /// Replaces (or with `None` removes) plugin `id` in `loaded`.
     fn set_loaded(&self, id: &str, plugin: Option<Plugin>) {
         let mut loaded = self.loaded.write().unwrap_or_else(PoisonError::into_inner);

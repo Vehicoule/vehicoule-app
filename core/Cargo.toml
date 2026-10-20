@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["contract", "core", "plugin-host"]
-exclude = ["plugin-host/guests"]
+members = ["contract", "core", "plugin-host", "stream"]
+exclude = ["plugin-host/guests", "core/tests/guests"]
 
 [workspace.package]
 edition = "2024"
