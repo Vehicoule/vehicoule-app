@@ -2,11 +2,13 @@
 //! mpsc channel) owns the queue and the preload timer; the functions below send it a message
 //! and return once it has been handled, so there is no shared lock on the queue.
 //!
-//! The Dart player holds at most a current track and a next one: `Play` replaces both,
-//! `EnqueueNext`/`ReplaceNext`/`ClearNext` set the next one, which it starts by itself at the
-//! end of the current one (gapless) and reports with `TrackStarted`.
+//! The Dart player's contract (plan 5, task 3): it holds a current track and at most one
+//! next. `Play` replaces both; `EnqueueNext`/`ReplaceNext` replace the held next (or set it);
+//! `ClearNext` drops it. It starts the held next by itself at the end of the current one and
+//! reports `TrackStarted` for it. `TrackStarted` = loaded (paused loads too), `Resumed` =
+//! sound running, `Paused` = stopped: "playing" comes from those (and `Ended`/`Error`) only.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -20,7 +22,7 @@ use crate::app::app;
 use crate::catalog::{TrackView, parse_id, track_view};
 use crate::convert;
 use crate::error::CoreError;
-use crate::events::{LibraryChanged, Notice, NowPlaying, QueueView};
+use crate::events::{LibraryChanged, Notice, NowPlaying, QueueItemView, QueueView};
 use crate::library::catalog::{self as lib, TrackRow};
 use crate::library::downloads::{self, DownloadState};
 use crate::library::refs::{self, ExtRef};
@@ -511,13 +513,23 @@ struct Loaded {
     /// Expired-URL recovery: resolutions so far, and the ids to skip.
     attempts: u8,
     tried: Vec<String>,
+    /// Positions reported since it was loaded: after 2, `attempts` starts over.
+    positions: u8,
 }
 
 struct Player {
     q: QueueState,
-    /// What the Dart player plays, and holds as next.
+    /// What the Dart player plays, and holds as next (`None`: not known, e.g. after a
+    /// `TrackStarted` that crossed a command).
     current: Option<Loaded>,
     next: Option<Loaded>,
+    /// The player may hold a next track: the preload replaces it rather than enqueue.
+    held: bool,
+    /// Entries given up on while the current track plays: the preload passes them.
+    given_up: HashSet<EntryId>,
+    /// Offline skips already told, until back online.
+    offline_told: HashSet<EntryId>,
+    restored: bool,
     /// The preload ran for the current track, when `next()` was `preload_for`.
     preloaded: bool,
     preload_for: Option<EntryId>,
@@ -532,9 +544,9 @@ struct Player {
     artwork: Option<String>,
     play: Option<uuid::Uuid>,
     listened_ms: u64,
-    /// A `Play` that resumes this entry (expired URL, restore): its `TrackStarted` keeps the
-    /// position and the open play. The bool is its autoplay.
-    resume: Option<(EntryId, bool)>,
+    /// A `Play` that resumes this entry (expired URL, restore, new match): its `TrackStarted`
+    /// keeps the position and the open play.
+    resume: Option<EntryId>,
     /// Per item: the plugin and candidates of its last resolution.
     candidates: HashMap<ItemId, (String, Vec<Candidate>)>,
 }
@@ -549,6 +561,10 @@ impl Player {
             q: QueueState::play(vec![], 0, None, false, 0),
             current: None,
             next: None,
+            held: false,
+            given_up: HashSet::new(),
+            offline_told: HashSet::new(),
+            restored: false,
             preloaded: false,
             preload_for: None,
             deadline: None,
@@ -600,6 +616,9 @@ impl Player {
                 let _ = r.send(());
             }
             Msg::Online => {
+                if app().is_online() {
+                    self.offline_told.clear();
+                }
                 if self.preloaded {
                     self.preload().await;
                 }
@@ -682,6 +701,7 @@ impl Player {
         });
         self.current = Some(l);
         self.next = None;
+        self.held = false;
         self.preloaded = false;
         self.deadline = None;
         self.playing = false;
@@ -694,6 +714,7 @@ impl Player {
         send(PlayerCommand::Stop);
         self.current = None;
         self.next = None;
+        self.held = false;
         self.deadline = None;
         self.playing = false;
         self.resume = None;
@@ -715,7 +736,7 @@ impl Player {
                 Ok(l) => return Ok(Some(l)),
                 Err((_, e @ CoreError::NoPlugin(_))) => return Err(e),
                 Err((item, e)) => {
-                    self.skipped(item, e.clone()).await;
+                    self.skipped(entry, item, e.clone()).await;
                     if e != CoreError::Offline {
                         failures += 1;
                     }
@@ -739,6 +760,7 @@ impl Player {
             res,
             attempts: 0,
             tried: vec![],
+            positions: 0,
         })
     }
 
@@ -755,7 +777,11 @@ impl Player {
         }
     }
 
-    async fn skipped(&self, item: Option<ItemId>, reason: CoreError) {
+    /// Tells the user; an offline skip only once per entry until back online.
+    async fn skipped(&mut self, entry: EntryId, item: Option<ItemId>, reason: CoreError) {
+        if reason == CoreError::Offline && !self.offline_told.insert(entry) {
+            return;
+        }
         logs::push("warn", "player", &format!("skipped: {reason:?}"));
         let title = match item {
             Some(item) => app().db.read(move |c| lib::track(c, item)).await,
@@ -791,8 +817,10 @@ impl Player {
     async fn preload(&mut self) {
         self.deadline = None;
         self.preloaded = true;
-        let held = self.next.take().is_some();
-        let entries = self.following_or_radio(true).await;
+        self.next = None;
+        let held = self.held;
+        let mut entries = self.following_or_radio(true).await;
+        entries.retain(|e| !self.given_up.contains(e));
         self.preload_for = self.q.next().map(|e| e.id);
         match self.first_playable(entries).await {
             Ok(Some(l)) => {
@@ -811,8 +839,12 @@ impl Player {
                     },
                 });
                 self.next = Some(l);
+                self.held = true;
             }
-            _ if held => send(PlayerCommand::ClearNext),
+            _ if held => {
+                send(PlayerCommand::ClearNext);
+                self.held = false;
+            }
             _ => {}
         }
         self.queue_changed().await;
@@ -852,6 +884,12 @@ impl Player {
                 self.arm();
             }
             PlayerEvent::Position { entry, ms } if self.is_current(&entry) => {
+                if let Some(l) = &mut self.current {
+                    l.positions = l.positions.saturating_add(1);
+                    if l.positions >= 2 {
+                        l.attempts = 0;
+                    }
+                }
                 self.position(ms);
                 self.save_progress().await;
                 self.arm();
@@ -891,25 +929,37 @@ impl Player {
             logs::push("warn", "player", "started an entry not in the queue");
             return;
         };
-        let resumed = self.resume.take().filter(|(e, _)| *e == id);
+        // `playing` is left alone: only `Resumed`, `Paused`, `Ended` and `Error` say it.
+        let resumed = self.resume.take() == Some(id);
         let same = self.current_entry() == Some(id);
         if !same {
             self.q.jump_to(id);
-        } else if resumed.is_none() {
+            self.given_up.clear();
+        } else if !resumed {
             self.q.position_ms = 0;
         }
         if self.next.as_ref().is_some_and(|l| l.entry == id) {
+            // The preloaded next, as planned: the player holds nothing after it.
             self.current = self.next.take();
+            self.held = false;
         } else if !self.current.as_ref().is_some_and(|l| l.entry == id) {
+            // It crossed a command (a `ReplaceNext` sent while it started): what the player
+            // holds is unknown, and "play next" goes right after this one.
+            if let Some(x) = self.next.take().map(|l| l.entry) {
+                let pos = |q: &QueueState| q.order.iter().position(|&i| q.entries[i].id == x);
+                if pos(&self.q).is_some_and(|p| p < self.q.index) {
+                    self.q.move_entry(x, self.q.index);
+                }
+            }
             self.current = None;
+            self.held = true;
         }
         self.next = None;
         self.preloaded = false;
         self.preload_for = None;
-        self.playing = resumed.is_none_or(|(_, autoplay)| autoplay);
         self.pos_ms = self.q.position_ms;
         self.pos_at = Instant::now();
-        if resumed.is_none() {
+        if !resumed {
             self.duration_ms = None;
             self.artwork = None;
         }
@@ -918,7 +968,7 @@ impl Player {
         };
 
         // Closes the previous play, opens this one (a resumed one stays open), saves the queue.
-        let new_play = resumed.is_none() || self.play.is_none();
+        let new_play = !resumed || self.play.is_none();
         let source = match &self.current {
             Some(l) => l.res.plugin.clone().unwrap_or_else(|| "download".into()),
             None => "unknown".into(),
@@ -980,77 +1030,122 @@ impl Player {
         let _ = self.start(entries, 0, true).await;
     }
 
+    /// The player stopped on an error.
     async fn error(&mut self, entry: &str, kind: PlayerErrorKind) {
         if !self.is_current(entry) {
-            // The next track failed before it started: choose it again.
-            if self
-                .next
-                .as_ref()
-                .is_some_and(|l| l.entry.0.to_string() == entry)
-            {
-                self.preload().await;
-            }
+            self.next_failed(entry, kind).await;
             return;
         }
         self.playing = false;
         self.deadline = None;
+        let Some(e) = self.q.current() else {
+            return;
+        };
+        let (entry, item) = (e.id, parse_id(&e.item).ok());
         match kind {
-            PlayerErrorKind::Forbidden => self.expired().await,
+            PlayerErrorKind::Forbidden => self.expired(entry, item).await,
+            // The player stays stopped; the user resumes once the network is back.
             PlayerErrorKind::Network => {
-                // Paused where it stopped; the user resumes once the network is back.
-                if let Some(l) = self.current.take() {
-                    let entry = l.entry;
-                    self.send_play(l, self.pos_ms, false);
-                    self.resume = Some((entry, false));
-                }
                 let _ = app().events.notices.send(Notice::Error(CoreError::Network));
             }
             PlayerErrorKind::Decode | PlayerErrorKind::Other => {
-                let item = self.current.as_ref().map(|l| l.item);
-                self.skipped(item, CoreError::Internal("unplayable stream".into()))
-                    .await;
+                let reason = CoreError::Internal("unplayable stream".into());
+                self.skipped(entry, item, reason).await;
                 let entries = self.following_or_radio(false).await;
                 let _ = self.start(entries, 0, true).await;
             }
         }
     }
 
-    /// An expired URL (403): one fresh resolution, then the next candidate; then the next
-    /// track. Each resumes where it stopped.
-    async fn expired(&mut self) {
-        let Some(cur) = self.current.take() else {
-            return;
+    /// The held next failed before it started: a 403 climbs the same ladder as the current
+    /// track; anything else (or the top of the ladder) gives it up and preloads the following.
+    async fn next_failed(&mut self, entry: &str, kind: PlayerErrorKind) {
+        let Some(l) = self.next.take_if(|l| l.entry.0.to_string() == entry) else {
+            return; // Late, about an entry no longer current or next: ignored.
         };
-        let mut tried = cur.tried;
-        let attempts = cur.attempts + 1;
-        let res = match (attempts, &cur.res.id) {
-            (1, Some(_)) => resolve(cur.item, &tried).await,
-            (2, Some(id)) => {
-                tried.push(id.clone());
-                resolve(cur.item, &tried).await
+        let (entry, item) = (l.entry, l.item);
+        let reason = match kind {
+            PlayerErrorKind::Forbidden => {
+                match self
+                    .ladder(entry, item, l.attempts, l.tried, l.res.id)
+                    .await
+                {
+                    Ok(l) => {
+                        send(PlayerCommand::ReplaceNext {
+                            entry: l.entry.0.to_string(),
+                            source: l.res.source.clone(),
+                            gain_db: l.gain_db,
+                        });
+                        self.next = Some(l);
+                        return;
+                    }
+                    Err(e) => e,
+                }
             }
-            _ => Err(CoreError::Expired),
+            PlayerErrorKind::Network => CoreError::Network,
+            PlayerErrorKind::Decode | PlayerErrorKind::Other => {
+                CoreError::Internal("unplayable stream".into())
+            }
         };
-        match res {
-            Ok(res) => {
-                self.remember(cur.item, &res);
-                let l = Loaded {
-                    entry: cur.entry,
-                    item: cur.item,
-                    gain_db: gain_for(&res).await,
-                    res,
-                    attempts,
-                    tried,
-                };
+        self.skipped(entry, Some(item), reason).await;
+        self.given_up.insert(entry);
+        self.preload().await;
+    }
+
+    /// An expired URL (403) on the current track: the ladder, resuming where it stopped;
+    /// at its top, the next track. Nothing held for it (a crossed `TrackStarted`): the
+    /// queue's current entry, from a fresh resolution.
+    async fn expired(&mut self, entry: EntryId, item: Option<ItemId>) {
+        let cur = self.current.take().filter(|l| l.entry == entry);
+        let (attempts, tried, last) = match cur {
+            Some(l) => (l.attempts, l.tried, l.res.id),
+            None => (0, vec![], None),
+        };
+        let result = match item {
+            Some(item) => self.ladder(entry, item, attempts, tried, last).await,
+            None => Err(CoreError::Internal("malformed item id".into())),
+        };
+        match result {
+            Ok(l) => {
                 self.send_play(l, self.pos_ms, true);
-                self.resume = Some((cur.entry, true));
+                self.resume = Some(entry);
             }
             Err(e) => {
-                self.skipped(Some(cur.item), e).await;
+                self.skipped(entry, item, e).await;
                 let entries = self.following_or_radio(false).await;
                 let _ = self.start(entries, 0, true).await;
             }
         }
+    }
+
+    /// The 403 ladder: a fresh resolution, then the next candidate (`tried` += the last id);
+    /// after that, `Expired`.
+    async fn ladder(
+        &mut self,
+        entry: EntryId,
+        item: ItemId,
+        attempts: u8,
+        mut tried: Vec<String>,
+        last: Option<String>,
+    ) -> Result<Loaded, CoreError> {
+        let attempts = attempts + 1;
+        if attempts == 2 {
+            tried.extend(last);
+        }
+        if attempts > 2 {
+            return Err(CoreError::Expired);
+        }
+        let res = resolve(item, &tried).await?;
+        self.remember(item, &res);
+        Ok(Loaded {
+            entry,
+            item,
+            gain_db: gain_for(&res).await,
+            res,
+            attempts,
+            tried,
+            positions: 0,
+        })
     }
 
     async fn edit(&mut self, op: QueueOp) -> Result<(), CoreError> {
@@ -1145,15 +1240,20 @@ impl Player {
             res,
             attempts: 0,
             tried: vec![],
+            positions: 0,
             ..cur
         };
         let autoplay = self.playing;
         self.send_play(l, self.pos_ms, autoplay);
-        self.resume = Some((entry, autoplay));
+        self.resume = Some(entry);
         Ok(())
     }
 
+    /// Once, and only into an empty queue.
     async fn restore(&mut self) {
+        if self.restored || !self.q.entries.is_empty() {
+            return;
+        }
         let saved = app().db.read(saved::load).await;
         let q = match saved {
             Ok(Some(json)) => match serde_json::from_str::<QueueState>(&json) {
@@ -1181,6 +1281,7 @@ impl Player {
         *self = Player {
             q: q.unwrap_or_else(|| QueueState::play(vec![], 0, None, false, 0)),
             candidates: std::mem::take(&mut self.candidates),
+            restored: true,
             ..Player::new()
         };
         let position = self.q.position_ms;
@@ -1193,7 +1294,7 @@ impl Player {
             match loaded {
                 Ok(l) => {
                     self.send_play(l, position, false);
-                    self.resume = Some((entry, false));
+                    self.resume = Some(entry);
                 }
                 Err(e) => logs::push("warn", "player", &format!("restore: {e:?}")),
             }
@@ -1228,30 +1329,55 @@ impl Player {
     }
 
     async fn emit_queue(&self) {
-        let ids = |entries: Vec<&crate::queue::QueueEntry>| -> Vec<ItemId> {
-            entries
-                .into_iter()
-                .filter_map(|e| parse_id(&e.item).ok())
-                .collect()
-        };
-        let current = ids(self.q.current().into_iter().collect());
-        let mut upcoming = self.q.upcoming();
-        upcoming.truncate(VIEW_UPCOMING);
-        let upcoming = ids(upcoming);
+        let mut entries: Vec<_> = self.q.current().into_iter().collect();
+        entries.extend(self.q.upcoming().into_iter().take(VIEW_UPCOMING));
+        let entries: Vec<(String, bool, Option<ItemId>)> = entries
+            .into_iter()
+            .map(|e| (e.id.0.to_string(), e.from_radio, parse_id(&e.item).ok()))
+            .collect();
+        let has_current = self.q.current().is_some();
+        // One track per entry, in the entry's place: a missing one is left out.
         let views = app()
             .db
-            .read(move |c| Ok((lib::tracks(c, &current)?, lib::tracks(c, &upcoming)?)))
+            .read(move |c| {
+                entries
+                    .into_iter()
+                    .map(|(entry, from_radio, item)| {
+                        let track = match item {
+                            Some(item) => lib::track(c, item)?.map(track_view),
+                            None => None,
+                        };
+                        Ok((entry, from_radio, track))
+                    })
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
             .await;
-        let (current, upcoming) = match views {
-            Ok(v) => v,
+        let mut views = match views {
+            Ok(v) => v.into_iter(),
             Err(e) => {
                 logs::push("error", "player", &e.to_string());
                 return;
             }
         };
+        let (current_entry, current) = match has_current {
+            true => views
+                .next()
+                .map_or((None, None), |(entry, _, track)| (Some(entry), track)),
+            false => (None, None),
+        };
+        let upcoming = views
+            .filter_map(|(entry, from_radio, track)| {
+                Some(QueueItemView {
+                    entry,
+                    track: track?,
+                    from_radio,
+                })
+            })
+            .collect();
         let _ = app().events.queue.send(QueueView {
-            current: current.into_iter().next().map(track_view),
-            upcoming: upcoming.into_iter().map(track_view).collect(),
+            current_entry,
+            current,
+            upcoming,
             index: self.q.index as u32,
             shuffle: self.q.shuffle,
             repeat: self.q.repeat,

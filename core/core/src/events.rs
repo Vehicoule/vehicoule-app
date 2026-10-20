@@ -10,12 +10,23 @@ use crate::queue::{PlayContext, Repeat};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueueView {
+    pub current_entry: Option<String>,
+    /// `None` when nothing is current, or its track is missing from the catalogue.
     pub current: Option<TrackView>,
-    pub upcoming: Vec<TrackView>,
+    /// Entries whose track is missing from the catalogue are left out.
+    pub upcoming: Vec<QueueItemView>,
     pub index: u32,
     pub shuffle: bool,
     pub repeat: Repeat,
     pub context: Option<PlayContext>,
+}
+
+/// One queue entry: its id is what `QueueOp::Remove`, `Move` and `JumpTo` take.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QueueItemView {
+    pub entry: String,
+    pub track: TrackView,
+    pub from_radio: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

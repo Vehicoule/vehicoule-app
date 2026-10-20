@@ -13,7 +13,7 @@ pub struct QueueState {
     pub context: Option<PlayContext>,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Debug)]
 pub struct EntryId(pub uuid::Uuid);
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]

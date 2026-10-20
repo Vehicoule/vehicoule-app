@@ -175,9 +175,19 @@ test('every CoreError variant has a message in both languages', ...);
   PlayerErrorKind classifyPlayerError(String mpvMessage);
   double gainToVolume(double gainDb);              // 100 × 10^(gain/20)
   ```
-- Règles : `Play` → `open([source] + suivante déjà poussée éventuelle, play: autoplay)`
-  puis `seek(position)` ; `EnqueueNext` → `add` ; `ReplaceNext` → `removeAt(courant + 1)`
-  puis `add` ; `ClearNext` → `removeAt(courant + 1)` ; `Stop` → `pause` + `open([])`.
+- Contrat avec Rust (plan 4, `player.rs`) : le lecteur tient une piste courante et au plus
+  une suivante. `Play` remplace les deux (la suivante tenue est abandonnée) ;
+  `EnqueueNext` et `ReplaceNext` remplacent la suivante tenue (ou la posent s'il n'y en a
+  pas) ; `ClearNext` l'abandonne. À la fin de la courante, le lecteur enchaîne seul sur la
+  suivante tenue et envoie `TrackStarted` pour elle. Sens des événements :
+  `TrackStarted` = piste chargée (aussi pour un chargement en pause, `autoplay: false`) ;
+  `Resumed` = le son part (après un `Play` en lecture aussi) ; `Paused` = le son
+  s'arrête. Rust ne déduit « en lecture » que de `Resumed`/`Paused` (et `Ended`/`Error`,
+  après lesquels le lecteur est arrêté) ; après une `Error`, Rust n'envoie rien s'il n'y a
+  rien à rejouer (erreur réseau : le lecteur reste arrêté, l'utilisateur relance).
+- Règles : `Play` → `open([source], play: autoplay)` puis `seek(position)` ;
+  `EnqueueNext`/`ReplaceNext` → `removeAt(courant + 1)` s'il y a une suivante, puis `add` ;
+  `ClearNext` → `removeAt(courant + 1)` s'il y en a une ; `Stop` → `pause` + `open([])`.
   L'adaptateur tient la liste `index mpv → entry` et le gain de chaque entrée (appliqué au
   changement d'index). Événements : `TrackStarted` à chaque changement d'index,
   `Duration` dès connue, `Position` toutes les 10 s pendant la lecture et à chaque pause,

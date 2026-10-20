@@ -361,8 +361,12 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
       Error { entry: String, kind: PlayerErrorKind, message: String },
   }
   pub enum PlayerErrorKind { Forbidden, Network, Decode, Other }   // Forbidden = HTTP 403
-  pub struct QueueView { pub current: Option<TrackView>, pub upcoming: Vec<TrackView>, pub index: u32,
+  pub struct QueueView { pub current_entry: Option<String>, pub current: Option<TrackView>,
+                         pub upcoming: Vec<QueueItemView>, pub index: u32,
                          pub shuffle: bool, pub repeat: Repeat, pub context: Option<PlayContext> }
+  // Une entrée par élément de la file (ids d'entrée pour Remove/Move/JumpTo) ; une entrée
+  // dont la piste manque au catalogue n'est pas listée (current = None, current_entry gardé).
+  pub struct QueueItemView { pub entry: String, pub track: TrackView, pub from_radio: bool }
   pub struct NowPlaying { pub track: Option<TrackView>, pub artwork_path: Option<String>, pub duration_ms: Option<u64> }
   pub enum Notice { Skipped { title: String, reason: CoreError }, UpdateAvailable { version: String }, Error(CoreError) }
   pub enum LibraryChanged { Likes, Playlists, Playlist { id: String }, Downloads, History, Plugins }

@@ -141,9 +141,14 @@ fn skipped(rx: &mut Receiver<Notice>) -> Vec<(String, CoreError)> {
         .collect()
 }
 
+/// The player's contract: loaded (`TrackStarted`), sound running (`Resumed`), duration known.
 async fn started(entry: &str, duration_ms: u64) {
     let entry = entry.to_string();
     on_event(PlayerEvent::TrackStarted {
+        entry: entry.clone(),
+    })
+    .await;
+    on_event(PlayerEvent::Resumed {
         entry: entry.clone(),
     })
     .await;
@@ -162,10 +167,14 @@ fn ev_pos(entry: &str, ms: u64) -> PlayerEvent {
 }
 
 fn forbidden(entry: &str) -> PlayerEvent {
+    failed(entry, PlayerErrorKind::Forbidden)
+}
+
+fn failed(entry: &str, kind: PlayerErrorKind) -> PlayerEvent {
     PlayerEvent::Error {
         entry: entry.into(),
-        kind: PlayerErrorKind::Forbidden,
-        message: "HTTP 403".into(),
+        kind,
+        message: "mpv says something".into(),
     }
 }
 
@@ -294,7 +303,9 @@ async fn radio_extends_the_queue_at_its_end() {
         }
     };
     assert_eq!(view.upcoming.len(), 25);
-    assert_eq!(view.upcoming[0].title, "radio radio-seed 1");
+    assert_eq!(view.upcoming[0].track.title, "radio radio-seed 1");
+    assert_eq!(view.upcoming[0].entry, next);
+    assert!(view.upcoming.iter().all(|i| i.from_radio));
 }
 
 #[tokio::test(start_paused = true)]
@@ -498,19 +509,38 @@ async fn restore_resumes_paused_at_saved_position() {
     reset(); // the app restarts
     restore().await;
     let (e, uri, position, autoplay) = played(now(&mut t.cmds));
-    assert_eq!((e, position, autoplay), (entry, 73_000, false));
+    assert_eq!(
+        (e.as_str(), position, autoplay),
+        (entry.as_str(), 73_000, false)
+    );
     assert_eq!(uri, "https://fake.test/stream/t-restore-b");
     let view = last_queue(&mut t.queue);
     assert_eq!(view.index, 1);
+    assert_eq!(view.current_entry.as_deref(), Some(entry.as_str()));
     assert_eq!(view.current.unwrap().title, "restore b");
-
-    // Undecodable or inconsistent state: an empty queue and a log line, never a panic.
     let mut bad: crate::queue::QueueState = {
         let json = test_app().db.read(saved::load).await.unwrap().unwrap();
         serde_json::from_str(&json).unwrap()
     };
+    // Once, and only into an empty queue.
+    restore().await;
+    nothing(&mut t.cmds);
+    reset();
+    play(vec![track("restore c").await], 0, None).await.unwrap();
+    played(now(&mut t.cmds));
+    restore().await;
+    nothing(&mut t.cmds);
+
+    // Undecodable or inconsistent state: an empty queue and a log line, never a panic.
     bad.order = vec![7, 7];
-    for json in ["{".to_string(), serde_json::to_string(&bad).unwrap()] {
+    let cases = [
+        ("{".to_string(), "saved queue unreadable: starting empty"),
+        (
+            serde_json::to_string(&bad).unwrap(),
+            "saved queue inconsistent: starting empty",
+        ),
+    ];
+    for (json, line) in cases {
         test_app()
             .db
             .write(move |tx| saved::save(tx, &json))
@@ -522,7 +552,8 @@ async fn restore_resumes_paused_at_saved_position() {
         let view = last_queue(&mut t.queue);
         assert_eq!((view.current, view.upcoming.len()), (None, 0));
         let logged = crate::logs::recent();
-        assert!(logged.iter().rev().any(|l| l.source == "player"));
+        let last = logged.iter().rev().find(|l| l.source == "player").unwrap();
+        assert_eq!(last.message, line);
     }
 }
 
@@ -567,4 +598,254 @@ fn gain_only_turns_down() {
     assert!((gain_db(4.2) + 4.2).abs() < 1e-6);
     assert_eq!(gain_db(-3.0), 0.0);
     assert_eq!(gain_db(30.0), -15.0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn restored_track_preloads_once_resumed() {
+    let mut t = setup().await;
+    let ids = vec![track("resumed a").await, track("resumed b").await];
+    play(ids, 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    on_event(ev_pos(&entry, 73_000)).await;
+    reset();
+    restore().await;
+    played(now(&mut t.cmds));
+    // Loaded paused: no preload until the sound runs.
+    on_event(PlayerEvent::TrackStarted {
+        entry: entry.clone(),
+    })
+    .await;
+    assert!(
+        timeout(Duration::from_secs(600), t.cmds.recv())
+            .await
+            .is_err()
+    );
+    let t1 = Instant::now();
+    on_event(PlayerEvent::Resumed {
+        entry: entry.clone(),
+    })
+    .await;
+    enqueued(t.cmds.recv().await.unwrap());
+    // 180 − 73 − 20 = 87 s (catalogue duration).
+    let at = t1.elapsed();
+    assert!(
+        at >= Duration::from_millis(86_900) && at <= Duration::from_millis(87_100),
+        "{at:?}"
+    );
+}
+
+#[tokio::test]
+async fn network_error_sends_nothing_and_tells() {
+    let mut t = setup().await;
+    play(vec![track("network").await], 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    on_event(failed(&entry, PlayerErrorKind::Network)).await;
+    nothing(&mut t.cmds);
+    let notices: Vec<_> = std::iter::from_fn(|| t.notices.try_recv().ok()).collect();
+    assert_eq!(notices, [Notice::Error(CoreError::Network)]);
+}
+
+#[tokio::test]
+async fn decode_error_on_next_skips_it_once() {
+    let mut t = setup().await;
+    let ids = vec![
+        track("bad next a").await,
+        track("bad next b").await,
+        track("bad next c").await,
+    ];
+    play(ids, 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 15_000).await;
+    let (b, _) = enqueued(
+        timeout(Duration::from_secs(5), t.cmds.recv())
+            .await
+            .unwrap()
+            .unwrap(),
+    );
+    on_event(failed(&b, PlayerErrorKind::Decode)).await;
+    let c = replaced(now(&mut t.cmds));
+    assert_ne!(c, b);
+    nothing(&mut t.cmds);
+    assert_eq!(skipped(&mut t.notices).len(), 1);
+    // A failure of the new next skips it too, and nothing is left: cleared.
+    on_event(failed(&c, PlayerErrorKind::Other)).await;
+    assert_eq!(now(&mut t.cmds), PlayerCommand::ClearNext);
+    nothing(&mut t.cmds);
+}
+
+#[tokio::test]
+async fn forbidden_on_next_follows_the_ladder() {
+    let mut t = setup().await;
+    let ids = vec![
+        track("ladder a").await,
+        track("ladder b").await,
+        track("ladder c").await,
+    ];
+    play(ids, 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 15_000).await;
+    let (b, _) = enqueued(
+        timeout(Duration::from_secs(5), t.cmds.recv())
+            .await
+            .unwrap()
+            .unwrap(),
+    );
+    let uri = |c: PlayerCommand| match c {
+        PlayerCommand::ReplaceNext { entry, source, .. } => (entry, source.uri),
+        c => panic!("{c:?}"),
+    };
+    on_event(forbidden(&b)).await;
+    assert_eq!(
+        uri(now(&mut t.cmds)),
+        (b.clone(), "https://fake.test/stream/t-ladder-b".into())
+    );
+    on_event(forbidden(&b)).await;
+    assert_eq!(
+        uri(now(&mut t.cmds)),
+        (b.clone(), "https://fake.test/stream/r-ladder-b-1".into())
+    );
+    on_event(forbidden(&b)).await;
+    let (c, curi) = uri(now(&mut t.cmds));
+    assert_ne!(c, b);
+    assert_eq!(curi, "https://fake.test/stream/t-ladder-c");
+    assert_eq!(skipped(&mut t.notices).len(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn started_old_next_while_replace_in_flight() {
+    let mut t = setup().await;
+    let ids = vec![
+        track("race a").await,
+        track("race b").await,
+        track("race c").await,
+    ];
+    play(ids, 0, None).await.unwrap();
+    let (a, ..) = played(now(&mut t.cmds));
+    started(&a, 30_000).await;
+    let (b, _) = enqueued(t.cmds.recv().await.unwrap());
+    edit(QueueOp::EnqueueNext(vec![track("race x").await]))
+        .await
+        .unwrap();
+    let x = replaced(now(&mut t.cmds));
+    // The player had already moved on to `b` when `ReplaceNext(x)` crossed it.
+    on_event(PlayerEvent::TrackStarted { entry: b.clone() }).await;
+    let view = last_queue(&mut t.queue);
+    assert_eq!(view.current_entry.as_deref(), Some(b.as_str()));
+    assert_eq!(view.upcoming[0].entry, x, "play next still comes next");
+    on_event(PlayerEvent::Duration {
+        entry: b.clone(),
+        ms: 30_000,
+    })
+    .await;
+    // What the player holds is unknown: the next preload replaces it.
+    assert_eq!(replaced(t.cmds.recv().await.unwrap()), x);
+    // A 403 on `b` still recovers, though nothing was held for it.
+    on_event(ev_pos(&b, 12_000)).await;
+    on_event(forbidden(&b)).await;
+    let (e, uri, position, _) = played(now(&mut t.cmds));
+    assert_eq!((e, position), (b, 12_000));
+    assert_eq!(uri, "https://fake.test/stream/t-race-b");
+}
+
+#[tokio::test]
+async fn forbidden_attempts_reset_after_playing_a_while() {
+    let mut t = setup().await;
+    play(vec![track("long play").await], 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 600_000).await;
+    on_event(forbidden(&entry)).await;
+    played(now(&mut t.cmds));
+    started(&entry, 600_000).await;
+    on_event(ev_pos(&entry, 10_000)).await;
+    on_event(ev_pos(&entry, 20_000)).await;
+    // Played a while: a new 403 is a first one again (same recording, fresh URL).
+    on_event(forbidden(&entry)).await;
+    let (_, uri, ..) = played(now(&mut t.cmds));
+    assert_eq!(uri, "https://fake.test/stream/t-long-play");
+}
+
+#[tokio::test]
+async fn late_error_for_a_skipped_track_is_ignored() {
+    let mut t = setup().await;
+    let ids = vec![track("late a").await, track("late b").await];
+    play(ids, 0, None).await.unwrap();
+    let (a, ..) = played(now(&mut t.cmds));
+    started(&a, 180_000).await;
+    skip_next().await;
+    played(now(&mut t.cmds));
+    let before = catalog::tests::calls().await;
+    on_event(forbidden(&a)).await;
+    nothing(&mut t.cmds);
+    assert_eq!(catalog::tests::calls().await, before);
+    assert!(skipped(&mut t.notices).is_empty());
+}
+
+#[tokio::test]
+async fn decode_error_on_current_skips_to_next() {
+    let mut t = setup().await;
+    let ids = vec![track("decode a").await, track("decode b").await];
+    play(ids, 0, None).await.unwrap();
+    let (a, ..) = played(now(&mut t.cmds));
+    started(&a, 180_000).await;
+    on_event(failed(&a, PlayerErrorKind::Decode)).await;
+    let (b, uri, ..) = played(now(&mut t.cmds));
+    assert_ne!(a, b);
+    assert_eq!(uri, "https://fake.test/stream/t-decode-b");
+    let s = skipped(&mut t.notices);
+    assert_eq!(s.len(), 1);
+    assert_eq!(s[0].0, "decode a");
+}
+
+#[tokio::test]
+async fn at_most_three_failures_per_attempt() {
+    let mut t = setup().await;
+    let ids = vec![
+        track("cap 1").await,
+        track("cap 2").await,
+        track("cap 3").await,
+        track("cap 4").await,
+    ];
+    catalog::tests::set_mode("fake", "not-found").await;
+    catalog::tests::set_mode("fake-b", "not-found").await;
+    let before = catalog::tests::calls().await;
+    assert_eq!(play(ids, 0, None).await, Err(CoreError::NotFound));
+    assert_eq!(skipped(&mut t.notices).len(), 3);
+    // fake then fake-b per track, 3 tracks: the 4th is never tried.
+    assert_eq!(catalog::tests::calls().await, before + 6);
+    assert_eq!(now(&mut t.cmds), PlayerCommand::Stop);
+}
+
+#[tokio::test]
+async fn offline_skip_is_told_once() {
+    let mut t = setup().await;
+    let [a, x, c] = [
+        track("once a").await,
+        track("once x").await,
+        track("once c").await,
+    ];
+    downloaded(&a, "/music/once-a.mp3").await;
+    downloaded(&c, "/music/once-c.mp3").await;
+    set_online(false);
+    play(vec![a, x, c], 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 15_000).await;
+    enqueued(
+        timeout(Duration::from_secs(5), t.cmds.recv())
+            .await
+            .unwrap()
+            .unwrap(),
+    );
+    assert_eq!(skipped(&mut t.notices).len(), 1);
+    // The preload runs again (still offline): `x` is skipped again, silently.
+    set_online(false);
+    replaced(
+        timeout(Duration::from_secs(5), t.cmds.recv())
+            .await
+            .unwrap()
+            .unwrap(),
+    );
+    assert!(skipped(&mut t.notices).is_empty());
+    set_online(true);
 }
