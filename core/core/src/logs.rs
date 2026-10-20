@@ -16,29 +16,43 @@ pub struct LogLine {
     pub message: String,
 }
 
-/// Quoted text → `"…"` (an unclosed quote masks to the end), any word containing `://` →
-/// `<url>`, runs of more than 6 digits → `<n>`.
+/// Quoted text → `"…"` (an unclosed quote masks to the end; an escaped `\"` inside quotes
+/// does not close them), any word containing `://` → `<url>`, runs of more than 6 digits →
+/// `<n>`.
 pub fn redact(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    for (i, part) in s.split('"').enumerate() {
-        if i % 2 == 1 {
-            out.push_str("\"…");
-            continue;
-        }
-        if i > 0 {
-            out.push('"');
-        }
-        for chunk in part.split_inclusive(char::is_whitespace) {
-            let word = chunk.trim_end_matches(char::is_whitespace);
-            if word.contains("://") {
-                out.push_str("<url>");
+    let mut plain = 0; // start of the current unquoted run
+    let mut quoted = false;
+    let mut escaped = false;
+    for (i, c) in s.char_indices() {
+        if c == '"' && !(quoted && escaped) {
+            if quoted {
+                out.push('"');
+                plain = i + 1;
             } else {
-                mask_digits(word, &mut out);
+                mask_words(&s[plain..i], &mut out);
+                out.push_str("\"…");
             }
-            out.push_str(&chunk[word.len()..]);
+            quoted = !quoted;
         }
+        escaped = c == '\\' && !escaped;
+    }
+    if !quoted {
+        mask_words(&s[plain..], &mut out);
     }
     out
+}
+
+fn mask_words(s: &str, out: &mut String) {
+    for chunk in s.split_inclusive(char::is_whitespace) {
+        let word = chunk.trim_end_matches(char::is_whitespace);
+        if word.contains("://") {
+            out.push_str("<url>");
+        } else {
+            mask_digits(word, out);
+        }
+        out.push_str(&chunk[word.len()..]);
+    }
 }
 
 fn mask_digits(word: &str, out: &mut String) {
@@ -94,16 +108,31 @@ mod tests {
             "took 123456 ms\tfor \"…"
         );
         assert_eq!(redact("a1234567b file://x"), "a<n>b <url>");
+        // Debug formatting escapes inner quotes: they stay inside the quoted run.
+        assert_eq!(
+            redact(r#"Err(Internal("he said \"Halo\" now"))"#),
+            r#"Err(Internal("…"))"#
+        );
+        // An escaped quote outside any quoted run opens one (fails safe: masks to the end).
+        assert_eq!(redact(r#"said \"Halo\" now"#), r#"said \"…"#);
     }
 
     #[test]
     fn log_buffer_keeps_2000_lines() {
+        // Other tests' panics land in the same global buffer (panic hook): only look at ours.
+        let last_ours = || {
+            recent()
+                .into_iter()
+                .rev()
+                .find(|l| l.source == "buffer-test")
+                .unwrap()
+        };
         for i in 0..2500 {
             push("info", "buffer-test", &format!("line {i}"));
         }
-        let lines = recent();
-        assert_eq!(lines.len(), 2000);
-        let last = lines.last().unwrap();
+        // Foreign lines only add to the buffer: it is full, never over.
+        assert_eq!(recent().len(), 2000);
+        let last = last_ours();
         assert_eq!(
             (
                 last.level.as_str(),
@@ -115,6 +144,6 @@ mod tests {
         assert!(last.at_ms > 0);
         // Masked on the way in.
         push("warn", "buffer-test", "GET https://a.b/c");
-        assert_eq!(recent().last().unwrap().message, "GET <url>");
+        assert_eq!(last_ours().message, "GET <url>");
     }
 }

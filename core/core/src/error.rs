@@ -20,8 +20,8 @@ pub enum CoreError {
 }
 
 impl CoreError {
-    #[allow(dead_code, reason = "used by the router (task 2)")]
     /// As `From<CallError>`, but `Unsupported` becomes `NoPlugin(cap)`.
+    #[allow(dead_code, reason = "used by the router (task 2)")]
     pub(crate) fn from_call(e: CallError, cap: Capability) -> CoreError {
         match e {
             CallError::Unsupported => CoreError::NoPlugin(cap),
