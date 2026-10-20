@@ -3,6 +3,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::Tx;
+use super::items::invalid;
 
 pub fn device_get(c: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
     c.query_row(
@@ -13,8 +14,11 @@ pub fn device_get(c: &Connection, key: &str) -> rusqlite::Result<Option<String>>
     .optional()
 }
 
-/// `device_id` and `hlc_last` are reserved by `Db`: never write them from here.
+/// `device_id` and `hlc_last` are reserved by `Db`: refused.
 pub fn device_set(tx: &Tx, key: &str, value: &str) -> rusqlite::Result<()> {
+    if matches!(key, "device_id" | "hlc_last") {
+        return Err(invalid(format!("settings: {key} is reserved")));
+    }
     tx.tx.execute(
         "INSERT INTO settings_device (key, value) VALUES (?1, ?2)
          ON CONFLICT (key) DO UPDATE SET value = excluded.value",
@@ -52,7 +56,7 @@ pub fn shared_set(tx: &Tx, key: &str, value: &str) -> rusqlite::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::Db;
+    use crate::library::{Db, DbError};
 
     fn sync_cols(db: &Db, key: &'static str) -> (i64, Vec<u8>, Option<i64>) {
         db.read_blocking(move |c| {
@@ -63,6 +67,22 @@ mod tests {
             )
         })
         .unwrap()
+    }
+
+    #[test]
+    fn device_set_rejects_reserved_keys() {
+        let db = Db::open_in_memory().unwrap();
+        let id = db.device_id().hyphenated().to_string();
+        for key in ["device_id", "hlc_last"] {
+            let err = db
+                .write_blocking(|tx| device_set(tx, key, "0"))
+                .unwrap_err();
+            assert!(matches!(err, DbError::Invalid(_)), "{key}: {err:?}");
+        }
+        assert_eq!(
+            db.read_blocking(|c| device_get(c, "device_id")).unwrap(),
+            Some(id)
+        );
     }
 
     #[test]

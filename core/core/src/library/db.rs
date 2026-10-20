@@ -15,11 +15,17 @@ const MIGRATIONS: &[&str] = &[include_str!("../../migrations/0001_init.sql")];
 pub enum DbError {
     Sqlite(String),
     Migration(String),
+    /// Raised by the library itself: unknown playlist or entry, bad merge, wrong kind,
+    /// reserved key... The caller's argument is wrong, not the store.
+    Invalid(String),
 }
 
 impl From<rusqlite::Error> for DbError {
     fn from(e: rusqlite::Error) -> Self {
-        DbError::Sqlite(e.to_string())
+        match e {
+            rusqlite::Error::UserFunctionError(e) => DbError::Invalid(e.to_string()),
+            e => DbError::Sqlite(e.to_string()),
+        }
     }
 }
 
@@ -28,6 +34,7 @@ impl fmt::Display for DbError {
         match self {
             DbError::Sqlite(s) => write!(f, "sqlite error: {s}"),
             DbError::Migration(s) => write!(f, "migration error: {s}"),
+            DbError::Invalid(s) => write!(f, "invalid argument: {s}"),
         }
     }
 }
@@ -451,6 +458,20 @@ mod tests {
         assert!(err.is_err());
         db.write_blocking(|_tx| Ok::<(), rusqlite::Error>(()))
             .unwrap();
+    }
+
+    #[test]
+    fn semantic_errors_are_invalid_not_sqlite() {
+        let db = Db::open_in_memory().unwrap();
+        let err = db
+            .write_blocking(|_| Err::<(), _>(crate::library::items::invalid("bad".into())))
+            .unwrap_err();
+        assert_eq!(err, DbError::Invalid("bad".into()));
+        assert_eq!(err.to_string(), "invalid argument: bad");
+        let err = db
+            .read_blocking(|c| c.execute("SELECT * FROM nope", []))
+            .unwrap_err();
+        assert!(matches!(err, DbError::Sqlite(_)), "{err:?}");
     }
 
     #[test]

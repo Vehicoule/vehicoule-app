@@ -67,7 +67,9 @@ pub(crate) fn fts_rowid(id: ItemId) -> i64 {
     i64::from_be_bytes(b[8..].try_into().unwrap())
 }
 
-/// A semantic error (bad argument for the store), as a `rusqlite::Error`.
+/// A semantic error (bad argument for the store), as a `rusqlite::Error`; `Db` surfaces it as
+/// `DbError::Invalid`. Only this helper builds `UserFunctionError` (SQL function errors come
+/// back from SQLite as `SqliteFailure`).
 pub(crate) fn invalid(msg: String) -> rusqlite::Error {
     rusqlite::Error::UserFunctionError(msg.into())
 }

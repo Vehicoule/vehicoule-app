@@ -184,24 +184,35 @@ pub fn remove_entry(tx: &Tx, entry: EntryId) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Live entries of playlist `?1`: `e` the entry, `r` its item's root (deleted roots hidden).
+const LIVE_ENTRIES: &str = "FROM playlist_items e
+     JOIN playlists p ON p.item_id = e.playlist_id JOIN items i ON i.id = e.item_id
+     JOIN items r ON r.id = COALESCE(i.merged_into, i.id)
+     WHERE e.playlist_id = ?1 AND e.deleted_at IS NULL AND p.deleted_at IS NULL
+       AND r.deleted_at IS NULL";
+
 /// Live entries in `(order_key, id)` order; each shows its item's root (deleted roots hidden).
 pub fn entries(
     c: &Connection,
     playlist: ItemId,
     page: Page,
 ) -> rusqlite::Result<Vec<(EntryId, ItemId)>> {
-    let mut st = c.prepare(
-        "SELECT e.id, r.id FROM playlist_items e
-         JOIN playlists p ON p.item_id = e.playlist_id JOIN items i ON i.id = e.item_id
-         JOIN items r ON r.id = COALESCE(i.merged_into, i.id)
-         WHERE e.playlist_id = ?1 AND e.deleted_at IS NULL AND p.deleted_at IS NULL
-           AND r.deleted_at IS NULL
-         ORDER BY e.order_key, e.id LIMIT ?2 OFFSET ?3",
-    )?;
+    let mut st = c.prepare(&format!(
+        "SELECT e.id, r.id {LIVE_ENTRIES} ORDER BY e.order_key, e.id LIMIT ?2 OFFSET ?3"
+    ))?;
     st.query_map(params![playlist, page.limit, page.offset], |r| {
         Ok((r.get(0)?, r.get(1)?))
     })?
     .collect()
+}
+
+/// Number of `entries`.
+pub(crate) fn live_count(c: &Connection, playlist: ItemId) -> rusqlite::Result<u32> {
+    c.query_row(
+        &format!("SELECT count(*) {LIVE_ENTRIES}"),
+        [playlist],
+        |r| r.get(0),
+    )
 }
 
 /// User playlists not deleted, newest first.

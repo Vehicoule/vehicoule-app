@@ -3,7 +3,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::items::{canonical, fts_rowid, invalid};
-use super::{ItemId, Kind, Page, Tx, fold, refs};
+use super::{ItemId, Kind, Page, Tx, fold, playlists, refs};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Image {
@@ -75,6 +75,8 @@ pub struct CollectionRow {
     pub artwork: Vec<Image>,
     pub track_count: Option<u32>,
     pub liked: bool,
+    /// A user playlist (`playlists` row): subtitle = description, count = live entries.
+    pub user: bool,
 }
 
 pub fn upsert_track(tx: &Tx, provider: &str, t: &TrackData) -> rusqlite::Result<ItemId> {
@@ -259,7 +261,7 @@ pub fn tracks(c: &Connection, ids: &[ItemId]) -> rusqlite::Result<Vec<TrackRow>>
         .collect()
 }
 
-/// Album, artist or playlist.
+/// Album, artist or playlist; None for a deleted user playlist.
 pub fn collection(c: &Connection, id: ItemId) -> rusqlite::Result<Option<CollectionRow>> {
     let id = canonical(c, id)?;
     let Some((kind, title)) = c
@@ -270,6 +272,16 @@ pub fn collection(c: &Connection, id: ItemId) -> rusqlite::Result<Option<Collect
     else {
         return Ok(None);
     };
+    // (description, deleted) when it is a user playlist.
+    let user: Option<(Option<String>, bool)> = c
+        .query_row(
+            "SELECT p.description, p.deleted_at IS NOT NULL OR i.deleted_at IS NOT NULL
+             FROM playlists p JOIN items i ON i.id = p.item_id WHERE p.item_id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let is_user = user.is_some();
     let (kind, subtitle, track_count) = match Kind::parse(&kind) {
         Some(Kind::Album) => {
             let names: Vec<String> = artists(c, ARTISTS_OF_ALBUM, id)?
@@ -291,6 +303,16 @@ pub fn collection(c: &Connection, id: ItemId) -> rusqlite::Result<Option<Collect
             )
         }
         Some(Kind::Artist) => (Kind::Artist, None, None),
+        Some(Kind::Playlist) if is_user => {
+            let Some((description, false)) = user else {
+                return Ok(None);
+            };
+            (
+                Kind::Playlist,
+                description,
+                Some(playlists::live_count(c, id)?),
+            )
+        }
         Some(Kind::Playlist) => {
             let (owner, count) = c
                 .query_row(
@@ -312,6 +334,7 @@ pub fn collection(c: &Connection, id: ItemId) -> rusqlite::Result<Option<Collect
         artwork: artwork(c, id)?,
         track_count,
         liked: in_group(c, "likes WHERE deleted_at IS NULL", id)?,
+        user: is_user,
     }))
 }
 
@@ -338,7 +361,7 @@ fn name_key(name: &str) -> String {
     format!("name:{}", if f.is_empty() { name.trim() } else { &f })
 }
 
-/// Finds or creates the item, sets title and stamp, records `(provider, key)`.
+/// Finds or creates the item, sets title (unless blank) and stamp, records `(provider, key)`.
 fn ensure(
     tx: &Tx,
     kind: Kind,
@@ -350,7 +373,9 @@ fn ensure(
     let id = match found {
         Some(id) => {
             tx.tx.execute(
-                "UPDATE items SET title = ?2, updated_at = ?3, device_id = ?4 WHERE id = ?1",
+                // A blank title (ytmusic page 2+ headers) keeps the stored one.
+                "UPDATE items SET title = CASE WHEN trim(?2) = '' THEN title ELSE ?2 END,
+                   updated_at = ?3, device_id = ?4 WHERE id = ?1",
                 params![
                     id,
                     title,
@@ -799,6 +824,88 @@ pub(crate) mod tests {
                 (Kind::Playlist, Some("Deezer"), Some(50), false)
             );
             assert_eq!(collection(c, ids[2])?, None);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn user_playlist_collection_counts_live_entries() {
+        use crate::library::playlists::{self, Place};
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let c = &tx.tx;
+            let t: Vec<ItemId> = (0..3)
+                .map(|i| upsert_track(tx, "deezer", &track_data(&i.to_string(), None)))
+                .collect::<Result<_, _>>()?;
+            let pl = playlists::create(tx, "Mine", Some("for the road"))?;
+            let e = playlists::add(tx, pl, &t, Place::End)?;
+            playlists::remove_entry(tx, e[0])?;
+            // A deleted track hides its entry, as in `playlists::entries`.
+            c.execute("UPDATE items SET deleted_at = 1 WHERE id = ?1", [t[1]])?;
+            let row = collection(c, pl)?.unwrap();
+            assert_eq!(
+                (
+                    row.kind,
+                    row.title.as_str(),
+                    row.subtitle.as_deref(),
+                    row.track_count,
+                    row.user
+                ),
+                (Kind::Playlist, "Mine", Some("for the road"), Some(1), true)
+            );
+
+            // Either deletion column hides the playlist (a synced delete may set only one).
+            c.execute("UPDATE items SET deleted_at = 1 WHERE id = ?1", [pl])?;
+            assert_eq!(collection(c, pl)?, None);
+            c.execute("UPDATE items SET deleted_at = NULL WHERE id = ?1", [pl])?;
+            c.execute(
+                "UPDATE playlists SET deleted_at = 1 WHERE item_id = ?1",
+                [pl],
+            )?;
+            assert_eq!(collection(c, pl)?, None);
+
+            let provider = upsert_playlist(
+                tx,
+                "deezer",
+                &PlaylistData {
+                    ext_id: "pl".into(),
+                    title: "Hits".into(),
+                    owner: None,
+                    description: None,
+                    track_count: None,
+                    artwork: vec![],
+                },
+            )?;
+            assert!(!collection(c, provider)?.unwrap().user);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn blank_title_keeps_the_stored_one() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let mut p = PlaylistData {
+                ext_id: "pl".into(),
+                title: "Hits".into(),
+                owner: None,
+                description: None,
+                track_count: None,
+                artwork: vec![],
+            };
+            let id = upsert_playlist(tx, "ytmusic", &p)?;
+            // ytmusic page 2+ headers come with an empty title.
+            p.title = " ".into();
+            assert_eq!(upsert_playlist(tx, "ytmusic", &p)?, id);
+            assert_eq!(collection(&tx.tx, id)?.unwrap().title, "Hits");
+            let fts: String = tx.tx.query_row(
+                "SELECT title FROM library_fts WHERE item_id = ?1",
+                [id],
+                |r| r.get(0),
+            )?;
+            assert_eq!(fts, "hits");
             Ok(())
         })
         .unwrap();
