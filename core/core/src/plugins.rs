@@ -460,6 +460,7 @@ fn on_event(e: HostEvent) {
             );
             // Ids, numbers and fixed names only: masking would hide fuel counts over 6 digits.
             logs::push_unmasked("info", &r.plugin, &line);
+            crate::telemetry::on_call(&r);
         }
     }
 }
@@ -507,7 +508,7 @@ fn feed_error(e: FeedError) -> CoreError {
     CoreError::InvalidFeed
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as i64)

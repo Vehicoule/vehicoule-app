@@ -111,6 +111,16 @@ pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
             tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
         }
     });
+    // Dart asks once after the first frame; then hourly, `check_if_due` keeps it to once a day.
+    #[cfg(not(test))]
+    app().rt.spawn(async {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            if let Err(e) = crate::updates::check_if_due().await {
+                crate::logs::push("warn", "updates", &format!("{e:?}"));
+            }
+        }
+    });
     Ok(())
 }
 
