@@ -6,6 +6,7 @@ license = "MPL-2.0"
 
 [lib]
 name = "vehicoule_core"
+crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
 rusqlite.workspace = true
@@ -14,7 +15,9 @@ unicode-normalization.workspace = true
 strsim.workspace = true
 serde_json.workspace = true
 base64.workspace = true
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
+plugin-host = { path = "../plugin-host" }
+flutter_rust_bridge = "=2.13.0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }

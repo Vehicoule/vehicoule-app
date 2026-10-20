@@ -74,6 +74,19 @@ pub(crate) fn invalid(msg: String) -> rusqlite::Error {
     rusqlite::Error::UserFunctionError(msg.into())
 }
 
+/// A stored value that does not decode: the store is corrupt, a bug, not a bad argument.
+/// `Db` surfaces it as `DbError::Sqlite`.
+pub(crate) fn corrupt(
+    col: &str,
+    e: impl Into<Box<dyn std::error::Error + Send + Sync>>,
+) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        0,
+        rusqlite::types::Type::Text,
+        format!("{col}: {}", e.into()).into(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -17,3 +17,12 @@ unicode-normalization = "0.1"
 strsim = "0.11"
 serde_json = "1"
 base64 = "0.22"
+
+# panic = "unwind": flutter_rust_bridge turns a panic into a Dart exception (vehicoule-core
+# refuses to build otherwise). Measured +6.46 MiB for Wasmtime in this profile.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "unwind"

@@ -2,7 +2,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::items::{canonical, invalid};
+use super::items::{canonical, corrupt, invalid};
 use super::{ItemId, Tx};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,9 +37,7 @@ pub fn get(c: &Connection, item: ItemId) -> rusqlite::Result<Option<LyricsRow>> 
         .optional()?;
     row.map(|(provider, plain, synced, fetched_at)| {
         let synced = match synced {
-            Some(s) => {
-                serde_json::from_str(&s).map_err(|e| invalid(format!("lyrics.synced: {e}")))?
-            }
+            Some(s) => serde_json::from_str(&s).map_err(|e| corrupt("lyrics.synced", e))?,
             None => Vec::new(),
         };
         Ok(LyricsRow {

@@ -5,7 +5,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::Tx;
-use super::items::invalid;
+use super::items::{corrupt, invalid};
 
 const CAP_BYTES: i64 = 64 << 20;
 
@@ -34,7 +34,7 @@ pub fn get(c: &Connection, key: &[u8; 32]) -> rusqlite::Result<Option<CacheRow>>
                 status: r.get(1)?,
                 url: r.get(2)?,
                 headers: serde_json::from_str(&headers)
-                    .map_err(|e| invalid(format!("http_cache.headers: {e}")))?,
+                    .map_err(|e| corrupt("http_cache.headers", e))?,
                 body: r.get(4)?,
                 stored_at: r.get(5)?,
                 expires_at: r.get(6)?,

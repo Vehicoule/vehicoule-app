@@ -5,7 +5,7 @@ use base64::engine::general_purpose::STANDARD;
 use rusqlite::{Connection, Row, params};
 
 use super::Tx;
-use super::items::invalid;
+use super::items::{corrupt, invalid};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeedRow {
@@ -38,7 +38,7 @@ pub fn feeds(c: &Connection) -> rusqlite::Result<Vec<FeedRow>> {
 }
 
 fn feed_row(r: &Row) -> rusqlite::Result<FeedRow> {
-    let bad = |e: String| invalid(format!("feeds.public_keys: {e}"));
+    let bad = |e: String| corrupt("feeds.public_keys", e);
     let keys: Vec<String> =
         serde_json::from_str(&r.get::<_, String>(2)?).map_err(|e| bad(e.to_string()))?;
     let public_keys = keys
@@ -55,7 +55,7 @@ fn feed_row(r: &Row) -> rusqlite::Result<FeedRow> {
         official: r.get(3)?,
         last_sequence: r
             .get::<_, Option<i64>>(4)?
-            .map(|n| u64::try_from(n).map_err(|e| invalid(format!("feeds.last_sequence: {e}"))))
+            .map(|n| u64::try_from(n).map_err(|e| corrupt("feeds.last_sequence", e)))
             .transpose()?,
         fetched_at: r.get(5)?,
         feed: r.get(6)?,

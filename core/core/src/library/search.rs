@@ -12,7 +12,7 @@
 use rusqlite::{Connection, Row, params};
 use strsim::jaro_winkler;
 
-use super::items::invalid;
+use super::items::corrupt;
 use super::{ItemId, Kind, Tx, fold};
 
 pub struct LocalHit {
@@ -101,7 +101,8 @@ pub fn history(c: &Connection, prefix: &str, limit: u32) -> rusqlite::Result<Vec
 
 fn row(r: &Row) -> rusqlite::Result<(ItemId, Kind, String, String)> {
     let kind: String = r.get(1)?;
-    let kind = Kind::parse(&kind).ok_or_else(|| invalid(format!("search: unknown kind {kind}")))?;
+    let kind =
+        Kind::parse(&kind).ok_or_else(|| corrupt("search.kind", format!("unknown kind {kind}")))?;
     Ok((r.get(0)?, kind, r.get(2)?, r.get(3)?))
 }
 
