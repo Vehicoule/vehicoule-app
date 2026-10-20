@@ -14,6 +14,7 @@ pub mod library;
 pub mod logs;
 #[allow(dead_code, reason = "reached from api/ (task 8)")]
 mod plugins;
+pub mod queue;
 mod router;
 mod storage;
 
