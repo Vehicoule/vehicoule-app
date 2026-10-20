@@ -86,7 +86,9 @@ tables techniques). Rapport : constat 6 (recherche floue). Indépendant des plan
   pub struct Stamp { pub updated_at: i64, pub device_id: uuid::Uuid }
   pub struct Hlc { last: u64 }
   impl Hlc { pub fn tick(&mut self, wall_ms: u64) -> u64; pub fn observe(&mut self, remote: u64, wall_ms: u64) -> u64; }
-  #[derive(Debug, Clone, PartialEq)] pub enum DbError { Sqlite(String), Migration(String) }
+  #[derive(Debug, Clone, PartialEq)] pub enum DbError { Sqlite(String), Migration(String), Invalid(String) }
+  // Invalid : erreur sémantique levée par la bibliothèque (items::invalid : playlist ou entrée inconnue,
+  // fusion impossible, ajout d'un non-titre, clé réservée…) ; Sqlite : échec de SQLite.
   #[derive(Clone)] pub struct Db { /* Arc<Mutex<Inner { conn, hlc, device_id }>> */ }
   pub struct Tx<'a> { pub tx: rusqlite::Transaction<'a>, pub stamp: Stamp }
   impl Db {
@@ -246,10 +248,11 @@ CREATE VIRTUAL TABLE library_fts USING fts5(item_id UNINDEXED, title, subtitle,
                         pub album: Option<(ItemId, String)>, pub duration_ms: Option<u32>, pub isrc: Option<String>,
                         pub explicit: bool, pub artwork: Vec<Image>, pub liked: bool, pub downloaded: bool }
   pub struct CollectionRow { pub id: ItemId, pub kind: Kind, pub title: String, pub subtitle: Option<String>,
-                             pub artwork: Vec<Image>, pub track_count: Option<u32>, pub liked: bool }
+                             pub artwork: Vec<Image>, pub track_count: Option<u32>, pub liked: bool,
+                             pub user: bool }  // playlist perso : sous-titre = description, track_count = entrées vivantes
   pub fn track(c: &Connection, id: ItemId) -> rusqlite::Result<Option<TrackRow>>;
   pub fn tracks(c: &Connection, ids: &[ItemId]) -> rusqlite::Result<Vec<TrackRow>>;       // ordre conservé
-  pub fn collection(c: &Connection, id: ItemId) -> rusqlite::Result<Option<CollectionRow>>; // album, artiste, playlist
+  pub fn collection(c: &Connection, id: ItemId) -> rusqlite::Result<Option<CollectionRow>>; // album, artiste, playlist ; None si playlist perso supprimée
   pub fn children(c: &Connection, parent: ItemId, page: Page) -> rusqlite::Result<Vec<ItemId>>;
   // refs.rs
   pub struct ExtRef { pub external_id: String, pub pinned: bool }
@@ -399,7 +402,8 @@ CREATE VIRTUAL TABLE library_fts USING fts5(item_id UNINDEXED, title, subtitle,
 - Produces :
   ```rust
   // lyrics.rs
-  pub struct LyricsRow { pub provider: String, pub plain: Option<String>, pub synced: Vec<(u32, String)> } // synced en JSON [[ms,"…"],…]
+  pub struct LyricsRow { pub provider: String, pub plain: Option<String>, pub synced: Vec<(u32, String)>, // synced en JSON [[ms,"…"],…]
+                        pub fetched_at: i64 }  // ms unix ; put le fixe à tx.now_ms, la valeur passée est ignorée
   pub fn get(c: &Connection, item: ItemId) -> rusqlite::Result<Option<LyricsRow>>;
   pub fn put(tx: &Tx, item: ItemId, row: &LyricsRow) -> rusqlite::Result<()>;
   // kv.rs
@@ -414,7 +418,7 @@ CREATE VIRTUAL TABLE library_fts USING fts5(item_id UNINDEXED, title, subtitle,
   pub fn put(tx: &Tx, key: &[u8; 32], row: &CacheRow) -> rusqlite::Result<()>;   // puis élagage à 64 Mio : expirées d'abord, puis plus anciennes
   // settings.rs
   pub fn device_get(c: &Connection, key: &str) -> rusqlite::Result<Option<String>>;
-  pub fn device_set(tx: &Tx, key: &str, value: &str) -> rusqlite::Result<()>;
+  pub fn device_set(tx: &Tx, key: &str, value: &str) -> rusqlite::Result<()>;   // device_id, hlc_last réservées → invalid
   pub fn shared_get(c: &Connection, key: &str) -> rusqlite::Result<Option<String>>;
   pub fn shared_set(tx: &Tx, key: &str, value: &str) -> rusqlite::Result<()>;     // colonnes de synchro
   // plugins.rs

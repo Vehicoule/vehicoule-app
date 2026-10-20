@@ -104,6 +104,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub enum CoreError { Network, ProviderWall, RateLimited, BudgetExceeded, NotFound, Expired,
                        Internal(String), Offline, NoPlugin(Capability) }
   impl From<plugin_host::CallError> for CoreError; impl From<library::DbError> for CoreError;
+  // DbError::Invalid(_) → NotFound (argument inconnu ou refusé : playlist, entrée, clé réservée…, pas un bug) ;
+  // DbError::Sqlite(_) | Migration(_) → Internal(message).
   pub(crate) struct App { pub db: Db, pub rt: tokio::runtime::Runtime, pub cfg: AppConfig,
                           pub plugins: Plugins, /* tâche 2 */ pub events: Events /* tâche 5 */ }
   pub(crate) fn app() -> &'static App;                     // OnceLock ; panique claire si init_app n'a pas eu lieu
@@ -125,6 +127,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
 ```rust
 #[test] fn init_is_idempotent()                 // init(cfg) deux fois → Ok, même Db
 #[test] fn call_errors_map_to_core_errors()     // chaque CallError → variante attendue ; BudgetExceeded(_) → BudgetExceeded ; Unsupported → NoPlugin(cap)
+#[test] fn db_errors_map_to_core_errors()       // DbError::Invalid → NotFound ; Sqlite, Migration → Internal
 #[test] fn redact_masks_sensitive_parts()       // redact("play \"Halo\" from https://x.y/z?q=a id 12345678") == "play \"…\" from <url> id <n>"
 #[test] fn log_buffer_keeps_2000_lines()
 #[test] fn db_storage_roundtrips_kv_and_cache()
@@ -224,7 +227,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub struct ArtistRefView { pub id: String, pub name: String }
   pub struct AlbumRefView { pub id: String, pub title: String }
   pub struct CollectionView { pub id: String, pub kind: ItemKind, pub title: String, pub subtitle: Option<String>,
-                              pub track_count: Option<u32>, pub liked: bool, pub is_user_playlist: bool }
+                              pub track_count: Option<u32>, pub liked: bool, pub is_user_playlist: bool } // is_user_playlist ← CollectionRow.user
   pub enum ItemKind { Track, Album, Artist, Playlist }
   pub struct SearchView { pub tracks: Vec<TrackView>, pub albums: Vec<CollectionView>,
                           pub artists: Vec<CollectionView>, pub playlists: Vec<CollectionView>, pub source: String }
@@ -243,6 +246,10 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   ```
 - Pages d'entité : l'en-tête (titre, propriétaire) vient de la première page seulement ; les
   pages suivantes (ytmusic) ont un titre vide.
+- Écriture des résultats du catalogue : une erreur d'upsert (`upsert_*`, `set_children`) annule
+  tout le `write` et remonte (pas de « journaliser et passer » : il n'y a pas de savepoint par
+  upsert, la transaction est déjà dans un état partiel). Vaut pour toute tâche qui écrit des
+  résultats du catalogue.
 - Pochette choisie : fournisseurs dans l'ordre de la capacité pochettes, la plus petite
   largeur ≥ `size` (sinon la plus grande) ; URL contrôlée par `host.check_url` du plugin
   d'origine avant tout téléchargement, avec le client `host.http_client(&plugin)` (plugin-host : IP littérales refusées, chaque redirection re-vérifiée).
@@ -453,7 +460,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   `Http(403)` en cours de route → nouvelle résolution puis reprise au même octet ;
   progression envoyée au plus **2 fois par seconde** par téléchargement ; `LibraryChanged::Downloads`
   à chaque changement d'état. Paroles : base d'abord ; sinon capacité `lyrics` routée,
-  stockée ; aucune trouvée → ligne vide stockée, nouvel essai après 7 jours ; hors ligne →
+  stockée ; aucune trouvée → ligne vide stockée, nouvel essai après 7 jours (âge = `LyricsRow.fetched_at`) ; hors ligne →
   base seulement.
 
 - [ ] **Step 1 : tests qui échouent**
