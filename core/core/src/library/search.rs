@@ -3,9 +3,11 @@
 //! Queries of 3+ folded chars run as an FTS5 trigram `MATCH` (OR of the query's distinct
 //! char-trigrams, 200 candidates, ranked by `bm25`); shorter queries run a `LIKE` scan using
 //! the `fold` SQL function registered on every connection (see `db.rs`). Either way, results
-//! are restricted to items "in the library" (liked, in a live user playlist entry,
-//! downloaded, or played) and re-scored: 1.0 for a folded-title substring match, else
-//! Jaro-Winkler against the folded title.
+//! are restricted to items "in the library" (liked, in a live user playlist entry or a user
+//! playlist itself, downloaded, or played) and re-scored: for each of the folded title and
+//! folded subtitle (artists/album, or playlist owner), 1.0 if it contains `q` as a substring,
+//! else Jaro-Winkler against it — the higher of the two wins, so a query matching the artist
+//! ranks the track same as one matching its title.
 
 use rusqlite::{Connection, Row, params};
 use strsim::jaro_winkler;
@@ -24,13 +26,18 @@ const IN_LIBRARY: &str = "(
     EXISTS (SELECT 1 FROM likes WHERE likes.item_id = r.id AND likes.deleted_at IS NULL)
     OR EXISTS (SELECT 1 FROM playlist_items pi JOIN playlists p ON p.item_id = pi.playlist_id
         WHERE pi.item_id = r.id AND pi.deleted_at IS NULL AND p.deleted_at IS NULL)
+    OR EXISTS (SELECT 1 FROM playlists WHERE playlists.item_id = r.id AND playlists.deleted_at IS NULL)
     OR EXISTS (SELECT 1 FROM downloads WHERE downloads.item_id = r.id)
     OR EXISTS (SELECT 1 FROM plays WHERE plays.item_id = r.id AND plays.deleted_at IS NULL)
 )";
 
-/// Items in the user's library only: liked, in a user playlist, downloaded or played.
+/// Items in the user's library only: liked, in a user playlist (as an entry, or the
+/// playlist itself), downloaded or played.
 pub fn local(c: &Connection, query: &str, limit: u32) -> rusqlite::Result<Vec<LocalHit>> {
     let q = fold(query);
+    if q.is_empty() {
+        return Ok(vec![]);
+    }
     let candidates = if q.chars().count() >= 3 {
         trigram_candidates(c, &q)?
     } else {
@@ -38,18 +45,23 @@ pub fn local(c: &Connection, query: &str, limit: u32) -> rusqlite::Result<Vec<Lo
     };
     let mut hits: Vec<LocalHit> = candidates
         .into_iter()
-        .map(|(item, kind, title)| {
-            let score = if title.contains(&q) {
-                1.0
-            } else {
-                jaro_winkler(&q, &title) as f32
-            };
+        .map(|(item, kind, title, subtitle)| {
+            let score = score_text(&q, &title).max(score_text(&q, &subtitle));
             LocalHit { item, kind, score }
         })
         .collect();
-    hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    hits.sort_by(|a, b| b.score.total_cmp(&a.score));
     hits.truncate(limit as usize);
     Ok(hits)
+}
+
+/// 1.0 if `q` is a substring of `text`, else Jaro-Winkler similarity.
+fn score_text(q: &str, text: &str) -> f32 {
+    if text.contains(q) {
+        1.0
+    } else {
+        jaro_winkler(q, text) as f32
+    }
 }
 
 /// Stores the query (trimmed) with `now`, bumping `used_at` if it was already recorded, then
@@ -82,16 +94,19 @@ pub fn history(c: &Connection, prefix: &str, limit: u32) -> rusqlite::Result<Vec
         .collect()
 }
 
-fn row(r: &Row) -> rusqlite::Result<(ItemId, Kind, String)> {
+fn row(r: &Row) -> rusqlite::Result<(ItemId, Kind, String, String)> {
     let kind: String = r.get(1)?;
     let kind = Kind::parse(&kind).ok_or_else(|| invalid(format!("search: unknown kind {kind}")))?;
-    Ok((r.get(0)?, kind, r.get(2)?))
+    Ok((r.get(0)?, kind, r.get(2)?, r.get(3)?))
 }
 
-fn trigram_candidates(c: &Connection, q: &str) -> rusqlite::Result<Vec<(ItemId, Kind, String)>> {
+fn trigram_candidates(
+    c: &Connection,
+    q: &str,
+) -> rusqlite::Result<Vec<(ItemId, Kind, String, String)>> {
     let m = match_expr(q);
     let mut st = c.prepare(&format!(
-        "SELECT library_fts.item_id, i.kind, library_fts.title FROM library_fts
+        "SELECT r.id, r.kind, library_fts.title, library_fts.subtitle FROM library_fts
          JOIN items i ON i.id = library_fts.item_id
          JOIN items r ON r.id = COALESCE(i.merged_into, i.id)
          WHERE library_fts MATCH ?1 AND r.deleted_at IS NULL AND {IN_LIBRARY}
@@ -100,14 +115,18 @@ fn trigram_candidates(c: &Connection, q: &str) -> rusqlite::Result<Vec<(ItemId, 
     st.query_map(params![m], row)?.collect()
 }
 
-fn like_candidates(c: &Connection, query: &str) -> rusqlite::Result<Vec<(ItemId, Kind, String)>> {
+fn like_candidates(
+    c: &Connection,
+    query: &str,
+) -> rusqlite::Result<Vec<(ItemId, Kind, String, String)>> {
     let mut st = c.prepare(&format!(
-        "SELECT library_fts.item_id, i.kind, library_fts.title FROM library_fts
+        "SELECT r.id, r.kind, library_fts.title, library_fts.subtitle FROM library_fts
          JOIN items i ON i.id = library_fts.item_id
          JOIN items r ON r.id = COALESCE(i.merged_into, i.id)
          WHERE (library_fts.title LIKE '%' || fold(?1) || '%'
                 OR library_fts.subtitle LIKE '%' || fold(?1) || '%')
-           AND r.deleted_at IS NULL AND {IN_LIBRARY}"
+           AND r.deleted_at IS NULL AND {IN_LIBRARY}
+         ORDER BY r.id"
     ))?;
     st.query_map(params![query], row)?.collect()
 }
@@ -132,15 +151,15 @@ fn match_expr(q: &str) -> String {
 mod tests {
     use super::*;
     use crate::library::catalog::{self, ArtistData, TrackData};
-    use crate::library::{Db, likes};
+    use crate::library::{Db, downloads, likes, playlists, plays};
 
-    fn track(title: &str, ext: &str) -> TrackData {
+    fn track(title: &str, artist: &str, ext: &str) -> TrackData {
         TrackData {
             ext_id: ext.into(),
             title: title.into(),
             artists: vec![ArtistData {
                 ext_id: None,
-                name: "Artist".into(),
+                name: artist.into(),
                 artwork: vec![],
             }],
             album: None,
@@ -151,8 +170,8 @@ mod tests {
         }
     }
 
-    fn liked_track(tx: &Tx, title: &str, ext: &str) -> rusqlite::Result<ItemId> {
-        let id = catalog::upsert_track(tx, "deezer", &track(title, ext))?;
+    fn liked_track(tx: &Tx, title: &str, artist: &str, ext: &str) -> rusqlite::Result<ItemId> {
+        let id = catalog::upsert_track(tx, "deezer", &track(title, artist, ext))?;
         likes::set(tx, id, true)?;
         Ok(id)
     }
@@ -162,19 +181,28 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         let (halo, hymne, tnt, yoasobi) = db
             .write_blocking(|tx| {
-                Ok((
-                    liked_track(tx, "Beyoncé - Halo", "1")?,
-                    liked_track(tx, "Édith Piaf - Hymne", "2")?,
-                    liked_track(tx, "AC/DC - T.N.T.", "3")?,
-                    liked_track(tx, "YOASOBI - 夜に駆ける", "4")?,
-                ))
+                let halo = liked_track(tx, "Halo", "Beyoncé", "1")?;
+                let hymne = liked_track(tx, "Hymne à l'amour", "Édith Piaf", "2")?;
+                let tnt = liked_track(tx, "T.N.T.", "AC/DC", "3")?;
+                let yoasobi = liked_track(tx, "夜に駆ける", "YOASOBI", "4")?;
+                // Look-alike competitors: close enough to pull in via trigrams, not close
+                // enough to outrank the real match's exact substring (title or artist) hit.
+                liked_track(tx, "Edit", "DJ Someone", "5")?;
+                liked_track(tx, "Beyond", "Someone Else", "6")?;
+                Ok((halo, hymne, tnt, yoasobi))
             })
             .unwrap();
         db.read_blocking(|c| {
             let first = |q: &str| local(c, q, 10).unwrap().first().map(|h| h.item);
+            // "beyonse" is close to the artist "Beyoncé" (folded "beyonce") but not a
+            // substring of it; "Beyond" is also close but less so — Halo still wins.
             assert_eq!(first("beyonse"), Some(halo));
+            // "edith" is a literal substring of the artist "Édith Piaf" (folded "edith
+            // piaf"), beating "Edit" which is merely similar.
             assert_eq!(first("edith"), Some(hymne));
+            // "ac dc" is a literal substring of the folded artist "ac dc".
             assert_eq!(first("ac dc"), Some(tnt));
+            // Short (< 3 chars) CJK query: LIKE path, substring of the folded title.
             assert_eq!(first("夜に"), Some(yoasobi));
             Ok(())
         })
@@ -184,14 +212,47 @@ mod tests {
     #[test]
     fn search_is_limited_to_the_library() {
         let db = Db::open_in_memory().unwrap();
-        db.write_blocking(|tx| {
-            // Only in the catalogue cache: never liked, played, downloaded or playlisted.
-            catalog::upsert_track(tx, "deezer", &track("Halo Cached Only", "1"))?;
-            Ok(())
-        })
-        .unwrap();
-        let hits = db.read_blocking(|c| local(c, "halo", 10)).unwrap();
-        assert!(hits.is_empty());
+        let ids = db
+            .write_blocking(|tx| {
+                let cached_only = catalog::upsert_track(tx, "deezer", &track("Zephyr Cached", "Artist", "1"))?;
+                let played = catalog::upsert_track(tx, "deezer", &track("Zephyr Played", "Artist", "2"))?;
+                plays::start(tx, played, "test")?;
+                let downloaded =
+                    catalog::upsert_track(tx, "deezer", &track("Zephyr Downloaded", "Artist", "3"))?;
+                downloads::enqueue(tx, downloaded, "mp3")?;
+                let listed = catalog::upsert_track(tx, "deezer", &track("Zephyr Listed", "Artist", "4"))?;
+                let mix = playlists::create(tx, "Mix", None)?;
+                playlists::add(tx, mix, &[listed], playlists::Place::End)?;
+                let user_playlist = playlists::create(tx, "Zephyr Mix", None)?;
+                let unliked = catalog::upsert_track(tx, "deezer", &track("Zephyr Unliked", "Artist", "5"))?;
+                likes::set(tx, unliked, true)?;
+                likes::set(tx, unliked, false)?;
+                let gone_playlist = playlists::create(tx, "Zephyr Gone", None)?;
+                playlists::delete(tx, gone_playlist)?;
+                Ok((
+                    cached_only,
+                    played,
+                    downloaded,
+                    listed,
+                    user_playlist,
+                    unliked,
+                    gone_playlist,
+                ))
+            })
+            .unwrap();
+        let (cached_only, played, downloaded, listed, user_playlist, unliked, gone_playlist) = ids;
+        let found: Vec<ItemId> = db
+            .read_blocking(|c| local(c, "zephyr", 50))
+            .unwrap()
+            .into_iter()
+            .map(|h| h.item)
+            .collect();
+        for present in [played, downloaded, listed, user_playlist] {
+            assert!(found.contains(&present), "{present} should be found");
+        }
+        for absent in [cached_only, unliked, gone_playlist] {
+            assert!(!found.contains(&absent), "{absent} should not be found");
+        }
     }
 
     #[test]
@@ -200,8 +261,8 @@ mod tests {
         let (halo, hallo) = db
             .write_blocking(|tx| {
                 Ok((
-                    liked_track(tx, "Halo", "1")?,
-                    liked_track(tx, "Hallo Hallo", "2")?,
+                    liked_track(tx, "Halo", "Artist", "1")?,
+                    liked_track(tx, "Hallo Hallo", "Artist", "2")?,
                 ))
             })
             .unwrap();
@@ -215,9 +276,16 @@ mod tests {
     #[test]
     fn fts_operators_are_inert() {
         let db = Db::open_in_memory().unwrap();
-        db.write_blocking(|tx| liked_track(tx, "Halo", "1")).unwrap();
+        db.write_blocking(|tx| liked_track(tx, "Halo", "Artist", "1"))
+            .unwrap();
         db.read_blocking(|c| {
-            for q in ["AND", "\"", "a*", "NEAR("] {
+            // Fold to empty (pure punctuation): no error, no crash into "match everything".
+            for q in ["", "\"", "-", "!!!"] {
+                assert!(local(c, q, 10)?.is_empty(), "{q:?} should find nothing");
+            }
+            // Fold to a real (trigram-path) query: FTS5 operators in the input are never
+            // parsed as such, only matched as literal substrings — just needs to not error.
+            for q in ["AND", "a*", "NEAR("] {
                 local(c, q, 10)?;
             }
             Ok(())
