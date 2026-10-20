@@ -22,13 +22,18 @@ pub struct LocalHit {
 }
 
 /// `r` is the candidate's root item (`items r`, joined via `COALESCE(merged_into, id)`).
+/// User data is not rewritten on merge, so those checks match `r`'s whole merge group.
 const IN_LIBRARY: &str = "(
-    EXISTS (SELECT 1 FROM likes WHERE likes.item_id = r.id AND likes.deleted_at IS NULL)
+    EXISTS (SELECT 1 FROM likes WHERE likes.item_id IN (SELECT id FROM items WHERE id = r.id OR merged_into = r.id)
+        AND likes.deleted_at IS NULL)
     OR EXISTS (SELECT 1 FROM playlist_items pi JOIN playlists p ON p.item_id = pi.playlist_id
-        WHERE pi.item_id = r.id AND pi.deleted_at IS NULL AND p.deleted_at IS NULL)
+        WHERE pi.item_id IN (SELECT id FROM items WHERE id = r.id OR merged_into = r.id)
+        AND pi.deleted_at IS NULL AND p.deleted_at IS NULL)
     OR EXISTS (SELECT 1 FROM playlists WHERE playlists.item_id = r.id AND playlists.deleted_at IS NULL)
-    OR EXISTS (SELECT 1 FROM downloads WHERE downloads.item_id = r.id)
-    OR EXISTS (SELECT 1 FROM plays WHERE plays.item_id = r.id AND plays.deleted_at IS NULL)
+    OR EXISTS (SELECT 1 FROM downloads
+        WHERE downloads.item_id IN (SELECT id FROM items WHERE id = r.id OR merged_into = r.id))
+    OR EXISTS (SELECT 1 FROM plays WHERE plays.item_id IN (SELECT id FROM items WHERE id = r.id OR merged_into = r.id)
+        AND plays.deleted_at IS NULL)
 )";
 
 /// Items in the user's library only: liked, in a user playlist (as an entry, or the
@@ -253,6 +258,45 @@ mod tests {
         for absent in [cached_only, unliked, gone_playlist] {
             assert!(!found.contains(&absent), "{absent} should not be found");
         }
+    }
+
+    #[test]
+    fn user_data_on_a_merged_item_counts_for_its_root() {
+        let db = Db::open_in_memory().unwrap();
+        let (liked_root, played_root, listed_root) = db
+            .write_blocking(|tx| {
+                let mut roots = vec![];
+                for (n, title) in ["Quasar Liked", "Quasar Played", "Quasar Listed"].iter().enumerate() {
+                    // Root first (older UUIDv7 wins the merge), then the duplicate that carries
+                    // the user data and is merged into it.
+                    let root = catalog::upsert_track(tx, "deezer", &track(title, "Artist", &format!("r{n}")))?;
+                    let dup = catalog::upsert_track(tx, "qobuz", &track(title, "Artist", &format!("d{n}")))?;
+                    match n {
+                        0 => likes::set(tx, dup, true)?,
+                        1 => {
+                            plays::start(tx, dup, "test")?;
+                        }
+                        _ => {
+                            let mix = playlists::create(tx, "Mix", None)?;
+                            playlists::add(tx, mix, &[dup], playlists::Place::End)?;
+                        }
+                    }
+                    assert_eq!(crate::library::items::merge(tx, dup, root)?, root);
+                    roots.push(root);
+                }
+                Ok((roots[0], roots[1], roots[2]))
+            })
+            .unwrap();
+        let found: Vec<ItemId> = db
+            .read_blocking(|c| local(c, "quasar", 50))
+            .unwrap()
+            .into_iter()
+            .map(|h| h.item)
+            .collect();
+        for root in [liked_root, played_root, listed_root] {
+            assert_eq!(found.iter().filter(|&&f| f == root).count(), 1, "{root} found once");
+        }
+        assert_eq!(found.len(), 3);
     }
 
     #[test]
