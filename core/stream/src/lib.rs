@@ -1,13 +1,21 @@
 //! Fetches the core makes itself, with a client from plugin-host (`Host::http_client`):
-//! artwork cache now, chunked downloads with resume later (task 6).
+//! artwork cache, chunked downloads with resume.
 
 pub mod artwork;
+pub mod download;
 
 /// Never carries a URL: reqwest errors are stripped of theirs.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StreamError {
     Network(String),
-    Status(u16),
+    /// A status other than 2xx (and the 416 that ends a complete download).
+    Http(u16),
+    /// The final size, or the size the server announced, is not the expected one.
+    SizeMismatch {
+        expected: u64,
+        got: u64,
+    },
+    /// Artwork over its cap.
     TooLarge,
     Io(String),
 }

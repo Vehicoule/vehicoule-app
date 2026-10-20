@@ -24,6 +24,8 @@ reqwest = "0.13"
 flutter_rust_bridge = "=2.13.0"
 
 [dev-dependencies]
+# `NetPolicy::for_tests` for the test App: wiremock on http, `*.test` -> 127.0.0.1.
+plugin-host = { path = "../plugin-host", features = ["test-util"] }
 tokio = { version = "1", features = ["macros", "rt", "test-util"] }
 wiremock = "0.6"
 ed25519-dalek = "3"

@@ -216,7 +216,21 @@ pub(crate) fn gain_db(loudness_db: f32) -> f32 {
 /// The routed `resolve` (online only), the resolved id recorded as the item's ref at that
 /// plugin. Downloads use it too (task 6), and again when a URL expires mid-download.
 pub(crate) async fn resolve(item: ItemId, tried: &[String]) -> Result<Resolution, CoreError> {
-    let (plugin, r) = call_resolve(item, tried).await?;
+    resolve_at(item, tried, None).await
+}
+
+/// `resolve` at quality `high`, whatever the setting: downloads.
+pub(crate) async fn resolve_for_download(item: ItemId) -> Result<Resolution, CoreError> {
+    resolve_at(item, &[], Some(Quality::High)).await
+}
+
+/// `quality`: the device setting when `None`.
+async fn resolve_at(
+    item: ItemId,
+    tried: &[String],
+    quality: Option<Quality>,
+) -> Result<Resolution, CoreError> {
+    let (plugin, r) = call_resolve(item, tried, quality).await?;
     let (p, id) = (plugin.id().to_string(), r.id.clone());
     app()
         .db
@@ -252,7 +266,9 @@ fn candidate(c: wit::Candidate) -> Candidate {
     }
 }
 
-async fn track_and_refs(item: ItemId) -> Result<(TrackRow, Vec<(String, ExtRef)>), CoreError> {
+pub(crate) async fn track_and_refs(
+    item: ItemId,
+) -> Result<(TrackRow, Vec<(String, ExtRef)>), CoreError> {
     let (track, refs) = app()
         .db
         .read(move |c| Ok((lib::track(c, item)?, refs::all(c, item)?)))
@@ -261,7 +277,7 @@ async fn track_and_refs(item: ItemId) -> Result<(TrackRow, Vec<(String, ExtRef)>
 }
 
 /// What `plugin` is told about the track: its own id for it (pinned first) when it has one.
-fn query(t: &TrackRow, refs: &[(String, ExtRef)], plugin: &str) -> TrackQuery {
+pub(crate) fn query(t: &TrackRow, refs: &[(String, ExtRef)], plugin: &str) -> TrackQuery {
     TrackQuery {
         id: refs
             .iter()
@@ -278,16 +294,20 @@ fn query(t: &TrackRow, refs: &[(String, ExtRef)], plugin: &str) -> TrackQuery {
 async fn call_resolve(
     item: ItemId,
     tried: &[String],
+    quality: Option<Quality>,
 ) -> Result<(Plugin, wit::Resolved), CoreError> {
     let app = app();
     if !app.is_online() {
         return Err(CoreError::Offline);
     }
     let (track, refs) = track_and_refs(item).await?;
-    let quality = match setting("quality", false).await.as_deref() {
-        Some("low") => Quality::Low,
-        Some("high") => Quality::High,
-        _ => Quality::Normal,
+    let quality = match quality {
+        Some(q) => q,
+        None => match setting("quality", false).await.as_deref() {
+            Some("low") => Quality::Low,
+            Some("high") => Quality::High,
+            _ => Quality::Normal,
+        },
     };
     let (plugin, resolved) = router::first_ok(Capability::Resolve, |p| {
         let req = ResolveRequest {
@@ -1203,7 +1223,7 @@ impl Player {
         }
         let refs = app().db.read(move |c| refs::all(c, item)).await?;
         let tried: Vec<String> = refs.into_iter().map(|(_, r)| r.external_id).collect();
-        let (plugin, r) = call_resolve(item, &tried).await?;
+        let (plugin, r) = call_resolve(item, &tried, None).await?;
         let found: Vec<Candidate> = r.candidates.into_iter().map(candidate).collect();
         self.candidates
             .insert(item, (plugin.id().to_string(), found.clone()));

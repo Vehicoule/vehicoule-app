@@ -8,7 +8,9 @@
 //! `resolve`: the ids are `track.id` (if any) then `r-<key>-1..3`; the first one not in `tried`
 //! wins, the others are the candidates. Stream `https://fake.test/stream/<id>`, loudness 4.2 dB.
 //! kv `tried` keeps the last request's `tried` (comma-separated). `radio`: `limit` tracks
-//! `radio-<key>-<n>`.
+//! `radio-<key>-<n>`. kv `stream` replaces the stream base URL (`https://fake.test`).
+//! `lyrics`: a title containing `instrumental` has none (empty lyrics), others have plain and
+//! two synced lines.
 wit_bindgen::generate!({
     path: ["../../../../contract/wit/host", "../../../../contract/wit/music", "../wit"],
     world: "vehicoule:core-test-guests/fake-catalog",
@@ -22,6 +24,7 @@ wit_bindgen::generate!({
 });
 
 use exports::vehicoule::music::entity::{self, Entity, EntityPage};
+use exports::vehicoule::music::lyrics::{self, Line, Lyrics};
 use exports::vehicoule::music::radio;
 use exports::vehicoule::music::resolve::{self, Candidate, ResolveRequest, Resolved, Source};
 use exports::vehicoule::music::search::{self, SearchRequest, SearchResults};
@@ -188,11 +191,12 @@ impl resolve::Guest for Fake {
                 id,
             })
             .collect();
+        let base = kv::get("stream").map(|v| String::from_utf8_lossy(&v).into_owned());
         let source = Source {
-            url: format!("https://fake.test/stream/{id}"),
+            url: format!("{}/stream/{id}", base.as_deref().unwrap_or("https://fake.test")),
             headers: vec![],
             expires_at_ms: None,
-            mime: "audio/mpeg".into(),
+            mime: "audio/webm".into(),
             bitrate: 128_000,
             content_length: None,
             loudness_db: Some(4.2),
@@ -206,6 +210,19 @@ impl radio::Guest for Fake {
         check(&seed.title)?;
         let key = key_of(&seed);
         Ok((1..=limit).map(|n| track(format!("radio-{key}-{n}"), &format!("radio {key} {n}"), &key)).collect())
+    }
+}
+
+impl lyrics::Guest for Fake {
+    fn fetch(track: TrackQuery) -> Result<Lyrics, Error> {
+        check(&track.title)?;
+        if track.title.contains("instrumental") {
+            return Ok(Lyrics { plain: None, synced: vec![] });
+        }
+        Ok(Lyrics {
+            plain: Some(format!("words of {}", track.title)),
+            synced: vec![Line { start_ms: 0, text: "one".into() }, Line { start_ms: 1500, text: "two".into() }],
+        })
     }
 }
 

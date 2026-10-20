@@ -51,7 +51,7 @@ impl ArtworkCache {
         }
         let mut resp = client.get(url.clone()).send().await?;
         if !resp.status().is_success() {
-            return Err(StreamError::Status(resp.status().as_u16()));
+            return Err(StreamError::Http(resp.status().as_u16()));
         }
         if resp.content_length().unwrap_or(0) > MAX_IMAGE_BYTES as u64 {
             return Err(StreamError::TooLarge);
@@ -170,7 +170,7 @@ mod tests {
         let gone = reqwest::Url::parse(&format!("{}/gone.jpg", server.uri())).unwrap();
         assert_eq!(
             cache.file(&client, &gone).await,
-            Err(StreamError::Status(404))
+            Err(StreamError::Http(404))
         );
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         server.verify().await;

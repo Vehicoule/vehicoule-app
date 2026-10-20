@@ -80,8 +80,13 @@ pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
         .thread_name("vehicoule-core")
         .build()
         .map_err(internal)?;
-    let plugins = Plugins::new(&cfg, &db, Default::default())
-        .map_err(|e| CoreError::Internal(format!("{e:#}")))?;
+    // Tests: http, any port, `*.test` resolved to 127.0.0.1 (wiremock).
+    #[cfg(test)]
+    let net = plugin_host::NetPolicy::for_tests();
+    #[cfg(not(test))]
+    let net = Default::default();
+    let plugins =
+        Plugins::new(&cfg, &db, net).map_err(|e| CoreError::Internal(format!("{e:#}")))?;
     plugins::seed_official(&db)?;
     rt.block_on(plugins.load_installed(&db))?;
     crate::install_panic_hook();

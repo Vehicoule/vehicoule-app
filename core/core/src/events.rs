@@ -4,6 +4,7 @@
 use tokio::sync::broadcast;
 
 use crate::catalog::TrackView;
+use crate::downloads::DownloadProgress;
 use crate::error::CoreError;
 use crate::player::PlayerCommand;
 use crate::queue::{PlayContext, Repeat};
@@ -59,13 +60,13 @@ pub enum LibraryChanged {
     Plugins,
 }
 
-// `downloads` (task 6) joins here with its type.
 pub(crate) struct Events {
     pub commands: broadcast::Sender<PlayerCommand>,
     pub queue: broadcast::Sender<QueueView>,
     pub now_playing: broadcast::Sender<NowPlaying>,
     pub library: broadcast::Sender<LibraryChanged>,
     pub notices: broadcast::Sender<Notice>,
+    pub downloads: broadcast::Sender<DownloadProgress>,
 }
 
 impl Events {
@@ -77,6 +78,7 @@ impl Events {
             now_playing: broadcast::channel(CAP).0,
             library: broadcast::channel(CAP).0,
             notices: broadcast::channel(CAP).0,
+            downloads: broadcast::channel(CAP).0,
         }
     }
 }

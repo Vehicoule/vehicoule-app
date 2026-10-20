@@ -8,12 +8,16 @@ mod app;
 #[allow(dead_code, reason = "reached from api/ (task 8)")]
 mod catalog;
 mod convert;
+#[allow(dead_code, reason = "reached from api/ (task 8)")]
+mod downloads;
 pub mod error;
 #[allow(dead_code, reason = "reached from api/ (task 8)")]
 mod events;
 pub mod keys;
 pub mod library;
 pub mod logs;
+#[allow(dead_code, reason = "reached from api/ (task 8)")]
+mod lyrics;
 #[allow(dead_code, reason = "reached from api/ (task 8)")]
 mod player;
 #[allow(dead_code, reason = "reached from api/ (task 8)")]
