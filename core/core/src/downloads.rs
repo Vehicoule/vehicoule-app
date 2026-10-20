@@ -165,7 +165,8 @@ async fn run(item: ItemId) {
     }
 }
 
-/// Resolves, marks the row running, downloads; once more after a 403.
+/// Resolves, marks the row running, downloads: once more after a 403 (resolved again), once
+/// more from 0 after a size mismatch (the `.part` was not that file's start).
 async fn fetch(row: &mut DownloadRow) -> Result<u64, CoreError> {
     let item = row.item;
     let mut res = player::resolve_for_download(item).await?;
@@ -173,26 +174,42 @@ async fn fetch(row: &mut DownloadRow) -> Result<u64, CoreError> {
     // Best effort: the artwork is there offline too.
     let _ = artwork_file(&item.to_string(), ARTWORK_SIZE).await;
     let mut progress = Progress::new(item.to_string());
-    let mut retried = false;
+    let (mut renewed, mut restarted) = (false, false);
     loop {
-        let (client, f) = prepare(&res, progress.total)?;
-        let mut on = |done, total| progress.on(done, total);
-        match stream::download(&client, &f, &dest, &mut on).await {
-            Err(StreamError::Http(403)) if !retried => {
-                retried = true;
+        // The size stored with the `.part` is the file it belongs to.
+        let (client, f) = prepare(&res, row.bytes_total)?;
+        progress.start(row);
+        let r = stream::download(&client, &f, &dest, &mut |done, total| {
+            progress.on(done, total)
+        })
+        .await;
+        progress.settle(row).await;
+        match r {
+            Err(StreamError::Http(403)) if !renewed => {
+                renewed = true;
                 res = player::resolve_for_download(item).await?;
                 dest = set_source(row, &res).await?;
+            }
+            // The stream deleted the `.part`: its size goes with it.
+            Err(StreamError::SizeMismatch { .. }) => {
+                row.bytes_total = None;
+                if restarted {
+                    return Err(CoreError::Network);
+                }
+                restarted = true;
             }
             r => return r.map_err(core_error),
         }
     }
 }
 
-/// The row running from `res`, and its file; another format than last time starts over.
+/// The row running from `res`, and its file. Another format than last time starts over: the
+/// old `.part` and its size go.
 async fn set_source(row: &mut DownloadRow, res: &Resolution) -> Result<PathBuf, CoreError> {
     let dest = dest(row.item, res.mime.as_deref());
     if let Some(old) = row.path.as_deref().filter(|p| Path::new(p) != dest) {
         remove(&part_path(Path::new(old))).await;
+        row.bytes_total = None;
     }
     tokio::fs::create_dir_all(&app().cfg.downloads_dir)
         .await
@@ -274,11 +291,15 @@ async fn remove(path: &Path) {
     }
 }
 
-/// Bytes written so far, sent at most every `PROGRESS_EVERY`.
+/// Bytes written so far, sent at most every `PROGRESS_EVERY`. The file's size, once the
+/// server announces it, is stored on the row at once (in the background: `settle` waits).
 struct Progress {
     id: String,
     last: Option<Instant>,
     total: Option<u64>,
+    /// The row as stored, while an attempt runs.
+    row: Option<DownloadRow>,
+    persist: Option<JoinHandle<()>>,
 }
 
 impl Progress {
@@ -287,11 +308,40 @@ impl Progress {
             id,
             last: None,
             total: None,
+            row: None,
+            persist: None,
+        }
+    }
+
+    /// Before an attempt on `row` (as stored).
+    fn start(&mut self, row: &DownloadRow) {
+        self.total = row.bytes_total;
+        self.row = Some(row.clone());
+    }
+
+    /// After it: the size stored meanwhile is written, and in `row` too.
+    async fn settle(&mut self, row: &mut DownloadRow) {
+        if let Some(task) = self.persist.take() {
+            let _ = task.await;
+        }
+        if let Some(stored) = self.row.take() {
+            row.bytes_total = stored.bytes_total;
         }
     }
 
     fn on(&mut self, done: u64, total: Option<u64>) {
         self.total = total.or(self.total);
+        if let (Some(t), Some(row)) = (self.total, self.row.as_mut())
+            && row.bytes_total != Some(t)
+        {
+            row.bytes_total = Some(t);
+            let r = row.clone();
+            self.persist = Some(tokio::spawn(async move {
+                if let Err(e) = app().db.write(move |tx| rows::update(tx, &r)).await {
+                    logs::push("error", "downloads", &format!("{e:?}"));
+                }
+            }));
+        }
         let now = Instant::now();
         if self.last.is_some_and(|l| now - l < PROGRESS_EVERY) {
             return;

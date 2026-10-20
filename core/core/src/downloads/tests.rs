@@ -2,6 +2,7 @@
 //! on `fake.test` (the test App's net policy resolves `*.test` to 127.0.0.1).
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::broadcast::Receiver;
 use wiremock::matchers::{header, path_regex};
@@ -11,7 +12,7 @@ use super::*;
 use crate::app::test_app;
 use crate::catalog::tests::{calls, setup};
 use crate::catalog::{self, parse_id};
-use crate::library::kv;
+use crate::library::{ItemId, kv};
 
 /// Serves `body` by ranges; ranges past the first chunk wait `stall`.
 struct Ranges {
@@ -21,22 +22,75 @@ struct Ranges {
 
 impl Respond for Ranges {
     fn respond(&self, req: &Request) -> ResponseTemplate {
-        let range = req.headers.get("range").unwrap().to_str().unwrap();
-        let (a, b) = range
-            .strip_prefix("bytes=")
-            .unwrap()
-            .split_once('-')
-            .unwrap();
-        let a: usize = a.parse().unwrap();
-        let b = b.parse::<usize>().unwrap().min(self.body.len() - 1);
-        let r = ResponseTemplate::new(206)
-            .insert_header(
-                "content-range",
-                format!("bytes {a}-{b}/{}", self.body.len()),
-            )
-            .set_body_bytes(self.body[a..=b].to_vec());
+        let (a, r) = serve_range(&self.body, req);
         if a > 0 { r.set_delay(self.stall) } else { r }
     }
+}
+
+/// `body`'s range asked by `req` (416 past its end), and where it starts.
+fn serve_range(body: &[u8], req: &Request) -> (usize, ResponseTemplate) {
+    let range = req.headers.get("range").unwrap().to_str().unwrap();
+    let (a, b) = range
+        .strip_prefix("bytes=")
+        .unwrap()
+        .split_once('-')
+        .unwrap();
+    let a: usize = a.parse().unwrap();
+    if a >= body.len() {
+        let r = ResponseTemplate::new(416)
+            .insert_header("content-range", format!("bytes */{}", body.len()));
+        return (a, r);
+    }
+    let b = b.parse::<usize>().unwrap().min(body.len() - 1);
+    let r = ResponseTemplate::new(206)
+        .insert_header("content-range", format!("bytes {a}-{b}/{}", body.len()))
+        .set_body_bytes(body[a..=b].to_vec());
+    (a, r)
+}
+
+/// The `Range` headers `server` got for the stream of the track titled `title` (fake's ref
+/// `t-<key>`): rows other tests left running may be resumed too.
+async fn ranges(server: &MockServer, title: &str) -> Vec<String> {
+    let path = format!("/stream/t-{}", title.replace(' ', "-"));
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == path)
+        .map(|r| r.headers.get("range").unwrap().to_str().unwrap().into())
+        .collect()
+}
+
+/// A row an earlier session left running: `.part` holding `part`, `bytes_total` as stored.
+async fn left_running(id: &str, part: &[u8], bytes_total: Option<u64>) -> PathBuf {
+    let item = parse_id(id).unwrap();
+    let file = Path::new(&test_app().cfg.downloads_dir).join(format!("{id}.webm"));
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(part_path(&file), part).unwrap();
+    let path = file.display().to_string();
+    test_app()
+        .db
+        .write(move |tx| {
+            rows::enqueue(tx, item, "high")?;
+            let mut row = rows::get(&tx.tx, item)?.unwrap();
+            row.state = DownloadState::Running;
+            (row.path, row.mime, row.bytes_total) =
+                (Some(path), Some("audio/webm".into()), bytes_total);
+            rows::update(tx, &row)
+        })
+        .await
+        .unwrap();
+    file
+}
+
+async fn row(item: ItemId) -> DownloadRow {
+    test_app()
+        .db
+        .read(move |c| rows::get(c, item))
+        .await
+        .unwrap()
+        .unwrap()
 }
 
 fn body(len: usize) -> Arc<Vec<u8>> {
@@ -122,16 +176,8 @@ async fn expired_url_mid_download_resolves_again() {
     );
     // Resolved twice; the second chunk asked again, never the first.
     assert_eq!(calls().await - before, 2);
-    let ranges: Vec<String> = server
-        .received_requests()
-        .await
-        .unwrap()
-        .iter()
-        .filter(|r| r.url.path().starts_with("/stream/"))
-        .map(|r| r.headers.get("range").unwrap().to_str().unwrap().into())
-        .collect();
     assert_eq!(
-        ranges,
+        ranges(&server, "expiring song").await,
         [
             "bytes=0-2097151",
             "bytes=2097152-4194303",
@@ -193,6 +239,16 @@ async fn cancel_removes_files() {
     wait(&mut rx, &id, |p| p.bytes_done > 0).await;
     let file = Path::new(&app.cfg.downloads_dir).join(format!("{id}.webm"));
     assert!(part_path(&file).exists());
+    // The size announced is stored at once: a later session checks the file against it.
+    let item = parse_id(&id).unwrap();
+    let stored = async {
+        while row(item).await.bytes_total != Some(5 << 20) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), stored)
+        .await
+        .expect("bytes_total stored");
 
     let mut library = app.events.library.subscribe();
     cancel(&id).await.unwrap();
@@ -210,6 +266,149 @@ async fn cancel_removes_files() {
     while let Ok(p) = rx.try_recv() {
         assert!(p.id != id || p.state == DownloadStateView::Running, "{p:?}");
     }
+}
+
+#[tokio::test]
+async fn resume_pending_continues_at_the_part_size() {
+    let (_lock, app) = setup().await;
+    let body = body(5 << 20);
+    let server = MockServer::start().await;
+    Mock::given(path_regex("^/stream/"))
+        .respond_with(Ranges {
+            body: body.clone(),
+            stall: Duration::ZERO,
+        })
+        .mount(&server)
+        .await;
+    stream_at(&server).await;
+    let id = track("interrupted song").await;
+    let file = left_running(&id, &body[..3 << 20], Some(5 << 20)).await;
+    let mut rx = app.events.downloads.subscribe();
+
+    resume_pending().await;
+    let done = wait(&mut rx, &id, finished).await;
+    assert_eq!(done.state, DownloadStateView::Done);
+    assert_eq!(
+        ranges(&server, "interrupted song").await,
+        ["bytes=3145728-5242879"]
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), *body);
+    cancel(&id).await.unwrap();
+}
+
+#[tokio::test]
+async fn resume_against_another_file_restarts_from_zero() {
+    let (_lock, app) = setup().await;
+    // The stream now serves 5 MiB; the earlier session saw 6 MiB.
+    let body = body(5 << 20);
+    let server = MockServer::start().await;
+    Mock::given(path_regex("^/stream/"))
+        .respond_with(Ranges {
+            body: body.clone(),
+            stall: Duration::ZERO,
+        })
+        .mount(&server)
+        .await;
+    stream_at(&server).await;
+    let mut rx = app.events.downloads.subscribe();
+    let id = track("replaced song").await;
+    let file = left_running(&id, &[7; 3 << 20], Some(6 << 20)).await;
+    resume_pending().await;
+    assert_eq!(
+        wait(&mut rx, &id, finished).await.state,
+        DownloadStateView::Done
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), *body);
+    assert_eq!(row(parse_id(&id).unwrap()).await.bytes_total, Some(5 << 20));
+    assert_eq!(
+        ranges(&server, "replaced song").await,
+        [
+            "bytes=3145728-5242879",
+            "bytes=0-2097151",
+            "bytes=2097152-4194303",
+            "bytes=4194304-6291455"
+        ]
+    );
+    cancel(&id).await.unwrap();
+
+    // No size stored, a `.part` longer than the file: the 416 drops it, it starts over.
+    let id = track("shrunk song").await;
+    let file = left_running(&id, &[7; 6 << 20], None).await;
+    resume_pending().await;
+    assert_eq!(
+        wait(&mut rx, &id, finished).await.state,
+        DownloadStateView::Done
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), *body);
+    cancel(&id).await.unwrap();
+}
+
+/// 403 on the second chunk (once); meanwhile the plugin starts serving mp4 (kv `mime`), a
+/// 4 MiB file.
+struct Renewed {
+    first: Arc<Vec<u8>>,
+    second: Arc<Vec<u8>>,
+    expired: AtomicBool,
+}
+
+impl Respond for Renewed {
+    fn respond(&self, req: &Request) -> ResponseTemplate {
+        let range = req.headers.get("range").unwrap().to_str().unwrap();
+        if range == "bytes=2097152-4194303" && !self.expired.swap(true, Ordering::SeqCst) {
+            test_app()
+                .db
+                .write_blocking(|tx| kv::set(tx, "fake", "mime", b"audio/mp4"))
+                .unwrap();
+            return ResponseTemplate::new(403);
+        }
+        let body = match self.expired.load(Ordering::SeqCst) {
+            true => &self.second,
+            false => &self.first,
+        };
+        serve_range(body, req).1
+    }
+}
+
+#[tokio::test]
+async fn renewed_url_in_another_format_starts_its_own_file() {
+    let (_lock, app) = setup().await;
+    let second = body(4 << 20);
+    let server = MockServer::start().await;
+    Mock::given(path_regex("^/stream/"))
+        .respond_with(Renewed {
+            first: body(5 << 20),
+            second: second.clone(),
+            expired: AtomicBool::new(false),
+        })
+        .mount(&server)
+        .await;
+    stream_at(&server).await;
+    let id = track("reformatted song").await;
+    let mut rx = app.events.downloads.subscribe();
+    enqueue(vec![id.clone()]).await.unwrap();
+    let done = wait(&mut rx, &id, finished).await;
+    assert_eq!(done.state, DownloadStateView::Done);
+    // The 5 MiB size of the webm is not applied to the mp4: no mismatch, no restart.
+    assert_eq!(
+        ranges(&server, "reformatted song").await,
+        [
+            "bytes=0-2097151",
+            "bytes=2097152-4194303",
+            "bytes=0-2097151",
+            "bytes=2097152-4194303"
+        ]
+    );
+    let dir = Path::new(&app.cfg.downloads_dir);
+    let m4a = dir.join(format!("{id}.m4a"));
+    assert_eq!(std::fs::read(&m4a).unwrap(), *second);
+    assert!(!part_path(&dir.join(format!("{id}.webm"))).exists());
+    let row = row(parse_id(&id).unwrap()).await;
+    assert_eq!(
+        (row.path.as_deref(), row.mime.as_deref(), row.bytes_total),
+        (m4a.to_str(), Some("audio/mp4"), Some(4 << 20))
+    );
+    cancel(&id).await.unwrap();
+    assert!(!m4a.exists());
 }
 
 #[tokio::test(start_paused = true)]

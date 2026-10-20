@@ -29,8 +29,9 @@ pub fn part_path(dest: &Path) -> PathBuf {
 }
 
 /// Resumes from `<dest>.part`, fetches by `Range` chunks, checks the final size, then renames.
-/// `progress(done, total)` follows every write. A size mismatch deletes the `.part`: its bytes
-/// can't be trusted for a later resume.
+/// `progress(done, total)` follows every write. A size mismatch (final size, announced size
+/// other than `expected_len`, or a 416 for another length) deletes the `.part`: its bytes
+/// can't be trusted for a later resume. Any other error keeps it.
 pub async fn download(
     client: &reqwest::Client,
     f: &Fetch,
@@ -86,11 +87,17 @@ pub async fn download(
                     total = total.or(resp.content_length());
                 }
                 // Nothing left to send: the `.part` was already whole (killed before the rename).
-                StatusCode::RANGE_NOT_SATISFIABLE
-                    if range.and_then(|(_, len)| len) == Some(done) =>
-                {
-                    total = Some(done);
-                    break;
+                // Any other length: the `.part` is not this file's start.
+                StatusCode::RANGE_NOT_SATISFIABLE => {
+                    let len = range.and_then(|(_, len)| len);
+                    if len == Some(done) && total.is_none_or(|t| t == done) {
+                        total = Some(done);
+                        break;
+                    }
+                    return Err(StreamError::SizeMismatch {
+                        expected: total.or(len).unwrap_or(0),
+                        got: done,
+                    });
                 }
                 s => return Err(StreamError::Http(s.as_u16())),
             }
@@ -103,9 +110,16 @@ pub async fn download(
                 progress(done, total);
             }
             file.flush().await?;
-            // A short chunk is the end of the file.
-            if whole || got < CHUNK {
+            if whole {
                 break;
+            }
+            match total {
+                // Short ranges are fine, none at all would loop forever.
+                Some(_) if got == 0 => return Err(StreamError::Network("empty range".into())),
+                Some(_) => {}
+                // Size unknown: a short chunk is the end of the file.
+                None if got < CHUNK => break,
+                None => {}
             }
         }
         file.sync_all().await?;
@@ -150,11 +164,12 @@ mod tests {
 
     use super::*;
 
-    /// Serves `body` by ranges, announcing `claimed` as the file's size; records the `Range`
-    /// headers it got.
+    /// Serves `body` by ranges of at most `step` bytes, announcing `claimed` as the file's
+    /// size; records the `Range` headers it got.
     struct Ranges {
         body: Arc<Vec<u8>>,
         claimed: u64,
+        step: usize,
         seen: Arc<Mutex<Vec<String>>>,
     }
 
@@ -174,10 +189,22 @@ mod tests {
                 .split_once('-')
                 .unwrap();
             let a: usize = a.parse().unwrap();
-            let b = b.parse::<usize>().unwrap().min(self.body.len() - 1);
+            // Past the end, as a real server.
+            if a >= self.body.len() {
+                return ResponseTemplate::new(416)
+                    .insert_header("content-range", format!("bytes */{}", self.body.len()));
+            }
+            let b: usize = b.parse().unwrap();
+            let end = (b + 1)
+                .min(a.saturating_add(self.step))
+                .min(self.body.len());
+            let last = end.saturating_sub(1);
             ResponseTemplate::new(206)
-                .insert_header("content-range", format!("bytes {a}-{b}/{}", self.claimed))
-                .set_body_bytes(self.body[a..=b].to_vec())
+                .insert_header(
+                    "content-range",
+                    format!("bytes {a}-{last}/{}", self.claimed),
+                )
+                .set_body_bytes(self.body[a..end].to_vec())
         }
     }
 
@@ -196,12 +223,21 @@ mod tests {
     }
 
     async fn serve(body: Arc<Vec<u8>>, claimed: u64) -> (MockServer, Arc<Mutex<Vec<String>>>) {
+        serve_by(body, claimed, usize::MAX).await
+    }
+
+    async fn serve_by(
+        body: Arc<Vec<u8>>,
+        claimed: u64,
+        step: usize,
+    ) -> (MockServer, Arc<Mutex<Vec<String>>>) {
         let server = MockServer::start().await;
         let seen = Arc::new(Mutex::new(Vec::new()));
         Mock::given(path("/song"))
             .respond_with(Ranges {
                 body,
                 claimed,
+                step,
                 seen: seen.clone(),
             })
             .mount(&server)
@@ -294,6 +330,57 @@ mod tests {
         .unwrap();
         assert_eq!(n, 5 << 20);
         assert_eq!(std::fs::read(&dest).unwrap(), *body);
+
+        // A 416 for another length: the `.part` is not that file's start, it goes.
+        let dest = dir.join("c.m4a");
+        std::fs::write(part_path(&dest), &body[..3 << 20]).unwrap();
+        let server = MockServer::start().await;
+        Mock::given(path("/song"))
+            .respond_with(
+                ResponseTemplate::new(416).insert_header("content-range", "bytes */2097152"),
+            )
+            .mount(&server)
+            .await;
+        let r = download(
+            &reqwest::Client::new(),
+            &fetch(&server),
+            &dest,
+            &mut |_, _| {},
+        )
+        .await;
+        assert_eq!(
+            r,
+            Err(StreamError::SizeMismatch {
+                expected: 2 << 20,
+                got: 3 << 20
+            })
+        );
+        assert!(!part_path(&dest).exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn short_ranges_continue_to_the_total() {
+        // 1 MiB answered for each 2 MiB asked: the total is known, so it goes on.
+        let body = body(5 << 20);
+        let (server, seen) = serve_by(body.clone(), 5 << 20, 1 << 20).await;
+        let dir = temp_dir("dl-short-ranges");
+        let dest = dir.join("a.webm");
+        let client = reqwest::Client::new();
+        let n = download(&client, &fetch(&server), &dest, &mut |_, _| {})
+            .await
+            .unwrap();
+        assert_eq!(n, 5 << 20);
+        assert_eq!(seen.lock().unwrap().len(), 5);
+        assert_eq!(std::fs::read(&dest).unwrap(), *body);
+        // An empty 206 before the end is an error, not a loop; the bytes so far stay.
+        let (server, seen) = serve_by(body.clone(), 5 << 20, 0).await;
+        let dest = dir.join("b.webm");
+        std::fs::write(part_path(&dest), &body[..1 << 20]).unwrap();
+        let r = download(&client, &fetch(&server), &dest, &mut |_, _| {}).await;
+        assert!(matches!(r, Err(StreamError::Network(_))), "{r:?}");
+        assert_eq!(seen.lock().unwrap().len(), 1);
+        assert_eq!(std::fs::read(part_path(&dest)).unwrap().len(), 1 << 20);
         let _ = std::fs::remove_dir_all(dir);
     }
 

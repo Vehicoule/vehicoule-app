@@ -45,7 +45,7 @@ fn manifest(id: &str) -> String {
     )
 }
 
-/// Takes the catalogue lock; both plugins loaded, online, no `mode`, default stream URLs.
+/// Takes the catalogue lock; both plugins loaded, online, no `mode`, default stream URL and mime.
 pub(crate) async fn setup() -> (MutexGuard<'static, ()>, &'static App) {
     static LOCK: Mutex<()> = Mutex::const_new(());
     static PLUGINS: OnceLock<Vec<Plugin>> = OnceLock::new();
@@ -67,7 +67,10 @@ pub(crate) async fn setup() -> (MutexGuard<'static, ()>, &'static App) {
     for id in IDS {
         set_mode(id, "").await;
         app.db
-            .write(move |tx| kv::delete(tx, id, "stream"))
+            .write(move |tx| {
+                kv::delete(tx, id, "stream")?;
+                kv::delete(tx, id, "mime")
+            })
             .await
             .unwrap();
     }

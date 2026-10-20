@@ -1,14 +1,15 @@
 //! A catalogue plugin serving fixed data built from the request, for vehicoule-core's tests.
 //!
 //! Per request: a query or id containing `missing` is `not-found`. Per plugin: kv `mode` =
-//! `network` or `not-found` fails every call with that error, `empty` makes `search` return
+//! `network`, `not-found` or `rate-limited` fails every call with that error, `empty` makes `search` return
 //! nothing. Every call adds one to kv `calls`. Links: `https://fake.test/<kind>/<id>`. Playlists have endless pages (2 tracks
 //! each, `next` always set; only page 0 carries the title and owner); albums one page.
 //!
 //! `resolve`: the ids are `track.id` (if any) then `r-<key>-1..3`; the first one not in `tried`
 //! wins, the others are the candidates. Stream `https://fake.test/stream/<id>`, loudness 4.2 dB.
 //! kv `tried` keeps the last request's `tried` (comma-separated). `radio`: `limit` tracks
-//! `radio-<key>-<n>`. kv `stream` replaces the stream base URL (`https://fake.test`).
+//! `radio-<key>-<n>`. kv `stream` replaces the stream base URL (`https://fake.test`), kv `mime`
+//! its mime (`audio/webm`).
 //! `lyrics`: a title containing `instrumental` has none (empty lyrics), others have plain and
 //! two synced lines.
 wit_bindgen::generate!({
@@ -47,6 +48,7 @@ fn check(key: &str) -> Result<(), Error> {
     match mode().as_str() {
         "network" => return Err(Error::Network("down".into())),
         "not-found" => return Err(Error::NotFound),
+        "rate-limited" => return Err(Error::RateLimited),
         _ => {}
     }
     if key.contains("missing") { Err(Error::NotFound) } else { Ok(()) }
@@ -196,7 +198,7 @@ impl resolve::Guest for Fake {
             url: format!("{}/stream/{id}", base.as_deref().unwrap_or("https://fake.test")),
             headers: vec![],
             expires_at_ms: None,
-            mime: "audio/webm".into(),
+            mime: kv::get("mime").map_or("audio/webm".into(), |v| String::from_utf8_lossy(&v).into_owned()),
             bitrate: 128_000,
             content_length: None,
             loudness_db: Some(4.2),

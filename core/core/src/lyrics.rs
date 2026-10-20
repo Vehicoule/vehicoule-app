@@ -1,6 +1,8 @@
-//! Lyrics: the database first, else the routed `lyrics` capability, stored. None found is
-//! stored too (an empty row), asked again once 7 days old. Offline: the database only.
+//! Lyrics: the database first, else the routed `lyrics` capability, stored. None found (every
+//! plugin answered so) is stored too, as an empty row asked again once 7 days old; a plugin
+//! skipped for a rate limit, wall or budget leaves nothing stored. Offline: the database only.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use plugin_host::{CallError, Capability};
@@ -40,10 +42,18 @@ pub(crate) async fn lyrics(id: &str) -> Result<Option<LyricsView>, CoreError> {
         _ => {}
     }
     let (track, refs) = track_and_refs(item).await?;
+    // A plugin passed over for another reason than "none" (rate limit, wall, budget) may have
+    // some: then nothing is stored.
+    let unsure = AtomicBool::new(false);
     let found = router::first_ok(Capability::Lyrics, |p| {
         let q = query(&track, &refs, p.id());
+        let unsure = &unsure;
         async move {
-            let l = app.plugins.host().lyrics(&p, q).await?;
+            let l = app.plugins.host().lyrics(&p, q).await.inspect_err(|e| {
+                if !matches!(e, CallError::NotFound | CallError::Unsupported) {
+                    unsure.store(true, Ordering::Relaxed);
+                }
+            })?;
             let plain = l.plain.filter(|s| !s.trim().is_empty());
             if plain.is_none() && l.synced.is_empty() {
                 return Err(CallError::NotFound);
@@ -60,6 +70,7 @@ pub(crate) async fn lyrics(id: &str) -> Result<Option<LyricsView>, CoreError> {
             synced,
             fetched_at: 0,
         },
+        Err(CoreError::NotFound) if unsure.load(Ordering::Relaxed) => return Ok(None),
         Err(CoreError::NotFound) => LyricsRow {
             provider: String::new(),
             plain: None,
@@ -203,5 +214,28 @@ mod tests {
         crate::catalog::tests::set_mode("fake", "").await;
         assert_eq!(lyrics(&id).await, Ok(None));
         assert_eq!(calls().await - before, 7);
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_plugin_leaves_no_empty_row() {
+        let (_lock, app) = setup().await;
+        let id = track("instrumental tune").await;
+        let item = parse_id(&id).unwrap();
+        // fake rate-limited, fake-b has none: maybe fake has some, nothing is stored.
+        crate::catalog::tests::set_mode("fake", "rate-limited").await;
+        assert_eq!(lyrics(&id).await, Ok(None));
+        assert_eq!(app.db.read(move |c| lib::get(c, item)).await, Ok(None));
+        // Both answered that they have none: the empty row is stored.
+        crate::catalog::tests::set_mode("fake", "").await;
+        let before = calls().await;
+        assert_eq!(lyrics(&id).await, Ok(None));
+        assert_eq!(calls().await - before, 2);
+        assert!(
+            app.db
+                .read(move |c| lib::get(c, item))
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 }

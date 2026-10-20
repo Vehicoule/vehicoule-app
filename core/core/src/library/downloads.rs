@@ -43,16 +43,16 @@ pub struct DownloadRow {
 }
 
 /// Queues the item's root. No-op while the merge group has a queued, running or done row; a
-/// group whose rows all failed has the picked one queued again.
+/// group whose rows all failed has the picked one queued again, keeping `path`, `mime` and
+/// `bytes_total`: they describe the `.part` the next attempt resumes.
 pub fn enqueue(tx: &Tx, item: ItemId, quality: &str) -> rusqlite::Result<()> {
     let root = canonical(&tx.tx, item)?;
     match pick(&tx.tx, root)? {
         Some((_, state)) if state != DownloadState::Failed => {}
         Some((row, _)) => {
             tx.tx.execute(
-                "UPDATE downloads SET state = 'queued', quality = ?2, path = NULL, mime = NULL,
-                   loudness_db = NULL, bytes_total = NULL, bytes_done = 0, error = NULL,
-                   finished_at = NULL
+                "UPDATE downloads SET state = 'queued', quality = ?2, loudness_db = NULL,
+                   bytes_done = 0, error = NULL, finished_at = NULL
                  WHERE item_id = ?1",
                 params![row, quality],
             )?;
@@ -323,6 +323,7 @@ mod tests {
             row.state = DownloadState::Failed;
             row.error = Some("timeout".into());
             row.bytes_done = 3;
+            (row.path, row.bytes_total) = (Some("/m/1.webm".into()), Some(9));
             update(tx, &row)?;
             enqueue(tx, t, "flac")?;
             let row = get(&tx.tx, t)?.unwrap();
@@ -334,6 +335,11 @@ mod tests {
                     row.error.as_deref()
                 ),
                 (DownloadState::Queued, "flac", 0, None)
+            );
+            // What describes its `.part` stays, for the resume.
+            assert_eq!(
+                (row.path.as_deref(), row.bytes_total),
+                (Some("/m/1.webm"), Some(9))
             );
             assert_eq!(list(&tx.tx, None)?.len(), 1);
             remove(tx, t)?;
