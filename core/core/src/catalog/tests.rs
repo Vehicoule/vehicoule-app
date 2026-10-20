@@ -46,7 +46,7 @@ fn manifest(id: &str) -> String {
 }
 
 /// Takes the catalogue lock; both plugins loaded, online, no `mode`.
-async fn setup() -> (MutexGuard<'static, ()>, &'static App) {
+pub(crate) async fn setup() -> (MutexGuard<'static, ()>, &'static App) {
     static LOCK: Mutex<()> = Mutex::const_new(());
     static PLUGINS: OnceLock<Vec<Plugin>> = OnceLock::new();
     let guard = LOCK.lock().await;
@@ -71,7 +71,7 @@ async fn setup() -> (MutexGuard<'static, ()>, &'static App) {
 }
 
 /// kv `mode` of a fake plugin; empty = normal.
-async fn set_mode(plugin: &'static str, mode: &'static str) {
+pub(crate) async fn set_mode(plugin: &'static str, mode: &'static str) {
     test_app()
         .db
         .write(move |tx| match mode {
@@ -83,7 +83,7 @@ async fn set_mode(plugin: &'static str, mode: &'static str) {
 }
 
 /// Capability calls the fake plugins have answered so far (the guest counts them in kv).
-async fn calls() -> u64 {
+pub(crate) async fn calls() -> u64 {
     let mut n = 0;
     for id in IDS {
         let v = test_app()

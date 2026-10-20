@@ -9,9 +9,13 @@ mod app;
 mod catalog;
 mod convert;
 pub mod error;
+#[allow(dead_code, reason = "reached from api/ (task 8)")]
+mod events;
 pub mod keys;
 pub mod library;
 pub mod logs;
+#[allow(dead_code, reason = "reached from api/ (task 8)")]
+mod player;
 #[allow(dead_code, reason = "reached from api/ (task 8)")]
 mod plugins;
 pub mod queue;

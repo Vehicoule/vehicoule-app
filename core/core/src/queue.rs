@@ -65,6 +65,20 @@ impl QueueState {
         q
     }
 
+    /// A saved state is trusted only if this holds: `order` is a permutation of the entries,
+    /// `index <= order.len()`, and unshuffled means natural order.
+    pub fn is_consistent(&self) -> bool {
+        let n = self.entries.len();
+        let mut seen = vec![false; n];
+        self.order.len() == n
+            && self.index <= n
+            && self
+                .order
+                .iter()
+                .all(|&i| i < n && !std::mem::replace(&mut seen[i], true))
+            && (self.shuffle || self.order.iter().copied().eq(0..n))
+    }
+
     pub fn current(&self) -> Option<&QueueEntry> {
         self.order.get(self.index).map(|&i| &self.entries[i])
     }
@@ -84,9 +98,12 @@ impl QueueState {
         self.go(self.next_pos(false))
     }
 
-    /// More than 3 s played, or first entry: restarts the current one.
+    /// More than 3 s played, or first entry: restarts the current one. Nothing current: the
+    /// last entry.
     pub fn previous(&mut self) -> Option<&QueueEntry> {
-        self.current()?;
+        if self.current().is_none() {
+            return self.go(self.order.len().checked_sub(1));
+        }
         let p = if self.position_ms > 3000 || self.index == 0 {
             self.index
         } else {
@@ -545,6 +562,56 @@ mod tests {
             .collect();
         assert_eq!(flags[1..], [("u", false), ("r1", true), ("r2", true)]);
         assert!(!q.current().unwrap().from_radio);
+    }
+
+    #[test]
+    fn previous_with_nothing_current_goes_to_last() {
+        let mut q = QueueState::play(items(3), 2, None, false, 0);
+        q.remove(id_of(&q, "t2"));
+        assert_eq!(q.current(), None);
+        assert_eq!(item(q.previous()), Some("t1"));
+        assert_eq!(item(q.current()), Some("t1"));
+    }
+
+    #[test]
+    fn enqueue_next_is_lifo() {
+        let mut q = QueueState::play(items(2), 0, None, false, 0);
+        q.enqueue_next(vec!["first".into()]);
+        q.enqueue_next(vec!["second".into()]);
+        assert_eq!(upcoming(&q), ["second", "first", "t1"]);
+    }
+
+    #[test]
+    fn consistency_check() {
+        let q = QueueState::play(items(4), 1, None, true, 3);
+        assert!(q.is_consistent());
+        assert!(QueueState::play(vec![], 0, None, false, 0).is_consistent());
+        let broken = [
+            QueueState {
+                order: vec![0, 1, 2, 9],
+                ..q.clone()
+            },
+            QueueState {
+                order: vec![0, 1, 1, 2],
+                ..q.clone()
+            },
+            QueueState {
+                order: vec![0, 1, 2],
+                ..q.clone()
+            },
+            QueueState {
+                index: 5,
+                ..q.clone()
+            },
+            QueueState {
+                shuffle: false,
+                order: vec![1, 0, 2, 3],
+                ..q.clone()
+            },
+        ];
+        for b in broken {
+            assert!(!b.is_consistent(), "{b:?}");
+        }
     }
 
     #[test]

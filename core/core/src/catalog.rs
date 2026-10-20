@@ -107,13 +107,13 @@ fn online() -> Result<(), CoreError> {
 }
 
 /// Ids come from our own views: a malformed one is a caller bug.
-fn parse_id(id: &str) -> Result<ItemId, CoreError> {
+pub(crate) fn parse_id(id: &str) -> Result<ItemId, CoreError> {
     uuid::Uuid::parse_str(id)
         .map(ItemId)
         .map_err(|_| CoreError::Internal("malformed item id".into()))
 }
 
-fn track_view(t: TrackRow) -> TrackView {
+pub(crate) fn track_view(t: TrackRow) -> TrackView {
     TrackView {
         id: t.id.to_string(),
         title: t.title,
@@ -516,4 +516,4 @@ fn pick(images: &[Image], size: u32) -> Option<&Image> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

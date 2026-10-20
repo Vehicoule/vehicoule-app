@@ -7,6 +7,7 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use vehicoule_stream::artwork::ArtworkCache;
 
 use crate::error::CoreError;
+use crate::events::Events;
 use crate::library::Db;
 use crate::plugins::{self, Plugins};
 
@@ -33,7 +34,6 @@ pub enum Platform {
     Linux,
 }
 
-// `events` (task 5) joins here with its type.
 pub(crate) struct App {
     pub db: Db,
     /// Background work; never block on it from one of its own workers.
@@ -42,8 +42,9 @@ pub(crate) struct App {
     pub plugins: Plugins,
     /// `<cache_dir>/artwork`, 256 MiB.
     pub artwork: ArtworkCache,
-    /// Set by the app (task 5); offline, the catalogue makes no plugin call.
+    /// Set through `player::set_online`; offline, no plugin call is made.
     online: AtomicBool,
+    pub events: Events,
 }
 
 impl App {
@@ -92,6 +93,7 @@ pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
         plugins,
         artwork,
         online: AtomicBool::new(true),
+        events: Events::new(),
     });
     // Never during init: 10 s after startup, then every 24 h. Not in unit tests (network).
     #[cfg(not(test))]

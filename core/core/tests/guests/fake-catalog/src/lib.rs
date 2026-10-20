@@ -4,6 +4,11 @@
 //! `network` or `not-found` fails every call with that error, `empty` makes `search` return
 //! nothing. Every call adds one to kv `calls`. Links: `https://fake.test/<kind>/<id>`. Playlists have endless pages (2 tracks
 //! each, `next` always set; only page 0 carries the title and owner); albums one page.
+//!
+//! `resolve`: the ids are `track.id` (if any) then `r-<key>-1..3`; the first one not in `tried`
+//! wins, the others are the candidates. Stream `https://fake.test/stream/<id>`, loudness 4.2 dB.
+//! kv `tried` keeps the last request's `tried` (comma-separated). `radio`: `limit` tracks
+//! `radio-<key>-<n>`.
 wit_bindgen::generate!({
     path: ["../../../../contract/wit/host", "../../../../contract/wit/music", "../wit"],
     world: "vehicoule:core-test-guests/fake-catalog",
@@ -17,11 +22,13 @@ wit_bindgen::generate!({
 });
 
 use exports::vehicoule::music::entity::{self, Entity, EntityPage};
+use exports::vehicoule::music::radio;
+use exports::vehicoule::music::resolve::{self, Candidate, ResolveRequest, Resolved, Source};
 use exports::vehicoule::music::search::{self, SearchRequest, SearchResults};
 use exports::vehicoule::music::suggest;
 use vehicoule_sdk::kv;
 use vehicoule_sdk::types::{
-    Album, AlbumRef, Artist, ArtistRef, EntityKind, EntityRef, Error, Image, Playlist, Track,
+    Album, AlbumRef, Artist, ArtistRef, EntityKind, EntityRef, Error, Image, Playlist, Track, TrackQuery,
 };
 
 struct Fake;
@@ -152,6 +159,53 @@ impl entity::Guest for Fake {
             _ => return Ok(None),
         };
         Ok(Some(EntityRef { kind, id: id.into() }))
+    }
+}
+
+fn key_of(q: &TrackQuery) -> String {
+    q.title.trim().to_lowercase().replace(' ', "-")
+}
+
+impl resolve::Guest for Fake {
+    fn resolve(req: ResolveRequest) -> Result<Resolved, Error> {
+        check(&req.track.title)?;
+        let _ = kv::set("tried", req.tried.join(",").as_bytes());
+        let key = key_of(&req.track);
+        let mut ids: Vec<String> = req.track.id.clone().into_iter().collect();
+        ids.extend((1..=3).map(|i| format!("r-{key}-{i}")));
+        ids.retain(|id| !req.tried.contains(id));
+        if ids.is_empty() {
+            return Err(Error::NotFound);
+        }
+        let id = ids.remove(0);
+        let candidates = ids
+            .into_iter()
+            .map(|id| Candidate {
+                title: req.track.title.clone(),
+                artists: req.track.artists.clone(),
+                duration_ms: req.track.duration_ms,
+                score: 0.5,
+                id,
+            })
+            .collect();
+        let source = Source {
+            url: format!("https://fake.test/stream/{id}"),
+            headers: vec![],
+            expires_at_ms: None,
+            mime: "audio/mpeg".into(),
+            bitrate: 128_000,
+            content_length: None,
+            loudness_db: Some(4.2),
+        };
+        Ok(Resolved { id, source, candidates })
+    }
+}
+
+impl radio::Guest for Fake {
+    fn radio(seed: TrackQuery, _region: String, limit: u32) -> Result<Vec<Track>, Error> {
+        check(&seed.title)?;
+        let key = key_of(&seed);
+        Ok((1..=limit).map(|n| track(format!("radio-{key}-{n}"), &format!("radio {key} {n}"), &key)).collect())
     }
 }
 
