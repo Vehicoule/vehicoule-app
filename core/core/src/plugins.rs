@@ -138,7 +138,8 @@ impl Plugins {
     pub async fn refresh_feeds(&self, db: &Db) -> Result<Vec<String>, CoreError> {
         let mut installed = Vec::new();
         for feed in db.read(rows::feeds).await? {
-            let url = feed.url.clone();
+            // Logged by name: a URL would be masked to `<url>`.
+            let (url, name) = (feed.url.clone(), feed.name.clone());
             let bytes = match parse_url(&url) {
                 Ok(u) => self.get(&u, MAX_FEED_BYTES).await,
                 Err(e) => Err(e),
@@ -149,7 +150,7 @@ impl Plugins {
             };
             match applied {
                 Ok(ids) => installed.extend(ids),
-                Err(e) => logs::push("error", "feeds", &format!("{url}: {e}")),
+                Err(e) => logs::push("error", "feeds", &format!("{name}: {e}")),
             }
         }
         Ok(installed)
@@ -166,6 +167,7 @@ impl Plugins {
         let feed = verify_feed(&bytes, &row.public_keys, row.last_sequence)
             .map_err(|e| format!("{e:?}"))?;
         let base = parse_url(&row.url).map_err(|e| format!("{e:?}"))?;
+        let official = row.official;
         row.name = sanitize(&feed.name);
         row.last_sequence = Some(feed.sequence);
         row.fetched_at = Some(now_ms());
@@ -179,14 +181,24 @@ impl Plugins {
         let mut ids = Vec::new();
         for entry in feed.plugins.iter().filter(|e| e.contract.starts_with("1.")) {
             let current = installed.iter().find(|r| r.id == entry.id);
+            // An id belongs to the official feed first, else to the feed where it is enabled.
             if let Some(r) = current
                 && r.feed_url != feed_url
             {
-                logs::push("error", &entry.id, "already installed from another feed");
-                continue;
+                if official {
+                    logs::push(
+                        "warn",
+                        &entry.id,
+                        "the official feed replaces the plugin of another feed",
+                    );
+                } else if r.enabled {
+                    logs::push("error", &entry.id, "refused: enabled in another feed");
+                    continue;
+                }
             }
             let up_to_date = current.is_some_and(|r| {
-                r.enabled
+                r.feed_url == feed_url
+                    && r.enabled
                     && r.version == entry.version
                     && r.wasm_sha256.eq_ignore_ascii_case(&entry.wasm_sha256)
             }) && self.is_loaded(&entry.id);
@@ -333,29 +345,38 @@ impl Plugins {
         public_key_b64: &str,
     ) -> Result<(), CoreError> {
         if url == OFFICIAL_FEED_URL {
-            return Err(CoreError::Internal("the official feed is built in".into()));
+            return Err(CoreError::InvalidFeed);
         }
         let key = decode_key(public_key_b64)?;
         let bytes = self.get(&parse_url(url)?, MAX_FEED_BYTES).await?;
-        let feed = verify_feed(&bytes, &[key], None).map_err(feed_error)?;
+        // Re-adding with the same key keeps the rollback protection.
+        let kept = db
+            .read(rows::feeds)
+            .await?
+            .into_iter()
+            .find(|f| f.url == url && f.public_keys == [key])
+            .and_then(|f| f.last_sequence);
+        let feed = verify_feed(&bytes, &[key], kept).map_err(feed_error)?;
+        let name = sanitize(&feed.name);
         let row = FeedRow {
             url: url.into(),
-            name: sanitize(&feed.name),
+            name: name.clone(),
             public_keys: vec![key],
             official: false,
-            last_sequence: None,
+            last_sequence: kept,
             fetched_at: None,
             feed: None,
         };
         let stored = row.clone();
         db.write(move |tx| rows::put_feed(tx, &stored)).await?;
         if let Err(e) = self.apply_feed(db, row, bytes).await {
-            logs::push("error", "feeds", &format!("{url}: {e}"));
+            logs::push("error", "feeds", &format!("{name}: {e}"));
         }
         Ok(())
     }
 
-    /// GET with a size cap; 404/410 → `NotFound`, any other failure → `Network`.
+    /// GET with a size cap (over it: `InvalidFeed`); 404/410 → `NotFound`, any other
+    /// failure → `Network`.
     async fn get(&self, url: &Url, max: usize) -> Result<Vec<u8>, CoreError> {
         let network = |e: reqwest::Error| {
             logs::push("warn", "feeds", &e.to_string());
@@ -370,7 +391,7 @@ impl Plugins {
         let mut body = Vec::new();
         while let Some(chunk) = resp.chunk().await.map_err(network)? {
             if body.len() + chunk.len() > max {
-                return Err(CoreError::Internal(format!("{url}: over {max} bytes")));
+                return Err(CoreError::InvalidFeed);
             }
             body.extend_from_slice(&chunk);
         }
@@ -469,15 +490,16 @@ fn decode_key(b64: &str) -> Result<[u8; 32], CoreError> {
         .decode(b64.trim())
         .ok()
         .and_then(|k| <[u8; 32]>::try_from(k).ok())
-        .ok_or_else(|| CoreError::Internal("public key: expected 32 bytes in base64".into()))
+        .ok_or(CoreError::InvalidFeed)
 }
 
 fn parse_url(url: &str) -> Result<Url, CoreError> {
-    Url::parse(url).map_err(|e| CoreError::Internal(format!("{url}: {e}")))
+    Url::parse(url).map_err(|_| CoreError::InvalidFeed)
 }
 
 fn feed_error(e: FeedError) -> CoreError {
-    CoreError::Internal(format!("feed: {e:?}"))
+    logs::push("warn", "feeds", &format!("{e:?}"));
+    CoreError::InvalidFeed
 }
 
 fn now_ms() -> i64 {

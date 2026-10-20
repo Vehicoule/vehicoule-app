@@ -15,6 +15,9 @@ pub enum CoreError {
     /// A bug: corrupt store, failed migration, a plugin's internal error...
     Internal(String),
     Offline,
+    /// A feed refused: bad public key or URL, bad signature, malformed, rolled back, too
+    /// large, or the built-in official feed.
+    InvalidFeed,
     /// No enabled plugin exports this capability.
     NoPlugin(Capability),
 }

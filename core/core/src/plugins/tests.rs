@@ -17,6 +17,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
 use crate::app::{AppConfig, Platform};
+use crate::error::CoreError;
 use crate::library::{Db, plugins as rows};
 use crate::logs;
 
@@ -78,6 +79,13 @@ fn feed(sequence: u64, plugins: Vec<FeedEntry>) -> Vec<u8> {
     )
 }
 
+async fn mount_feed(server: &MockServer, at: &str, feed: Vec<u8>) {
+    Mock::given(path(at))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(feed))
+        .mount(server)
+        .await;
+}
+
 async fn mount(server: &MockServer, feed: Vec<u8>) {
     let files = [
         ("/feed.json", feed),
@@ -126,11 +134,15 @@ impl Env {
     }
 
     async fn add_feed_row(&self, url: &str, last_sequence: Option<u64>) {
+        self.add_row(url, last_sequence, false).await
+    }
+
+    async fn add_row(&self, url: &str, last_sequence: Option<u64>, official: bool) {
         let row = rows::FeedRow {
             url: url.into(),
             name: "test".into(),
             public_keys: vec![key().verifying_key().to_bytes()],
-            official: false,
+            official,
             last_sequence,
             fetched_at: None,
             feed: None,
@@ -239,7 +251,8 @@ async fn rollback_feed_is_refused() {
     assert!(ids(&p).is_empty());
     assert!(env.rows().await.is_empty());
     assert_eq!(env.feeds().await[0].last_sequence, Some(3));
-    assert!(logged("feeds", "Rollback { seen: 3, got: 2 }"));
+    // Logged under the feed's name, not its (masked) URL.
+    assert!(logged("feeds", "test: Rollback { seen: 3, got: 2 }"));
 }
 
 #[tokio::test]
@@ -310,8 +323,19 @@ async fn preview_shows_fingerprint_and_domains() {
     );
     // A preview installs nothing; another key is refused.
     assert!(env.rows().await.is_empty());
-    let other = SigningKey::from_bytes(&[1; 32]).verifying_key().to_bytes();
-    assert!(p.preview_feed(&url, &STANDARD.encode(other)).await.is_err());
+    let other = STANDARD.encode(SigningKey::from_bytes(&[1; 32]).verifying_key().to_bytes());
+    for bad_key in [other.as_str(), "not base64!", "AAAA"] {
+        let r = p.preview_feed(&url, bad_key).await;
+        assert_eq!(r, Err(CoreError::InvalidFeed), "{bad_key}");
+        let r = p.add_feed(&env.db, &url, bad_key).await;
+        assert_eq!(r, Err(CoreError::InvalidFeed), "{bad_key}");
+    }
+    let good_key = STANDARD.encode(public);
+    for bad_url in ["not a url", crate::keys::OFFICIAL_FEED_URL] {
+        let r = p.add_feed(&env.db, bad_url, &good_key).await;
+        assert_eq!(r, Err(CoreError::InvalidFeed), "{bad_url}");
+    }
+    assert!(env.feeds().await.is_empty());
 
     // Adding it installs its plugins.
     p.add_feed(&env.db, &url, &STANDARD.encode(public))
@@ -319,6 +343,72 @@ async fn preview_shows_fingerprint_and_domains() {
         .unwrap();
     assert_eq!(ids(&p), ["probe"]);
     assert_eq!(env.feeds().await[0].name, "Test feed");
+}
+
+#[tokio::test]
+async fn official_feed_takes_over_a_squatted_id() {
+    let env = Env::new();
+    let (server, third_party) = serve(feed(1, vec![good()])).await;
+    mount_feed(&server, "/official.json", feed(1, vec![good()])).await;
+    let official = format!("{}/official.json", server.uri());
+    env.add_feed_row(&third_party, None).await;
+    env.add_row(&official, None, true).await;
+    let p = env.plugins();
+
+    // Feeds go by url: the third party installs first, then the official feed replaces it.
+    p.refresh_feeds(&env.db).await.unwrap();
+    let rows = env.rows().await;
+    assert_eq!((&*rows[0].feed_url, rows[0].enabled), (&*official, true));
+    assert!(logged("probe", "replaces the plugin of another feed"));
+    assert_eq!(ids(&p), ["probe"]);
+
+    // While the official row is enabled, the third party is refused the id.
+    assert!(p.refresh_feeds(&env.db).await.unwrap().is_empty());
+    assert_eq!(env.rows().await[0].feed_url, official);
+    assert!(logged("probe", "enabled in another feed"));
+}
+
+#[tokio::test]
+async fn disabled_id_of_another_feed_can_be_taken() {
+    let env = Env::new();
+    let server = MockServer::start().await;
+    mount(&server, feed(1, vec![])).await;
+    mount_feed(&server, "/a.json", feed(1, vec![good()])).await;
+    let (a, b) = (
+        format!("{}/a.json", server.uri()),
+        format!("{}/b.json", server.uri()),
+    );
+    env.add_feed_row(&a, None).await;
+    let p = env.plugins();
+    assert_eq!(p.refresh_feeds(&env.db).await.unwrap(), ["probe"]);
+
+    // `a` drops the plugin (disabled), `b` lists it: `b` takes it.
+    server.reset().await;
+    mount(&server, feed(1, vec![])).await;
+    mount_feed(&server, "/a.json", feed(2, vec![])).await;
+    mount_feed(&server, "/b.json", feed(1, vec![good()])).await;
+    env.add_feed_row(&b, None).await;
+    assert_eq!(p.refresh_feeds(&env.db).await.unwrap(), ["probe"]);
+    let rows = env.rows().await;
+    assert_eq!((&*rows[0].feed_url, rows[0].enabled), (&*b, true));
+    assert_eq!(ids(&p), ["probe"]);
+}
+
+#[tokio::test]
+async fn readding_a_feed_keeps_rollback_protection() {
+    let env = Env::new();
+    let (server, url) = serve(feed(3, vec![good()])).await;
+    let p = env.plugins();
+    let public = STANDARD.encode(key().verifying_key().to_bytes());
+    p.add_feed(&env.db, &url, &public).await.unwrap();
+    assert_eq!(env.feeds().await[0].last_sequence, Some(3));
+
+    server.reset().await;
+    mount(&server, feed(2, vec![])).await;
+    let r = p.add_feed(&env.db, &url, &public).await;
+    assert_eq!(r, Err(CoreError::InvalidFeed));
+    assert_eq!(env.feeds().await[0].last_sequence, Some(3));
+    assert_eq!(ids(&p), ["probe"]);
 }
 
 #[test]

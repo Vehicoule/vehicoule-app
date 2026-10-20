@@ -102,7 +102,9 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub enum Platform { Android, MacOs, Ios, Windows, Linux }
   #[derive(Debug, Clone, PartialEq)]
   pub enum CoreError { Network, ProviderWall, RateLimited, BudgetExceeded, NotFound, Expired,
-                       Internal(String), Offline, NoPlugin(Capability) }
+                       Internal(String), Offline, InvalidFeed, NoPlugin(Capability) }
+  // InvalidFeed : feed refusé (clé publique ou URL invalide, signature, feed malformé,
+  // retour en arrière de séquence, taille dépassée, feed officiel ajouté à la main) ; sans URL.
   impl From<plugin_host::CallError> for CoreError; impl From<library::DbError> for CoreError;
   // DbError::Invalid(_) → NotFound (argument inconnu ou refusé : playlist, entrée, clé réservée…, pas un bug) ;
   // DbError::Sqlite(_) | Migration(_) → Internal(message).

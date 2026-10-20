@@ -2,11 +2,9 @@
 
 use std::path::Path;
 use std::sync::{Mutex, OnceLock, PoisonError};
-use std::time::Duration;
 
 use crate::error::CoreError;
 use crate::library::Db;
-use crate::logs;
 use crate::plugins::{self, Plugins};
 
 #[derive(Debug, Clone)]
@@ -75,14 +73,15 @@ pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
         cfg,
         plugins,
     });
-    // Never during init: 10 s after startup, then every 24 h.
+    // Never during init: 10 s after startup, then every 24 h. Not in unit tests (network).
+    #[cfg(not(test))]
     app().rt.spawn(async {
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         loop {
             if let Err(e) = app().plugins.refresh_feeds(&app().db).await {
-                logs::push("error", "feeds", &format!("{e:?}"));
+                crate::logs::push("error", "feeds", &format!("{e:?}"));
             }
-            tokio::time::sleep(Duration::from_secs(24 * 3600)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
         }
     });
     Ok(())
