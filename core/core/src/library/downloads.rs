@@ -105,13 +105,14 @@ pub fn get(c: &Connection, item: ItemId) -> rusqlite::Result<Option<DownloadRow>
         .next())
 }
 
-/// One row per root, ranked like `get`: done first, then in progress, then failed; oldest
-/// first within each.
+/// The row `get` returns for each root (done first, then in progress, then failed; oldest
+/// first within each), kept when its state is `state`. The filter applies after picking, so a
+/// listed row is always the one `update`/`remove` act on.
+// ponytail: reads every download row; filter in SQL with a window function if lists get long
 pub fn list(c: &Connection, state: Option<DownloadState>) -> rusqlite::Result<Vec<DownloadRow>> {
-    match state {
-        Some(s) => rows(c, "WHERE d.state = ?1", [s.as_str()]),
-        None => rows(c, "", []),
-    }
+    let mut all = rows(c, "", [])?;
+    all.retain(|r| state.is_none_or(|s| r.state == s));
+    Ok(all)
 }
 
 /// Forgets the row `get` returns and hands back its file to delete. Merges don't rewrite
@@ -288,6 +289,25 @@ mod tests {
             enqueue(tx, x, "mp3")?;
             assert_eq!(raw(c, x), None);
             assert_eq!(get(c, x)?.unwrap().path.as_deref(), Some("/y.flac"));
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn list_filters_the_row_get_picks() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let c = &tx.tx;
+            let a = catalog::upsert_track(tx, "deezer", &track_data("1", None))?;
+            let b = catalog::upsert_track(tx, "deezer", &track_data("2", None))?;
+            finish(tx, a, "/a.flac")?;
+            enqueue(tx, b, "flac")?;
+            assert_eq!(crate::library::items::merge(tx, b, a)?, a);
+            assert!(list(c, Some(DownloadState::Queued))?.is_empty());
+            let done = list(c, Some(DownloadState::Done))?;
+            assert_eq!(done, vec![get(c, a)?.unwrap()]);
+            assert_eq!(done[0].path.as_deref(), Some("/a.flac"));
             Ok(())
         })
         .unwrap();
