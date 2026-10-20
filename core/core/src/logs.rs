@@ -70,13 +70,23 @@ fn mask_digits(word: &str, out: &mut String) {
 }
 
 pub(crate) fn push(level: &str, source: &str, message: &str) {
+    store(level, redact(source), redact(message));
+}
+
+/// Unmasked: only for lines the core builds from ids, numbers and enum names (plugin call
+/// reports), where masking would hide the fuel counts the calibration reads.
+pub(crate) fn push_unmasked(level: &str, source: &str, message: &str) {
+    store(level, source.into(), message.into());
+}
+
+fn store(level: &str, source: String, message: String) {
     let line = LogLine {
         at_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as i64),
         level: level.into(),
-        source: redact(source),
-        message: redact(message),
+        source,
+        message,
     };
     // Never panic here: the panic hook calls this.
     let mut lines = LINES.lock().unwrap_or_else(PoisonError::into_inner);

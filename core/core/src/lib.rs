@@ -6,9 +6,13 @@ compile_error!("vehicoule-core needs panic = \"unwind\": the bridge turns panics
 #[allow(dead_code, reason = "reached from api/ (task 8)")]
 mod app;
 pub mod error;
+pub mod keys;
 pub mod library;
 pub mod logs;
-#[allow(dead_code, reason = "handed to plugin-host by plugins.rs (task 2)")]
+#[allow(dead_code, reason = "reached from api/ (task 8)")]
+mod plugins;
+#[allow(dead_code, reason = "used by the catalogue (task 3)")]
+mod router;
 mod storage;
 
 /// Logs every panic (masked) before the previous hook runs. Installed once, by `app::init`.

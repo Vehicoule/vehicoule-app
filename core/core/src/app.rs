@@ -2,9 +2,12 @@
 
 use std::path::Path;
 use std::sync::{Mutex, OnceLock, PoisonError};
+use std::time::Duration;
 
 use crate::error::CoreError;
 use crate::library::Db;
+use crate::logs;
+use crate::plugins::{self, Plugins};
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -29,12 +32,13 @@ pub enum Platform {
     Linux,
 }
 
-// `plugins` (task 2) and `events` (task 5) join here with their types.
+// `events` (task 5) joins here with its type.
 pub(crate) struct App {
     pub db: Db,
     /// Background work; never block on it from one of its own workers.
     pub rt: tokio::runtime::Runtime,
     pub cfg: AppConfig,
+    pub plugins: Plugins,
 }
 
 static APP: OnceLock<App> = OnceLock::new();
@@ -60,8 +64,27 @@ pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
         .thread_name("vehicoule-core")
         .build()
         .map_err(internal)?;
+    let plugins = Plugins::new(&cfg, &db, Default::default())
+        .map_err(|e| CoreError::Internal(format!("{e:#}")))?;
+    plugins::seed_official(&db)?;
+    rt.block_on(plugins.load_installed(&db))?;
     crate::install_panic_hook();
-    let _ = APP.set(App { db, rt, cfg });
+    let _ = APP.set(App {
+        db,
+        rt,
+        cfg,
+        plugins,
+    });
+    // Never during init: 10 s after startup, then every 24 h.
+    app().rt.spawn(async {
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        loop {
+            if let Err(e) = app().plugins.refresh_feeds(&app().db).await {
+                logs::push("error", "feeds", &format!("{e:?}"));
+            }
+            tokio::time::sleep(Duration::from_secs(24 * 3600)).await;
+        }
+    });
     Ok(())
 }
 
