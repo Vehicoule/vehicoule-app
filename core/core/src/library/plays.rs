@@ -12,7 +12,7 @@ pub fn start(tx: &Tx, item: ItemId, source: &str) -> rusqlite::Result<uuid::Uuid
         params![
             id.as_bytes().as_slice(),
             canonical(&tx.tx, item)?,
-            tx.now_ms(),
+            tx.now_ms,
             source,
             tx.stamp.updated_at,
             tx.stamp.device_id.as_bytes().as_slice()

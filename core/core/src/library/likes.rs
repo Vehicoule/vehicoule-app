@@ -9,7 +9,7 @@ use super::{ItemId, Kind, Page, Tx};
 pub fn set(tx: &Tx, item: ItemId, liked: bool) -> rusqlite::Result<()> {
     let root = canonical(&tx.tx, item)?;
     let (now, stamp, device) = (
-        tx.now_ms(),
+        tx.now_ms,
         tx.stamp.updated_at,
         tx.stamp.device_id.as_bytes().as_slice(),
     );

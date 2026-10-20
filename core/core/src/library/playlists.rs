@@ -1,4 +1,9 @@
 //! User playlists. Entries are ordered by `(order_key, id)`; keys are fractional (`order`).
+//!
+//! Errors vs no-ops: `rename`, `add` and `move_entry` need a live playlist / entry and fail
+//! on unknown or deleted ids (the caller acts on something it believes exists). `delete` and
+//! `remove_entry` are idempotent: removing what is already gone (double tap, or a delete that
+//! synced first) succeeds silently.
 
 use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -43,7 +48,7 @@ pub fn create(tx: &Tx, title: &str, description: Option<&str>) -> rusqlite::Resu
     tx.tx.execute(
         "INSERT INTO playlists (item_id, description, created_at, updated_at, device_id)
          VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![id, description, tx.now_ms(), stamp, device],
+        params![id, description, tx.now_ms, stamp, device],
     )?;
     index(tx, id)?;
     Ok(id)
@@ -67,7 +72,7 @@ pub fn rename(tx: &Tx, playlist: ItemId, title: &str) -> rusqlite::Result<()> {
 pub fn delete(tx: &Tx, playlist: ItemId) -> rusqlite::Result<()> {
     let p = params![
         playlist,
-        tx.now_ms(),
+        tx.now_ms,
         tx.stamp.updated_at,
         tx.stamp.device_id.as_bytes().as_slice()
     ];
@@ -87,8 +92,8 @@ pub fn delete(tx: &Tx, playlist: ItemId) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// Adds `items` (as roots) at `at`, keeping their given order. An item with a removed entry
-/// in this playlist revives that entry instead of creating a new one.
+/// Adds `items` (tracks, as roots) at `at`, keeping their given order. Always new entries:
+/// removed ones stay deleted, so two devices re-adding a track yield two copies.
 pub fn add(
     tx: &Tx,
     playlist: ItemId,
@@ -97,33 +102,37 @@ pub fn add(
 ) -> rusqlite::Result<Vec<EntryId>> {
     let c = &tx.tx;
     live(c, playlist)?;
+    let roots = items
+        .iter()
+        .map(|&item| {
+            let root = canonical(c, item)?;
+            let kind: Option<String> = c
+                .query_row(
+                    "SELECT kind FROM items WHERE id = ?1 AND deleted_at IS NULL",
+                    [root],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            match kind.as_deref() {
+                Some(k) if k == Kind::Track.as_str() => Ok(root),
+                _ => Err(invalid(format!("playlists: {item} is not a track"))),
+            }
+        })
+        .collect::<rusqlite::Result<Vec<_>>>()?;
     let (mut lo, hi) = gap(&ordered(c, playlist, None)?, at)?;
     let mut out = Vec::with_capacity(items.len());
-    for &item in items {
-        let item = canonical(c, item)?;
+    for item in roots {
         let key = key_between(lo.as_deref(), hi.as_deref());
-        let id = c
-            .query_row(
-                "SELECT id FROM playlist_items WHERE playlist_id = ?1 AND deleted_at IS NOT NULL
-                   AND item_id IN (SELECT id FROM items WHERE id = ?2 OR merged_into = ?2)
-                 ORDER BY id LIMIT 1",
-                params![playlist, item],
-                |r| r.get(0),
-            )
-            .optional()?
-            .unwrap_or_else(|| EntryId(uuid::Uuid::now_v7()));
+        let id = EntryId(uuid::Uuid::now_v7());
         c.execute(
             "INSERT INTO playlist_items (id, playlist_id, item_id, order_key, added_at, updated_at, device_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT (id) DO UPDATE SET item_id = excluded.item_id, order_key = excluded.order_key,
-               added_at = excluded.added_at, updated_at = excluded.updated_at,
-               device_id = excluded.device_id, deleted_at = NULL",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 id,
                 playlist,
                 item,
                 key,
-                tx.now_ms(),
+                tx.now_ms,
                 tx.stamp.updated_at,
                 tx.stamp.device_id.as_bytes().as_slice()
             ],
@@ -145,6 +154,9 @@ pub fn move_entry(tx: &Tx, entry: EntryId, at: Place) -> rusqlite::Result<()> {
         )
         .optional()?
         .ok_or_else(|| invalid(format!("playlists: no entry {}", entry.0)))?;
+    if at == Place::After(entry) {
+        return Ok(());
+    }
     let (lo, hi) = gap(&ordered(c, playlist, Some(entry))?, at)?;
     c.execute(
         "UPDATE playlist_items SET order_key = ?2, updated_at = ?3, device_id = ?4 WHERE id = ?1",
@@ -164,7 +176,7 @@ pub fn remove_entry(tx: &Tx, entry: EntryId) -> rusqlite::Result<()> {
          WHERE id = ?1 AND deleted_at IS NULL",
         params![
             entry,
-            tx.now_ms(),
+            tx.now_ms,
             tx.stamp.updated_at,
             tx.stamp.device_id.as_bytes().as_slice()
         ],
@@ -172,16 +184,18 @@ pub fn remove_entry(tx: &Tx, entry: EntryId) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// Live entries in `(order_key, id)` order; each shows its item's root.
+/// Live entries in `(order_key, id)` order; each shows its item's root (deleted roots hidden).
 pub fn entries(
     c: &Connection,
     playlist: ItemId,
     page: Page,
 ) -> rusqlite::Result<Vec<(EntryId, ItemId)>> {
     let mut st = c.prepare(
-        "SELECT e.id, COALESCE(i.merged_into, i.id) FROM playlist_items e
+        "SELECT e.id, r.id FROM playlist_items e
          JOIN playlists p ON p.item_id = e.playlist_id JOIN items i ON i.id = e.item_id
+         JOIN items r ON r.id = COALESCE(i.merged_into, i.id)
          WHERE e.playlist_id = ?1 AND e.deleted_at IS NULL AND p.deleted_at IS NULL
+           AND r.deleted_at IS NULL
          ORDER BY e.order_key, e.id LIMIT ?2 OFFSET ?3",
     )?;
     st.query_map(params![playlist, page.limit, page.offset], |r| {
@@ -312,10 +326,9 @@ mod tests {
                 2
             );
             // Every stored key is well formed.
-            let bad: i64 = c.query_row("SELECT count(*) FROM playlist_items", [], |r| r.get(0))?;
             let mut st = c.prepare("SELECT order_key FROM playlist_items")?;
             let keys: Vec<String> = st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
-            assert_eq!(keys.len() as i64, bad);
+            assert_eq!(keys.len(), 6);
             assert!(keys.iter().all(|k| is_valid_key(k)));
             Ok(())
         })
@@ -430,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn removed_entry_is_logical_and_readd_revives_it() {
+    fn removed_entry_stays_deleted_and_readd_is_a_new_entry() {
         let db = Db::open_in_memory().unwrap();
         db.write_blocking(|tx| {
             let c = &tx.tx;
@@ -438,12 +451,66 @@ mod tests {
             let pl = create(tx, "Mix", None)?;
             let e = add(tx, pl, &[t[0], t[1]], Place::End)?;
             remove_entry(tx, e[0])?;
+            remove_entry(tx, e[0])?;
             assert_eq!(items_of(c, pl)?, vec![t[1]]);
-            let rows: i64 = c.query_row("SELECT count(*) FROM playlist_items", [], |r| r.get(0))?;
-            assert_eq!(rows, 2);
-            let back = add(tx, pl, &[t[0]], Place::End)?;
-            assert_eq!(back, vec![e[0]]);
-            assert_eq!(items_of(c, pl)?, vec![t[1], t[0]]);
+            let back = add(tx, pl, &[t[0]], Place::Start)?;
+            assert_eq!(back.len(), 1);
+            assert_ne!(back[0], e[0]);
+            assert_eq!(entries(c, pl, all())?, vec![(back[0], t[0]), (e[1], t[1])]);
+            let (rows, old_deleted): (i64, bool) = c.query_row(
+                "SELECT (SELECT count(*) FROM playlist_items),
+                        (SELECT deleted_at IS NOT NULL FROM playlist_items WHERE id = ?1)",
+                [e[0]],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            assert_eq!((rows, old_deleted), (3, true));
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn add_takes_tracks_only_and_entries_hide_deleted_items() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let c = &tx.tx;
+            let t = tracks(tx, 2)?;
+            let pl = create(tx, "Mix", None)?;
+            let other = create(tx, "Other", None)?;
+            assert!(add(tx, pl, &[other], Place::End).is_err());
+            assert!(add(tx, pl, &[ItemId::new()], Place::End).is_err());
+            assert!(items_of(c, pl)?.is_empty());
+            add(tx, pl, &[t[0], t[1]], Place::End)?;
+            c.execute("UPDATE items SET deleted_at = 1 WHERE id = ?1", [t[0]])?;
+            assert_eq!(items_of(c, pl)?, vec![t[1]]);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn move_after_itself_is_a_no_op_and_unknown_entries_fail() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            let c = &tx.tx;
+            let t = tracks(tx, 2)?;
+            let pl = create(tx, "Mix", None)?;
+            let e = add(tx, pl, &[t[0], t[1]], Place::End)?;
+            let key = |id: EntryId| -> rusqlite::Result<String> {
+                c.query_row(
+                    "SELECT order_key FROM playlist_items WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )
+            };
+            let before = key(e[0])?;
+            move_entry(tx, e[0], Place::After(e[0]))?;
+            assert_eq!(key(e[0])?, before);
+            assert_eq!(items_of(c, pl)?, vec![t[0], t[1]]);
+            let ghost = EntryId(uuid::Uuid::now_v7());
+            assert!(move_entry(tx, ghost, Place::End).is_err());
+            assert!(move_entry(tx, e[0], Place::After(ghost)).is_err());
+            remove_entry(tx, ghost)?;
             Ok(())
         })
         .unwrap();

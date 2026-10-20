@@ -37,13 +37,9 @@ impl std::error::Error for DbError {}
 pub struct Tx<'a> {
     pub tx: Transaction<'a>,
     pub stamp: Stamp,
-}
-
-impl Tx<'_> {
-    /// Wall ms of this transaction: the HLC's ms bits, never behind the wall clock.
-    pub fn now_ms(&self) -> i64 {
-        self.stamp.updated_at >> 16
-    }
+    /// Wall clock (unix ms) read once for this transaction, the reading `stamp` was ticked
+    /// from: for wall times (`liked_at`, `deleted_at`, ...), never for ordering.
+    pub now_ms: i64,
 }
 
 // ponytail: one connection behind a mutex; add a read connection if UI reads stall behind writes
@@ -171,8 +167,9 @@ impl Db {
         let mut guard = self.lock();
         let Inner { conn, hlc, now } = &mut *guard;
         let tx = conn.transaction()?;
+        let wall = now();
         let stamp = Stamp {
-            updated_at: hlc.tick(now()) as i64,
+            updated_at: hlc.tick(wall) as i64,
             device_id: self.device_id,
         };
         tx.execute(
@@ -180,7 +177,11 @@ impl Db {
              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
             [stamp.updated_at.to_string()],
         )?;
-        let tx = Tx { tx, stamp };
+        let tx = Tx {
+            tx,
+            stamp,
+            now_ms: wall as i64,
+        };
         let r = f(&tx)?;
         tx.tx.commit()?;
         Ok(r)
@@ -335,6 +336,20 @@ mod tests {
         // Wall clock went back 4 s across the restart.
         let second = stamp(Db::init(Connection::open(&p.0).unwrap(), || 1000).unwrap()).await;
         assert!(second > first);
+    }
+
+    #[test]
+    fn tx_carries_the_wall_clock_read_for_its_stamp() {
+        let p = TempDb::new();
+        let read = |now: fn() -> u64| {
+            Db::init(Connection::open(&p.0).unwrap(), now)
+                .unwrap()
+                .write_blocking(|tx| Ok((tx.now_ms, tx.stamp.updated_at >> 16)))
+                .unwrap()
+        };
+        assert_eq!(read(|| 5000), (5000, 5000));
+        // Clock went back: the HLC stays ahead, the wall time does not.
+        assert_eq!(read(|| 1000), (1000, 5000));
     }
 
     #[test]
