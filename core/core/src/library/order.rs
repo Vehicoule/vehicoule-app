@@ -210,7 +210,11 @@ mod tests {
         let mut keys: Vec<String> = Vec::new();
         for _ in 0..500 {
             let idx = rng.next_index(keys.len());
-            let a = if idx == 0 { None } else { Some(keys[idx - 1].as_str()) };
+            let a = if idx == 0 {
+                None
+            } else {
+                Some(keys[idx - 1].as_str())
+            };
             let b = keys.get(idx).map(String::as_str);
             keys.insert(idx, key_between(a, b));
         }
@@ -255,7 +259,10 @@ mod tests {
     struct Lcg(u64);
     impl Lcg {
         fn next_index(&mut self, len: usize) -> usize {
-            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((self.0 >> 33) as usize) % (len + 1)
         }
     }
@@ -266,7 +273,11 @@ mod tests {
         let mut keys: Vec<String> = Vec::new();
         for _ in 0..2000 {
             let idx = rng.next_index(keys.len());
-            let a = if idx == 0 { None } else { Some(keys[idx - 1].as_str()) };
+            let a = if idx == 0 {
+                None
+            } else {
+                Some(keys[idx - 1].as_str())
+            };
             let b = keys.get(idx).map(String::as_str);
             let k = key_between(a, b);
             if let Some(a) = a {

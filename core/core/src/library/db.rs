@@ -435,7 +435,8 @@ mod tests {
         // poison recovery must have rolled this back — one of the two always runs, in that
         // order — otherwise this would fail to open its own transaction ("cannot start a
         // transaction within a transaction").
-        db.write_blocking(|_tx| Ok::<(), rusqlite::Error>(())).unwrap();
+        db.write_blocking(|_tx| Ok::<(), rusqlite::Error>(()))
+            .unwrap();
     }
 
     #[test]
@@ -448,13 +449,17 @@ mod tests {
             Err(rusqlite::Error::QueryReturnedNoRows)
         });
         assert!(err.is_err());
-        db.write_blocking(|_tx| Ok::<(), rusqlite::Error>(())).unwrap();
+        db.write_blocking(|_tx| Ok::<(), rusqlite::Error>(()))
+            .unwrap();
     }
 
     #[test]
     fn db_error_is_displayable_and_std_error() {
         let e = DbError::Migration("database from a newer app version".into());
-        assert_eq!(e.to_string(), "migration error: database from a newer app version");
+        assert_eq!(
+            e.to_string(),
+            "migration error: database from a newer app version"
+        );
         let as_error: &dyn std::error::Error = &e;
         assert_eq!(as_error.to_string(), e.to_string());
     }

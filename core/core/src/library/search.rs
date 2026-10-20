@@ -219,17 +219,24 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         let ids = db
             .write_blocking(|tx| {
-                let cached_only = catalog::upsert_track(tx, "deezer", &track("Zephyr Cached", "Artist", "1"))?;
-                let played = catalog::upsert_track(tx, "deezer", &track("Zephyr Played", "Artist", "2"))?;
+                let cached_only =
+                    catalog::upsert_track(tx, "deezer", &track("Zephyr Cached", "Artist", "1"))?;
+                let played =
+                    catalog::upsert_track(tx, "deezer", &track("Zephyr Played", "Artist", "2"))?;
                 plays::start(tx, played, "test")?;
-                let downloaded =
-                    catalog::upsert_track(tx, "deezer", &track("Zephyr Downloaded", "Artist", "3"))?;
+                let downloaded = catalog::upsert_track(
+                    tx,
+                    "deezer",
+                    &track("Zephyr Downloaded", "Artist", "3"),
+                )?;
                 downloads::enqueue(tx, downloaded, "mp3")?;
-                let listed = catalog::upsert_track(tx, "deezer", &track("Zephyr Listed", "Artist", "4"))?;
+                let listed =
+                    catalog::upsert_track(tx, "deezer", &track("Zephyr Listed", "Artist", "4"))?;
                 let mix = playlists::create(tx, "Mix", None)?;
                 playlists::add(tx, mix, &[listed], playlists::Place::End)?;
                 let user_playlist = playlists::create(tx, "Zephyr Mix", None)?;
-                let unliked = catalog::upsert_track(tx, "deezer", &track("Zephyr Unliked", "Artist", "5"))?;
+                let unliked =
+                    catalog::upsert_track(tx, "deezer", &track("Zephyr Unliked", "Artist", "5"))?;
                 likes::set(tx, unliked, true)?;
                 likes::set(tx, unliked, false)?;
                 let gone_playlist = playlists::create(tx, "Zephyr Gone", None)?;
@@ -266,11 +273,22 @@ mod tests {
         let (liked_root, played_root, listed_root) = db
             .write_blocking(|tx| {
                 let mut roots = vec![];
-                for (n, title) in ["Quasar Liked", "Quasar Played", "Quasar Listed"].iter().enumerate() {
+                for (n, title) in ["Quasar Liked", "Quasar Played", "Quasar Listed"]
+                    .iter()
+                    .enumerate()
+                {
                     // Root first (older UUIDv7 wins the merge), then the duplicate that carries
                     // the user data and is merged into it.
-                    let root = catalog::upsert_track(tx, "deezer", &track(title, "Artist", &format!("r{n}")))?;
-                    let dup = catalog::upsert_track(tx, "qobuz", &track(title, "Artist", &format!("d{n}")))?;
+                    let root = catalog::upsert_track(
+                        tx,
+                        "deezer",
+                        &track(title, "Artist", &format!("r{n}")),
+                    )?;
+                    let dup = catalog::upsert_track(
+                        tx,
+                        "qobuz",
+                        &track(title, "Artist", &format!("d{n}")),
+                    )?;
                     match n {
                         0 => likes::set(tx, dup, true)?,
                         1 => {
@@ -294,7 +312,11 @@ mod tests {
             .map(|h| h.item)
             .collect();
         for root in [liked_root, played_root, listed_root] {
-            assert_eq!(found.iter().filter(|&&f| f == root).count(), 1, "{root} found once");
+            assert_eq!(
+                found.iter().filter(|&&f| f == root).count(),
+                1,
+                "{root} found once"
+            );
         }
         assert_eq!(found.len(), 3);
     }
@@ -354,7 +376,11 @@ mod tests {
             .unwrap();
         }
         let count = db
-            .read_blocking(|c| c.query_row("SELECT count(*) FROM search_history", [], |r| r.get::<_, i64>(0)))
+            .read_blocking(|c| {
+                c.query_row("SELECT count(*) FROM search_history", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+            })
             .unwrap();
         assert_eq!(count, 200);
         // Oldest 5 are gone, newest kept, most recent first.
@@ -369,27 +395,38 @@ mod tests {
         // Blank queries are never recorded.
         db.write_blocking(|tx| record_query(tx, "   ")).unwrap();
         let count = db
-            .read_blocking(|c| c.query_row("SELECT count(*) FROM search_history", [], |r| r.get::<_, i64>(0)))
+            .read_blocking(|c| {
+                c.query_row("SELECT count(*) FROM search_history", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+            })
             .unwrap();
         assert_eq!(count, 200);
 
         // Re-recording an existing query bumps it to the front instead of duplicating it.
         db.write_blocking(|tx| {
             record_query(tx, "query 100")?;
-            tx.tx
-                .execute("UPDATE search_history SET used_at = 1000 WHERE query = 'query 100'", [])?;
+            tx.tx.execute(
+                "UPDATE search_history SET used_at = 1000 WHERE query = 'query 100'",
+                [],
+            )?;
             Ok(())
         })
         .unwrap();
         let top = db.read_blocking(|c| history(c, "query", 1)).unwrap();
         assert_eq!(top, vec!["query 100"]);
         let count = db
-            .read_blocking(|c| c.query_row("SELECT count(*) FROM search_history", [], |r| r.get::<_, i64>(0)))
+            .read_blocking(|c| {
+                c.query_row("SELECT count(*) FROM search_history", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+            })
             .unwrap();
         assert_eq!(count, 200);
 
         // Prefix matching folds accents/case on both sides.
-        db.write_blocking(|tx| record_query(tx, "Édith Piaf")).unwrap();
+        db.write_blocking(|tx| record_query(tx, "Édith Piaf"))
+            .unwrap();
         let hits = db.read_blocking(|c| history(c, "edith", 10)).unwrap();
         assert_eq!(hits, vec!["Édith Piaf"]);
     }
