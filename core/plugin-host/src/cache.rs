@@ -8,12 +8,13 @@ use crate::Capability;
 const MIN_CATALOG_TTL_MS: u64 = 24 * 60 * 60 * 1000;
 
 /// sha256 of plugin id, method, request URL and headers sorted by lowercase name, excluding
-/// `user-agent` (a host-overridden UA must not split the cache).
+/// `user-agent` (a host-overridden UA must not split the cache) and `cache-control` (a request
+/// directive, not a variant: a `no-cache` refetch must overwrite the plain request's entry).
 pub(crate) fn cache_key(plugin: &str, req: &Request) -> [u8; 32] {
     let mut headers: Vec<(String, &str)> = req
         .headers
         .iter()
-        .filter(|(k, _)| !k.eq_ignore_ascii_case("user-agent"))
+        .filter(|(k, _)| !k.eq_ignore_ascii_case("user-agent") && !k.eq_ignore_ascii_case("cache-control"))
         .map(|(k, v)| (k.to_ascii_lowercase(), v.as_str()))
         .collect();
     headers.sort();

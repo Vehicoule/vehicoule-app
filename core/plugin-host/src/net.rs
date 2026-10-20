@@ -300,10 +300,12 @@ pub(crate) struct CacheCtx<'a> {
 const MAX_CACHED_BODY: usize = 2 << 20;
 
 /// Same as `fetch_uncached`, but for a bodyless `GET` outside the `resolve` capability, without a
-/// request `cache-control: no-cache`/`no-store`, first consults
+/// request `cache-control: no-store`, first consults
 /// `cache`: a hit (not expired) is returned with no network call, no budget or rate-limit token
 /// spent. A miss falls through to the network; a 2xx response within `MAX_CACHED_BODY` and a
-/// non-`None` `cache::ttl_ms` is then stored. On a network error (not an HTTP error status, not
+/// non-`None` `cache::ttl_ms` is then stored. A request `cache-control: no-cache` skips the lookup
+/// (and the stale fallback) but still stores (RFC 9111 §5.2.1.4): that is how a plugin replaces
+/// an error-in-200 body cached for 24h. On a network error (not an HTTP error status, not
 /// `Denied`), an expired entry — if one exists — is served instead of the error (offline). Any
 /// entry served (fresh or stale) is rechecked against `policy`/`allow` first: the allowlist can
 /// have narrowed since it was stored, and a cache hit must not bypass that.
@@ -319,11 +321,14 @@ pub(crate) async fn fetch(
     cache: Option<CacheCtx<'_>>,
 ) -> Result<Response, HttpError> {
     let cache = cache.filter(|c| {
-        matches!(req.method, Method::Get) && c.capability != Capability::Resolve && request_is_cacheable(&req)
+        matches!(req.method, Method::Get)
+            && c.capability != Capability::Resolve
+            && req.body.is_none()
+            && !request_cache_control_has(&req, "no-store")
     });
     let key = cache.map(|c| crate::cache::cache_key(c.plugin, &req));
     let cached = match (cache, key) {
-        (Some(c), Some(key)) => c.storage.cache_get(&key),
+        (Some(c), Some(key)) if !request_cache_control_has(&req, "no-cache") => c.storage.cache_get(&key),
         _ => None,
     };
     // A failing recheck is treated as a miss: `fetch_uncached` below runs its own `policy.check`
@@ -349,16 +354,11 @@ pub(crate) async fn fetch(
     }
 }
 
-/// A request with a body, or whose own `cache-control` asks for `no-cache`/`no-store`, neither
-/// reads nor writes the cache.
-fn request_is_cacheable(req: &Request) -> bool {
-    req.body.is_none()
-        && !req.headers.iter().any(|(k, v)| {
-            k.eq_ignore_ascii_case("cache-control") && {
-                let v = v.to_ascii_lowercase();
-                v.contains("no-cache") || v.contains("no-store")
-            }
-        })
+/// Whether the request's own `cache-control` carries `directive` (lowercase), case-insensitively.
+fn request_cache_control_has(req: &Request, directive: &str) -> bool {
+    req.headers
+        .iter()
+        .any(|(k, v)| k.eq_ignore_ascii_case("cache-control") && v.to_ascii_lowercase().contains(directive))
 }
 
 /// Both the original request URL and the entry's (final, post-redirect) URL must still check
@@ -963,8 +963,9 @@ mod tests {
         assert_eq!(server.received_requests().await.unwrap().len(), 2, "resolve always goes to the network");
     }
 
-    /// A body or a request `cache-control: no-cache`/`no-store` skips the cache both ways: a
-    /// warm entry is not served, and the response is not stored.
+    /// A body or a request `cache-control: no-store` skips the cache both ways: a warm entry is
+    /// not served, and the response is not stored. A request `no-cache` skips only the lookup:
+    /// the fresh 200 replaces the entry.
     #[tokio::test]
     async fn request_body_or_no_cache_bypasses_the_cache() {
         let server = MockServer::start().await;
@@ -975,7 +976,7 @@ mod tests {
         let with_body = Request { body: Some(b"q".to_vec()), ..req(Method::Get, &url) };
         let cc = |v: &str| Request { headers: vec![("Cache-Control".into(), v.into())], ..req(Method::Get, &url) };
 
-        for bypass in [with_body, cc("no-cache"), cc("max-age=0, No-Store")] {
+        for (bypass, stored) in [(with_body, 299), (cc("no-cache"), 200), (cc("max-age=0, No-Store"), 299)] {
             let storage = MemoryStorage::default();
             let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
             // Lookup skipped: an entry under this exact key is not served.
@@ -993,10 +994,30 @@ mod tests {
                 },
             );
             assert_eq!(run_cached(&policy, &list, bypass, cache).await.unwrap().status, 200);
-            // Store skipped: the 200 did not overwrite the entry under the same key.
-            assert_eq!(storage.cache_get(&key).unwrap().status, 299);
+            // Store skipped (299 kept) for a body or `no-store`; done (200) for `no-cache`.
+            assert_eq!(storage.cache_get(&key).unwrap().status, stored);
         }
         assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    }
+
+    /// RFC 9111: a request `no-cache` skips the lookup but still stores the fresh 2xx, so a
+    /// plugin that got an error-in-200 body (cached for 24h) can replace it for later requests.
+    #[tokio::test]
+    async fn no_cache_request_refreshes_the_entry() {
+        let server = MockServer::start().await;
+        let resp = |body: &str| ResponseTemplate::new(200).insert_header("cache-control", "max-age=60").set_body_string(body);
+        Mock::given(method("GET")).respond_with(resp("error")).up_to_n_times(1).mount(&server).await;
+        Mock::given(method("GET")).respond_with(resp("fresh")).mount(&server).await;
+        let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
+        let storage = MemoryStorage::default();
+        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let url = format!("{}/x", base(&server, "api.test"));
+        let no_cache = Request { headers: vec![("Cache-Control".into(), "no-cache".into())], ..req(Method::Get, &url) };
+
+        assert_eq!(run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap().body, b"error");
+        assert_eq!(run_cached(&policy, &list, no_cache, cache).await.unwrap().body, b"fresh");
+        assert_eq!(run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap().body, b"fresh");
+        assert_eq!(server.received_requests().await.unwrap().len(), 2, "the last GET must be served from cache");
     }
 
     /// An expired entry, seeded directly through `Storage` (24h is the catalogue's own minimum
