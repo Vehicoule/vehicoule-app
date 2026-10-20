@@ -13,6 +13,7 @@ pub mod playlists;
 pub mod plays;
 pub mod queue;
 pub mod refs;
+pub mod search;
 
 pub use db::{Db, DbError, Tx};
 pub use fold::fold;

@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rusqlite::functions::FunctionFlags;
 use rusqlite::{Connection, OptionalExtension, Transaction};
 
 use super::hlc::{Hlc, Stamp};
@@ -74,6 +75,13 @@ impl Db {
 
     fn init(mut conn: Connection, now: fn() -> u64) -> Result<Db, DbError> {
         conn.busy_timeout(Duration::from_millis(5000))?;
+        // Exposed to SQL for folded-prefix history lookups and short-query LIKE search.
+        conn.create_scalar_function(
+            "fold",
+            1,
+            FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+            |ctx| Ok(super::fold::fold(&ctx.get::<String>(0)?)),
+        )?;
         // Checked before any pragma that writes the file: a newer database stays untouched.
         let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if version as usize > MIGRATIONS.len() {
