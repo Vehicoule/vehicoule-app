@@ -2,11 +2,16 @@
 
 pub mod catalog;
 mod db;
+pub mod downloads;
 mod fold;
 mod hlc;
 mod ids;
 pub mod items;
+pub mod likes;
 mod order;
+pub mod playlists;
+pub mod plays;
+pub mod queue;
 pub mod refs;
 
 pub use db::{Db, DbError, Tx};

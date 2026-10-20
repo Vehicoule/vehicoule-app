@@ -39,6 +39,13 @@ pub struct Tx<'a> {
     pub stamp: Stamp,
 }
 
+impl Tx<'_> {
+    /// Wall ms of this transaction: the HLC's ms bits, never behind the wall clock.
+    pub fn now_ms(&self) -> i64 {
+        self.stamp.updated_at >> 16
+    }
+}
+
 // ponytail: one connection behind a mutex; add a read connection if UI reads stall behind writes
 /// The lock is not re-entrant: never call `read_blocking`/`write_blocking` from inside a
 /// `write_blocking` (or `read_blocking`) closure — it will deadlock.

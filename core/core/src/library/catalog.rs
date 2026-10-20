@@ -433,7 +433,7 @@ fn set_artwork(tx: &Tx, id: ItemId, provider: &str, images: &[Image]) -> rusqlit
 }
 
 /// One `library_fts` row per item: folded title; folded artists (+ album) or owner.
-fn index(tx: &Tx, id: ItemId) -> rusqlite::Result<()> {
+pub(crate) fn index(tx: &Tx, id: ItemId) -> rusqlite::Result<()> {
     let c = &tx.tx;
     let (kind, title): (String, String) =
         c.query_row("SELECT kind, title FROM items WHERE id = ?1", [id], |r| {
@@ -527,7 +527,7 @@ fn artwork(c: &Connection, id: ItemId) -> rusqlite::Result<Vec<Image>> {
 
 /// Whether `<table WHERE filter>` has a row for the root or any item merged into it: user
 /// data is never rewritten on merge.
-fn in_group(c: &Connection, table_where: &str, root: ItemId) -> rusqlite::Result<bool> {
+pub(crate) fn in_group(c: &Connection, table_where: &str, root: ItemId) -> rusqlite::Result<bool> {
     c.query_row(
         &format!(
             "SELECT EXISTS (SELECT 1 FROM {table_where} AND item_id IN

@@ -75,10 +75,8 @@ pub(crate) fn invalid(msg: String) -> rusqlite::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::Kind;
     use crate::library::catalog::{self, tests::track_data};
-    use crate::library::{Db, refs};
-    use rusqlite::params;
+    use crate::library::{Db, Kind, Page, likes, playlists, plays, refs};
 
     fn merged_into(c: &Connection, id: ItemId) -> Option<ItemId> {
         c.query_row("SELECT merged_into FROM items WHERE id = ?1", [id], |r| {
@@ -94,58 +92,34 @@ mod tests {
             let c = &tx.tx;
             let a = catalog::upsert_track(tx, "deezer", &track_data("1", None))?;
             let b = catalog::upsert_track(tx, "deezer", &track_data("2", None))?;
-            let s = (tx.stamp.updated_at, tx.stamp.device_id.as_bytes().as_slice());
-            for id in [a, b] {
-                c.execute(
-                    "INSERT INTO likes (item_id, liked_at, updated_at, device_id) VALUES (?1, 0, ?2, ?3)",
-                    params![id, s.0, s.1],
-                )?;
-            }
-            let pl = ItemId::new();
-            c.execute(
-                "INSERT INTO items (id, kind, title, updated_at, device_id) VALUES (?1, 'playlist', 'p', ?2, ?3)",
-                params![pl, s.0, s.1],
-            )?;
-            c.execute(
-                "INSERT INTO playlist_items (id, playlist_id, item_id, order_key, added_at, updated_at, device_id)
-                 VALUES (?1, ?2, ?3, 'V', 0, ?4, ?5)",
-                params![ItemId::new(), pl, b, s.0, s.1],
-            )?;
-            for _ in 0..2 {
-                c.execute(
-                    "INSERT INTO plays (id, item_id, started_at, source, updated_at, device_id)
-                     VALUES (?1, ?2, 0, 'test', ?3, ?4)",
-                    params![ItemId::new(), b, s.0, s.1],
-                )?;
-            }
+            likes::set(tx, a, true)?;
+            likes::set(tx, b, true)?;
+            let pl = playlists::create(tx, "p", None)?;
+            let entry = playlists::add(tx, pl, &[b], playlists::Place::End)?[0];
+            plays::start(tx, b, "test")?;
+            plays::start(tx, b, "test")?;
 
             assert_eq!(merge(tx, b, a)?, a);
 
             // Nothing rewritten, nothing lost: every user row still exists.
             let count = |sql: &str| c.query_row(sql, [], |r| r.get::<_, i64>(0));
             assert_eq!(count("SELECT count(*) FROM likes")?, 2);
-            // Reads following merged_into see one liked root, the root in the playlist, 2 plays on it.
-            let liked_roots = count(
-                "SELECT count(DISTINCT COALESCE(i.merged_into, i.id)) FROM likes l
-                 JOIN items i ON i.id = l.item_id WHERE l.deleted_at IS NULL AND i.kind = 'track'",
-            )?;
-            assert_eq!(liked_roots, 1);
-            let in_playlist: ItemId = c.query_row(
-                "SELECT COALESCE(i.merged_into, i.id) FROM playlist_items p JOIN items i ON i.id = p.item_id",
-                [],
-                |r| r.get(0),
-            )?;
-            assert_eq!(in_playlist, a);
-            let plays: i64 = c.query_row(
-                "SELECT count(*) FROM plays p JOIN items i ON i.id = p.item_id
-                 WHERE COALESCE(i.merged_into, i.id) = ?1",
-                [a],
-                |r| r.get(0),
-            )?;
-            assert_eq!(plays, 2);
+            assert_eq!(count("SELECT count(*) FROM plays")?, 2);
+            // Reads following merged_into see the root once: liked, in the playlist, played.
+            let page = || Page {
+                offset: 0,
+                limit: 10,
+            };
+            assert_eq!(likes::list(c, Kind::Track, page())?, vec![a]);
+            assert_eq!(playlists::entries(c, pl, page())?, vec![(entry, a)]);
+            assert_eq!(plays::recent_items(c, Kind::Track, page())?, vec![a]);
             let row = catalog::track(c, b)?.unwrap();
             assert_eq!(row.id, a);
             assert!(row.liked);
+            // Unliking the root clears the like recorded on the merged item too.
+            likes::set(tx, b, false)?;
+            assert!(!likes::is_liked(c, a)?);
+            assert!(likes::list(c, Kind::Track, page())?.is_empty());
             Ok(())
         })
         .unwrap();
