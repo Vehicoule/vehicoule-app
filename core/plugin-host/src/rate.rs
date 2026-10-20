@@ -122,6 +122,29 @@ mod tests {
         }
     }
 
+    /// The back-to-back run above starts every burst at a window edge, so a fixed window passes
+    /// it too. Starting late (one send, then a burst 900 ms in) is what lets a fixed window put
+    /// 2N sends across its edge; the sliding log must still hold N in every 1 s span.
+    #[tokio::test(start_paused = true)]
+    async fn late_start_never_more_than_n_in_any_window() {
+        let rl = RateLimiter::new(RateLimit { requests: 3, per_seconds: 1 });
+        let start = Instant::now();
+        let deadline = start + Duration::from_secs(120);
+        rl.acquire(deadline).await.unwrap();
+        let mut times = vec![Instant::now()];
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        for _ in 0..5 {
+            rl.acquire(deadline).await.unwrap();
+            times.push(Instant::now());
+        }
+        for win_start in &times {
+            let in_window =
+                times.iter().filter(|t| **t >= *win_start && **t < *win_start + Duration::from_secs(1)).count();
+            let ms: Vec<_> = times.iter().map(|t| t.duration_since(start).as_millis()).collect();
+            assert!(in_window <= 3, "{in_window} sends in one window, at ms {ms:?}");
+        }
+    }
+
     #[tokio::test(start_paused = true)]
     async fn rate_wait_past_deadline_fails_fast() {
         let rl = RateLimiter::new(RateLimit { requests: 1, per_seconds: 60 });
