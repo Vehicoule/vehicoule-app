@@ -107,14 +107,26 @@ pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
     Ok(())
 }
 
-/// The one `App` of a test binary (FR region, temp dirs kept). Initialised from a plain
-/// thread: `init` blocks on its own runtime, which a `#[tokio::test]` thread cannot do.
+/// The one `App` of a test binary (FR region). Initialised from a plain thread: `init`
+/// blocks on its own runtime, which a `#[tokio::test]` thread cannot do.
+///
+/// Its dirs live under `$TMPDIR/vehicoule-test-app/<pid>`. A static is never dropped, so a
+/// run cannot remove its own: each run removes those of earlier runs (over an hour old, so
+/// never a binary still running).
 #[cfg(test)]
 pub(crate) fn test_app() -> &'static App {
     if let Some(app) = APP.get() {
         return app;
     }
-    let dir = std::env::temp_dir().join(format!("vehicoule-test-app-{}", std::process::id()));
+    let root = std::env::temp_dir().join("vehicoule-test-app");
+    for old in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+        let age = old.metadata().and_then(|m| m.modified()).ok();
+        let age = age.and_then(|t| t.elapsed().ok()).unwrap_or_default();
+        if age > std::time::Duration::from_secs(3600) {
+            let _ = std::fs::remove_dir_all(old.path());
+        }
+    }
+    let dir = root.join(std::process::id().to_string());
     let cfg = AppConfig {
         data_dir: dir.join("data").display().to_string(),
         cache_dir: dir.join("cache").display().to_string(),

@@ -240,6 +240,25 @@ async fn entity_serves_cache_when_network_fails() {
 }
 
 #[tokio::test]
+async fn user_playlist_entity_is_not_from_cache() {
+    let (_lock, app) = setup().await;
+    let track = item(&search("mine").await.unwrap().tracks[0].id);
+    let id = app
+        .db
+        .write(move |tx| {
+            let id = playlists::create(tx, "Mine", None)?;
+            playlists::add(tx, id, &[track], playlists::Place::End)?;
+            Ok(id)
+        })
+        .await
+        .unwrap();
+    let page = entity(&id.to_string(), None).await.unwrap();
+    assert!(page.header.is_user_playlist);
+    assert!(!page.from_cache);
+    assert_eq!(titles(&page.tracks), ["mine"]);
+}
+
+#[tokio::test]
 async fn unknown_link_is_not_found() {
     let (_lock, _) = setup().await;
     assert_eq!(

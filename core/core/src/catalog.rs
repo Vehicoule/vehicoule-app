@@ -267,7 +267,8 @@ pub(crate) async fn suggest(prefix: &str) -> Result<Vec<String>, CoreError> {
 }
 
 /// An album, artist or playlist page from the plugins that know it; on failure (or
-/// offline), the stored page, `from_cache = true`. User playlists are always local.
+/// offline), the stored page, `from_cache = true`. User playlists are always local, and
+/// never `from_cache` (they are the user's own data).
 pub(crate) async fn entity(id: &str, cursor: Option<String>) -> Result<EntityView, CoreError> {
     let item = parse_id(id)?;
     let app = app();
@@ -339,12 +340,14 @@ async fn cached(
             if ids.is_empty() && !header.user {
                 return Ok(None);
             }
+            let user = header.user;
             Ok(Some(EntityView {
                 header: collection_view(header),
                 tracks: track_views(c, &ids)?,
                 albums: vec![],
                 next: None,
-                from_cache: true,
+                // A user playlist is the user's own data, not a stale copy.
+                from_cache: !user,
             }))
         })
         .await?;
