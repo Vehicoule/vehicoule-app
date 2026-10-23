@@ -20,6 +20,7 @@ Future<void> setLiked({required String id, required bool liked}) =>
     RustLib.instance.api.crateApiLibrarySetLiked(id: id, liked: liked);
 
 /// The tracks of these ids, in order (download rows, notifications); unknown ones left out.
+/// Each under the id asked, a merged one included (every input resolves merges).
 Future<List<TrackView>> tracks({required List<String> ids}) =>
     RustLib.instance.api.crateApiLibraryTracks(ids: ids);
 

@@ -10,7 +10,7 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'error.freezed.dart';
 
 /// plugin-host's `Capability`, as the bridge sees it.
-enum Capability { search, suggest, entity, resolve, lyrics, radio }
+enum Capability { search, suggest, entity, resolve, lyrics, radio, browse }
 
 @freezed
 sealed class CoreError with _$CoreError implements FrbException {

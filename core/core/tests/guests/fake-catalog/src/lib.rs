@@ -12,6 +12,9 @@
 //! its mime (`audio/webm`).
 //! `lyrics`: a title containing `instrumental` has none (empty lyrics), others have plain and
 //! two synced lines.
+//! `browse`: categories `chart:0` (featured, with artwork) and `genre:1` (none); a category
+//! has four shelves (`tracks`, `albums`, `artists`, `playlists`) and pages `next` = `1` then
+//! none; `releases` of `ar-<key>`: two albums `rel-<key>-1..2` by that artist, newest first.
 wit_bindgen::generate!({
     path: ["../../../../contract/wit/host", "../../../../contract/wit/music", "../wit"],
     world: "vehicoule:core-test-guests/fake-catalog",
@@ -24,6 +27,7 @@ wit_bindgen::generate!({
     },
 });
 
+use exports::vehicoule::music::browse::{self, Category, CategoryPage, Release, Shelf};
 use exports::vehicoule::music::entity::{self, Entity, EntityPage};
 use exports::vehicoule::music::lyrics::{self, Line, Lyrics};
 use exports::vehicoule::music::radio;
@@ -225,6 +229,50 @@ impl lyrics::Guest for Fake {
             plain: Some(format!("words of {}", track.title)),
             synced: vec![Line { start_ms: 0, text: "one".into() }, Line { start_ms: 1500, text: "two".into() }],
         })
+    }
+}
+
+impl browse::Guest for Fake {
+    fn categories(_region: String) -> Result<Vec<Category>, Error> {
+        check("categories")?;
+        Ok(vec![
+            Category { id: "chart:0".into(), title: "Top fake".into(), artwork: art("chart"), featured: true },
+            Category { id: "genre:1".into(), title: "Genre fake".into(), artwork: vec![], featured: false },
+        ])
+    }
+
+    fn fetch_category(id: String, _region: String, cursor: Option<String>) -> Result<CategoryPage, Error> {
+        check(&id)?;
+        let key = format!("{}-p{}", id.replace(':', "-"), cursor.as_deref().unwrap_or("0"));
+        let shelf = |title: &str, items| Shelf { title: title.into(), items };
+        let playlist = Playlist {
+            id: format!("p-{key}"),
+            title: format!("Playlist {key}"),
+            owner: None,
+            description: None,
+            track_count: None,
+            artwork: art(&key),
+        };
+        Ok(CategoryPage {
+            title: format!("Category {id}"),
+            shelves: vec![
+                shelf("tracks", tracks(&format!("t-{key}"), &key).into_iter().map(Entity::Track).collect()),
+                shelf("albums", vec![Entity::Album(album(&key))]),
+                shelf("artists", vec![Entity::Artist(artist(&key))]),
+                shelf("playlists", vec![Entity::Playlist(playlist)]),
+            ],
+            next: cursor.is_none().then(|| "1".into()),
+        })
+    }
+
+    fn releases(artist_id: String, _region: String) -> Result<Vec<Release>, Error> {
+        check(&artist_id)?;
+        let key = artist_id.strip_prefix("ar-").unwrap_or(&artist_id);
+        let release = |n: u32, date: &str| Release {
+            album: Album { id: format!("rel-{key}-{n}"), title: format!("Release {key} {n}"), ..album(key) },
+            date: date.into(),
+        };
+        Ok(vec![release(1, "2026-10-20"), release(2, "2026-09-01")])
     }
 }
 

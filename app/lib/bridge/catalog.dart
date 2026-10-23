@@ -6,6 +6,8 @@
 import 'frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
+part 'catalog.freezed.dart';
 
 class AlbumRefView {
   final String id;
@@ -41,6 +43,16 @@ class ArtistRefView {
           runtimeType == other.runtimeType &&
           id == other.id &&
           name == other.name;
+}
+
+@freezed
+sealed class CardView with _$CardView {
+  const CardView._();
+
+  const factory CardView.track({required TrackView track, String? reason}) =
+      CardView_Track;
+  const factory CardView.collection(CollectionView field0) =
+      CardView_Collection;
 }
 
 class CollectionView {

@@ -7,6 +7,7 @@ compile_error!("vehicoule-core needs panic = \"unwind\": the bridge turns panics
 mod android;
 pub mod api;
 mod app;
+mod browse;
 mod catalog;
 mod convert;
 mod downloads;

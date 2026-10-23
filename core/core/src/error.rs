@@ -33,6 +33,7 @@ pub enum _Capability {
     Resolve,
     Lyrics,
     Radio,
+    Browse,
 }
 
 impl CoreError {

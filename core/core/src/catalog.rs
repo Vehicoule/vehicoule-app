@@ -52,6 +52,16 @@ pub struct CollectionView {
     pub is_user_playlist: bool,
 }
 
+/// A card of a shelf (Explore, home): a track, with why it is there, or a collection.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CardView {
+    Track {
+        track: TrackView,
+        reason: Option<String>,
+    },
+    Collection(CollectionView),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ItemKind {
     Track,
@@ -98,7 +108,7 @@ const MAX_IMPORT_PAGES: usize = 50;
 // ponytail: a cached page shows its first 1000 tracks; page the cache if longer ones matter
 const CACHED_TRACKS: u32 = 1000;
 
-fn online() -> Result<(), CoreError> {
+pub(crate) fn online() -> Result<(), CoreError> {
     if app().is_online() {
         Ok(())
     } else {
@@ -136,7 +146,7 @@ pub(crate) fn track_view(t: TrackRow) -> TrackView {
     }
 }
 
-fn collection_view(c: CollectionRow) -> CollectionView {
+pub(crate) fn collection_view(c: CollectionRow) -> CollectionView {
     CollectionView {
         id: c.id.to_string(),
         kind: c.kind.into(),

@@ -4,6 +4,7 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'api/app.dart';
+import 'api/browse.dart';
 import 'api/catalog.dart';
 import 'api/library.dart';
 import 'api/playback.dart';
@@ -92,6 +93,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_box_autoadd_bool(dynamic raw);
 
   @protected
+  CollectionView dco_decode_box_autoadd_collection_view(dynamic raw);
+
+  @protected
   CoreError dco_decode_box_autoadd_core_error(dynamic raw);
 
   @protected
@@ -125,10 +129,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UpdateInfo dco_decode_box_autoadd_update_info(dynamic raw);
 
   @protected
+  BrowseShelfView dco_decode_browse_shelf_view(dynamic raw);
+
+  @protected
   Candidate dco_decode_candidate(dynamic raw);
 
   @protected
   Capability dco_decode_capability(dynamic raw);
+
+  @protected
+  CardView dco_decode_card_view(dynamic raw);
+
+  @protected
+  CategoryPageView dco_decode_category_page_view(dynamic raw);
+
+  @protected
+  CategoryView dco_decode_category_view(dynamic raw);
 
   @protected
   CollectionView dco_decode_collection_view(dynamic raw);
@@ -179,7 +195,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<ArtistRefView> dco_decode_list_artist_ref_view(dynamic raw);
 
   @protected
+  List<BrowseShelfView> dco_decode_list_browse_shelf_view(dynamic raw);
+
+  @protected
   List<Candidate> dco_decode_list_candidate(dynamic raw);
+
+  @protected
+  List<CardView> dco_decode_list_card_view(dynamic raw);
+
+  @protected
+  List<CategoryView> dco_decode_list_category_view(dynamic raw);
 
   @protected
   List<CollectionView> dco_decode_list_collection_view(dynamic raw);
@@ -394,6 +419,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
+  CollectionView sse_decode_box_autoadd_collection_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   CoreError sse_decode_box_autoadd_core_error(SseDeserializer deserializer);
 
   @protected
@@ -427,10 +457,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UpdateInfo sse_decode_box_autoadd_update_info(SseDeserializer deserializer);
 
   @protected
+  BrowseShelfView sse_decode_browse_shelf_view(SseDeserializer deserializer);
+
+  @protected
   Candidate sse_decode_candidate(SseDeserializer deserializer);
 
   @protected
   Capability sse_decode_capability(SseDeserializer deserializer);
+
+  @protected
+  CardView sse_decode_card_view(SseDeserializer deserializer);
+
+  @protected
+  CategoryPageView sse_decode_category_page_view(SseDeserializer deserializer);
+
+  @protected
+  CategoryView sse_decode_category_view(SseDeserializer deserializer);
 
   @protected
   CollectionView sse_decode_collection_view(SseDeserializer deserializer);
@@ -485,7 +527,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<BrowseShelfView> sse_decode_list_browse_shelf_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<Candidate> sse_decode_list_candidate(SseDeserializer deserializer);
+
+  @protected
+  List<CardView> sse_decode_list_card_view(SseDeserializer deserializer);
+
+  @protected
+  List<CategoryView> sse_decode_list_category_view(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<CollectionView> sse_decode_list_collection_view(
@@ -739,6 +794,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_collection_view(
+    CollectionView self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_core_error(
     CoreError self,
     SseSerializer serializer,
@@ -790,10 +851,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_browse_shelf_view(
+    BrowseShelfView self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_candidate(Candidate self, SseSerializer serializer);
 
   @protected
   void sse_encode_capability(Capability self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_card_view(CardView self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_category_page_view(
+    CategoryPageView self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_category_view(CategoryView self, SseSerializer serializer);
 
   @protected
   void sse_encode_collection_view(
@@ -859,8 +938,23 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_browse_shelf_view(
+    List<BrowseShelfView> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_candidate(
     List<Candidate> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_card_view(List<CardView> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_category_view(
+    List<CategoryView> self,
     SseSerializer serializer,
   );
 

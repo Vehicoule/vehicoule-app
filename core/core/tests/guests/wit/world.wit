@@ -8,4 +8,5 @@ world fake-catalog {
     export vehicoule:music/resolve@1.1.0;
     export vehicoule:music/radio@1.1.0;
     export vehicoule:music/lyrics@1.1.0;
+    export vehicoule:music/browse@1.1.0;
 }

@@ -13,6 +13,14 @@ use crate::logs;
 /// other plugin after these, by id.
 const DEFAULT_ORDER: [&str; 3] = ["deezer", "itunes", "ytmusic"];
 
+/// The default order of `name` (a capability's name, or `artwork`): `browse` is Deezer alone.
+fn default_order(name: &str) -> &'static [&'static str] {
+    match name {
+        "browse" => &["deezer"],
+        _ => &DEFAULT_ORDER,
+    }
+}
+
 /// The name stored in `capability_order` and shown in logs and previews.
 pub(crate) fn cap_name(cap: Capability) -> &'static str {
     match cap {
@@ -38,21 +46,17 @@ pub(crate) async fn order_of(name: &str) -> Result<Vec<String>, CoreError> {
 /// `name` as `cap_name` gives it; anything else comes from a caller bug.
 pub(crate) fn capability(name: &str) -> Result<Capability, CoreError> {
     use Capability::*;
-    [Search, Suggest, Entity, Resolve, Lyrics, Radio]
+    [Search, Suggest, Entity, Resolve, Lyrics, Radio, Browse]
         .into_iter()
         .find(|c| cap_name(*c) == name)
         .ok_or_else(|| CoreError::Internal("unknown capability".into()))
 }
 
 /// Sort key: the user's position, then the default position, then the id.
-fn rank(user: &[String], id: &str) -> (usize, usize, String) {
+fn rank(default: &[&str], user: &[String], id: &str) -> (usize, usize, String) {
     let user_pos = user.iter().position(|u| u == id).unwrap_or(user.len());
-    let default_pos = DEFAULT_ORDER.iter().position(|d| *d == id);
-    (
-        user_pos,
-        default_pos.unwrap_or(DEFAULT_ORDER.len()),
-        id.into(),
-    )
+    let default_pos = default.iter().position(|d| *d == id);
+    (user_pos, default_pos.unwrap_or(default.len()), id.into())
 }
 
 /// Loaded plugins exporting `cap`, in the user's order, else the default one.
@@ -76,7 +80,7 @@ async fn sorted(name: &'static str, keep: impl Fn(&Plugin) -> bool) -> Vec<Plugi
             Vec::new()
         });
     let mut plugins: Vec<Plugin> = app().plugins.loaded().into_iter().filter(keep).collect();
-    plugins.sort_by_key(|p| rank(&user, p.id()));
+    plugins.sort_by_key(|p| rank(default_order(name), &user, p.id()));
     plugins
 }
 
@@ -135,12 +139,29 @@ mod tests {
     #[test]
     fn default_order_puts_deezer_first() {
         let mut ids = vec!["ytmusic", "itunes", "deezer", "zz"];
-        ids.sort_by_key(|id| rank(&[], id));
+        ids.sort_by_key(|id| rank(&DEFAULT_ORDER, &[], id));
         assert_eq!(ids, ["deezer", "itunes", "ytmusic", "zz"]);
         // The user's order comes first, the default order after it.
         let user = ["zz".to_string(), "ytmusic".to_string()];
-        ids.sort_by_key(|id| rank(&user, id));
+        ids.sort_by_key(|id| rank(&DEFAULT_ORDER, &user, id));
         assert_eq!(ids, ["zz", "ytmusic", "deezer", "itunes"]);
+    }
+
+    #[test]
+    fn browse_defaults_to_deezer_alone() {
+        let mut ids = vec!["ytmusic", "aa", "deezer"];
+        ids.sort_by_key(|id| rank(default_order("browse"), &[], id));
+        assert_eq!(ids, ["deezer", "aa", "ytmusic"]);
+        ids.sort_by_key(|id| rank(default_order("search"), &[], id));
+        assert_eq!(ids, ["deezer", "ytmusic", "aa"]);
+    }
+
+    #[test]
+    fn every_capability_has_a_name() {
+        use Capability::*;
+        for c in [Search, Suggest, Entity, Resolve, Lyrics, Radio, Browse] {
+            assert_eq!(capability(cap_name(c)), Ok(c));
+        }
     }
 
     #[test]

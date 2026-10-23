@@ -2,6 +2,7 @@
 //! over the core, ids as strings. Everything but `init_app` needs `init_app` first.
 
 pub mod app;
+pub mod browse;
 pub mod catalog;
 pub mod library;
 pub mod playback;
