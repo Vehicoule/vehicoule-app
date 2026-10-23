@@ -27,6 +27,11 @@ sentry = { version = "0.49", default-features = false, features = ["backtrace", 
 semver = "1"
 sha2 = "0.10"
 
+# Android: rustls-platform-verifier needs the app's context, handed over by JNI (android.rs).
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22"
+rustls-platform-verifier = "0.7"
+
 [dev-dependencies]
 # `NetPolicy::for_tests` for the test App: wiremock on http, `*.test` -> 127.0.0.1.
 plugin-host = { path = "../plugin-host", features = ["test-util"] }
@@ -34,3 +39,6 @@ tokio = { version = "1", features = ["macros", "rt", "test-util"] }
 wiremock = "0.6"
 ed25519-dalek = "3"
 sentry = { version = "0.49", default-features = false, features = ["test"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

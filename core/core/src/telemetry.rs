@@ -92,6 +92,15 @@ fn bind(options: Option<ClientOptions>) {
             s.clear();
             s.set_tag("app_version", &app().cfg.app_version);
             s.set_tag("os", os());
+            s.set_tag("device_model", &app().cfg.device_model);
+            s.set_context(
+                "os",
+                OsContext {
+                    name: Some(os()),
+                    version: Some(app().cfg.os_version.clone()),
+                    ..Default::default()
+                },
+            );
         });
         HUB.bind_client(Some(Arc::new(options.into())));
     }
@@ -152,6 +161,39 @@ pub(crate) fn report_error(
     if let Some(c) = capability {
         event.tags.insert("capability".into(), cap_name(c).into());
     }
+    HUB.capture_event(event);
+}
+
+/// An uncaught Dart error: its type and one frame per stack line, both through `scrub`.
+pub(crate) fn report_dart_error(kind: &str, stack: &str) {
+    if !enabled() {
+        return;
+    }
+    let mut frames: Vec<Frame> = stack
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(|l| Frame {
+            function: Some(l.into()),
+            ..Default::default()
+        })
+        .collect();
+    // Dart lists the innermost call first, Sentry the outermost.
+    frames.reverse();
+    let mut event = Event {
+        level: Level::Error,
+        exception: vec![Exception {
+            ty: kind.into(),
+            stacktrace: Some(Stacktrace {
+                frames,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }]
+        .into(),
+        ..Default::default()
+    };
+    event.tags.insert("error_kind".into(), "dart".into());
     HUB.capture_event(event);
 }
 
@@ -568,10 +610,52 @@ mod tests {
         assert_eq!(tag("capability"), Some("resolve"));
         assert_eq!(tag("app_version"), Some("0.1.0"));
         assert_eq!(tag("os"), Some("macos"));
+        assert_eq!(tag("device_model"), Some("test"));
+        assert!(
+            matches!(ev.contexts.get("os"), Some(Context::Os(os))
+                if os.version.as_deref() == Some("15.0")),
+            "{:?}",
+            ev.contexts
+        );
         assert_eq!(ev.exception.values[0].ty, "internal");
         assert_eq!(ev.exception.values[0].value, None);
         let json = serde_json::to_string(&events).unwrap();
         assert!(!json.contains("Halo"), "{json}");
+    }
+
+    #[test]
+    fn dart_errors_keep_type_and_frames_not_titles() {
+        let _g = serial();
+        let t = TestTransport::new();
+        enable_for_test(&t);
+        report_dart_error(
+            "StateError",
+            "#0      Player.play (package:vehicoule/player.dart:12:3)\n\
+             #1      load \"Halo\" (file:///Users/me/app.dart:4:1)\n",
+        );
+        set_enabled(false);
+        let events = t.fetch_and_clear_events();
+        let ev = events
+            .iter()
+            .find(|e| e.tags.get("error_kind").map(String::as_str) == Some("dart"))
+            .expect("the error is sent");
+        let x = &ev.exception.values[0];
+        assert_eq!(x.ty, "StateError");
+        let frames = &x.stacktrace.as_ref().expect("frames").frames;
+        assert_eq!(frames.len(), 2);
+        // Sentry wants the outermost frame first.
+        assert!(
+            frames[1]
+                .function
+                .as_deref()
+                .unwrap()
+                .contains("Player.play")
+        );
+        let json = serde_json::to_string(&events).unwrap();
+        assert!(
+            !json.contains("Halo") && !json.contains("/Users/me"),
+            "{json}"
+        );
     }
 
     #[test]

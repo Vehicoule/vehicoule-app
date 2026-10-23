@@ -12,6 +12,7 @@ use plugin_host::{
 };
 use reqwest::Url;
 
+use crate::api::plugins::PluginView;
 use crate::app::AppConfig;
 use crate::error::CoreError;
 use crate::keys::{OFFICIAL_FEED_URL, OFFICIAL_KEYS};
@@ -376,6 +377,53 @@ impl Plugins {
         db.write(move |tx| rows::put_feed(tx, &stored)).await?;
         if let Err(e) = self.apply_feed(db, row, bytes).await {
             logs::push("error", "feeds", &format!("{name}: {e}"));
+        }
+        Ok(())
+    }
+
+    /// Every installed plugin, enabled or not, by id; capabilities of loaded ones only.
+    pub async fn installed(&self, db: &Db) -> Result<Vec<PluginView>, CoreError> {
+        let loaded = self.loaded();
+        Ok(db
+            .read(rows::plugins)
+            .await?
+            .into_iter()
+            .map(|r| {
+                let caps = loaded.iter().find(|p| p.id() == r.id).map(|p| {
+                    let caps = p.capabilities().iter();
+                    caps.map(|c| cap_name(*c).to_string()).collect()
+                });
+                PluginView {
+                    name: parse_manifest(&r.manifest).map_or_else(|_| r.id.clone(), |m| m.name),
+                    capabilities: caps.unwrap_or_default(),
+                    id: r.id,
+                    version: r.version,
+                    feed: r.feed_url,
+                    enabled: r.enabled,
+                }
+            })
+            .collect())
+    }
+
+    /// Uninstalls the feed's plugins (data, files) and forgets the feed; not the official one.
+    pub async fn remove_feed(&self, db: &Db, url: &str) -> Result<(), CoreError> {
+        if url == OFFICIAL_FEED_URL {
+            return Err(CoreError::InvalidFeed);
+        }
+        let url = url.to_string();
+        let gone = db
+            .write(move |tx| {
+                let gone: Vec<PluginRow> = rows::plugins(&tx.tx)?
+                    .into_iter()
+                    .filter(|r| r.feed_url == url)
+                    .collect();
+                rows::remove_feed(tx, &url)?;
+                Ok(gone)
+            })
+            .await?;
+        for r in gone {
+            self.set_loaded(&r.id, None);
+            let _ = std::fs::remove_file(self.wasm_path(&r.id, &r.wasm_sha256));
         }
         Ok(())
     }

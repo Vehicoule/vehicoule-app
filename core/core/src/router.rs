@@ -25,6 +25,24 @@ pub(crate) fn cap_name(cap: Capability) -> &'static str {
     }
 }
 
+/// The plugin ids `name` (a capability's name, or `artwork`) routes to, in order.
+pub(crate) async fn order_of(name: &str) -> Result<Vec<String>, CoreError> {
+    let plugins = match name {
+        "artwork" => ordered_artwork().await,
+        _ => ordered(capability(name)?).await,
+    };
+    Ok(plugins.iter().map(|p| p.id().to_string()).collect())
+}
+
+/// `name` as `cap_name` gives it; anything else comes from a caller bug.
+pub(crate) fn capability(name: &str) -> Result<Capability, CoreError> {
+    use Capability::*;
+    [Search, Suggest, Entity, Resolve, Lyrics, Radio]
+        .into_iter()
+        .find(|c| cap_name(*c) == name)
+        .ok_or_else(|| CoreError::Internal("unknown capability".into()))
+}
+
 /// Sort key: the user's position, then the default position, then the id.
 fn rank(user: &[String], id: &str) -> (usize, usize, String) {
     let user_pos = user.iter().position(|u| u == id).unwrap_or(user.len());

@@ -123,6 +123,8 @@ impl Env {
             app_version: "0.1.0".into(),
             region: "FR".into(),
             platform: Platform::MacOs,
+            os_version: "15.0".into(),
+            device_model: "test".into(),
         };
         std::fs::create_dir_all(&cfg.data_dir).unwrap();
         let db = Db::open(&dir.join("data/vehicoule.db")).unwrap();
@@ -425,4 +427,35 @@ fn call_reports_keep_full_numbers() {
         "probe-calls",
         "call search fuel=123456789 http=2 wall=1500 budget-exceeded-fuel"
     ));
+}
+
+#[tokio::test]
+async fn removed_feed_unloads_and_deletes_its_plugins() {
+    let env = Env::new();
+    let (_server, url) = serve(feed(1, vec![good()])).await;
+    env.add_feed_row(&url, None).await;
+    let p = env.plugins();
+    p.refresh_feeds(&env.db).await.unwrap();
+    assert_eq!(
+        p.installed(&env.db).await.unwrap(),
+        [PluginView {
+            id: "probe".into(),
+            name: "Probe".into(),
+            version: "1.0.0".into(),
+            feed: url.clone(),
+            capabilities: vec!["search".into(), "resolve".into()],
+            enabled: true,
+        }]
+    );
+
+    assert_eq!(
+        p.remove_feed(&env.db, OFFICIAL_FEED_URL).await,
+        Err(CoreError::InvalidFeed)
+    );
+    p.remove_feed(&env.db, &url).await.unwrap();
+    assert!(ids(&p).is_empty());
+    assert!(env.rows().await.is_empty());
+    assert!(env.feeds().await.iter().all(|f| f.url != url));
+    let dir = std::path::Path::new(&env.cfg.data_dir).join("plugins");
+    assert_eq!(std::fs::read_dir(dir).unwrap().count(), 0, "wasm deleted");
 }

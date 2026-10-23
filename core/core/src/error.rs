@@ -1,6 +1,8 @@
 //! The one error type the app sees. Every plugin-host and library error is mapped here.
 
-use plugin_host::{CallError, Capability};
+use plugin_host::CallError;
+// The bridge reaches it here (`crate::error::Capability`).
+pub(crate) use plugin_host::Capability;
 
 use crate::library::DbError;
 
@@ -20,6 +22,17 @@ pub enum CoreError {
     InvalidFeed,
     /// No enabled plugin exports this capability.
     NoPlugin(Capability),
+}
+
+/// plugin-host's `Capability`, as the bridge sees it.
+#[flutter_rust_bridge::frb(mirror(Capability))]
+pub enum _Capability {
+    Search,
+    Suggest,
+    Entity,
+    Resolve,
+    Lyrics,
+    Radio,
 }
 
 impl CoreError {

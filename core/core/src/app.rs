@@ -23,6 +23,9 @@ pub struct AppConfig {
     /// Country of the device locale, sent to plugins; `US` when unknown.
     pub region: String,
     pub platform: Platform,
+    /// For telemetry only, like `device_model`.
+    pub os_version: String,
+    pub device_model: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,6 +154,8 @@ pub(crate) fn test_app() -> &'static App {
         app_version: "0.1.0".into(),
         region: "FR".into(),
         platform: Platform::MacOs,
+        os_version: "15.0".into(),
+        device_model: "test".into(),
     };
     std::thread::spawn(move || init(cfg).unwrap())
         .join()

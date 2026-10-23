@@ -1,0 +1,22 @@
+PODS:
+  - FlutterMacOS (1.0.0)
+  - vehicoule_core (0.0.1):
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - vehicoule_core (from `Flutter/ephemeral/.symlinks/plugins/vehicoule_core/macos`)
+
+EXTERNAL SOURCES:
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  vehicoule_core:
+    :path: Flutter/ephemeral/.symlinks/plugins/vehicoule_core/macos
+
+SPEC CHECKSUMS:
+  FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
+  vehicoule_core: 93c80f670924c7f4b20b7f00dd2b92221a67d7a7
+
+PODFILE CHECKSUM: 1e95c36afbfd1cb6423ceca4de7a8e1b256fb6ac
+
+COCOAPODS: 1.17.0

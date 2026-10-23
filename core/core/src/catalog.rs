@@ -148,14 +148,17 @@ fn collection_view(c: CollectionRow) -> CollectionView {
     }
 }
 
-fn track_views(c: &Connection, ids: &[ItemId]) -> rusqlite::Result<Vec<TrackView>> {
+pub(crate) fn track_views(c: &Connection, ids: &[ItemId]) -> rusqlite::Result<Vec<TrackView>> {
     Ok(catalog::tracks(c, ids)?
         .into_iter()
         .map(track_view)
         .collect())
 }
 
-fn collection_views(c: &Connection, ids: &[ItemId]) -> rusqlite::Result<Vec<CollectionView>> {
+pub(crate) fn collection_views(
+    c: &Connection,
+    ids: &[ItemId],
+) -> rusqlite::Result<Vec<CollectionView>> {
     ids.iter()
         .filter_map(|&id| catalog::collection(c, id).transpose())
         .map(|r| r.map(collection_view))

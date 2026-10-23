@@ -215,6 +215,16 @@ pub(crate) fn live_count(c: &Connection, playlist: ItemId) -> rusqlite::Result<u
     )
 }
 
+/// The playlist an entry belongs to (removed entries too).
+pub fn playlist_of(c: &Connection, entry: EntryId) -> rusqlite::Result<Option<ItemId>> {
+    c.query_row(
+        "SELECT playlist_id FROM playlist_items WHERE id = ?1",
+        [entry],
+        |r| r.get(0),
+    )
+    .optional()
+}
+
 /// User playlists not deleted, newest first.
 pub fn list(c: &Connection) -> rusqlite::Result<Vec<ItemId>> {
     let mut st = c.prepare(

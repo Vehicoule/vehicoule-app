@@ -129,13 +129,6 @@ async fn get(client: &Client, url: &str) -> Result<Response, CoreError> {
     send(client.get(url)).await
 }
 
-pub(crate) async fn check_updates(
-    current: &str,
-    platform: Platform,
-) -> Result<Option<UpdateInfo>, CoreError> {
-    check_at(UPDATES_URL, current, platform).await
-}
-
 async fn check_at(
     url: &str,
     current: &str,
@@ -440,7 +433,8 @@ mod tests {
 
     #[tokio::test]
     async fn check_if_due_runs_once_a_day() {
-        let app = crate::app::test_app();
+        // The notices broadcast is shared with the player tests: take turns with them.
+        let (_turn, app) = crate::catalog::tests::setup().await;
         let server = MockServer::start().await;
         let url = format!("{}/releases", server.uri());
         let stamp = |ms: i64| {
