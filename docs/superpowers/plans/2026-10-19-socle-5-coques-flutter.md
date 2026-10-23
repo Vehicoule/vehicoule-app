@@ -182,8 +182,10 @@ test('every CoreError variant has a message in both languages', ...);
   pas) ; `ClearNext` l'abandonne. À la fin de la courante, le lecteur enchaîne seul sur la
   suivante tenue et envoie `TrackStarted` pour elle. Sens des événements :
   `TrackStarted` = piste chargée (aussi pour un chargement en pause, `autoplay: false`) ;
-  `Resumed` = le son part (après un `Play` en lecture aussi) ; `Paused` = le son
-  s'arrête. Rust ne déduit « en lecture » que de `Resumed`/`Paused` (et `Ended`/`Error`,
+  `Resumed` = le son part (après un `Play` en lecture aussi) ; `Paused` = une pause
+  de l'utilisateur ou du système (bouton, casque débranché, appel), jamais l'arrêt causé
+  par une erreur ou par la fin de la piste : celui-là n'envoie que `Error` ou `Ended`
+  (sinon un 403 en pleine lecture reprendrait en pause). Rust ne déduit « en lecture » que de `Resumed`/`Paused` (et `Ended`/`Error`,
   après lesquels le lecteur est arrêté) ; après une `Error`, Rust n'envoie rien s'il n'y a
   rien à rejouer (erreur réseau : le lecteur reste arrêté, l'utilisateur relance).
 - Règles : `Play` → `open([source], play: autoplay)` puis `seek(position)` ;
@@ -194,7 +196,8 @@ test('every CoreError variant has a message in both languages', ...);
   `Duration` dès connue, `Position` toutes les 10 s pendant la lecture et à chaque pause,
   `Paused`/`Resumed`, `Seeked`, `Ended` quand `completed` sans suivante, `Error` classée
   avec `positionMs` = position au moment de l'erreur (un 403 reprend là ; en pause, Rust
-  renvoie un `Play` sans autoplay).
+  renvoie un `Play` sans autoplay ; 0 si le lecteur l'a perdue à l'ouverture : Rust garde
+  la dernière connue).
 
 - [ ] **Step 1 : tests qui échouent** (avec un `FakeBackend` et un flux de commandes de test)
 
@@ -369,7 +372,9 @@ testWidgets('desktop actions use a menu, mobile a bottom sheet', ...);
   d'accord explicite → `addFeed`. Ordre des capacités : liste réordonnable par capacité.
   Sources : `feeds()` (nom, officiel, nombre de plugins, empreinte) ; `removeFeed(url)`.
   Import : `ImportResult.truncated` → mention « playlist tronquée à 50 pages ».
-  Réglages : « Rechercher une mise à jour » = `checkUpdates(force: true)`.
+  Réglages : « Rechercher une mise à jour » = `checkUpdates(force: true)` : `Ok(None)` →
+  « à jour » ; `Some` n'est pas affiché depuis la valeur de retour, seulement par
+  `Notice.updateAvailable` (sinon la feuille s'ouvre deux fois) ; `Err` → message traduit.
   « Envoyer un rapport » : `exportLogs` vers un fichier du dossier cache, puis Dart
   l'enregistre ou le partage (sélecteur système : les URI `content://` d'Android ne sont
   pas des chemins pour Rust), puis ouverture de

@@ -310,6 +310,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
       pub fn append_radio(&mut self, items: Vec<String>);
       pub fn remove(&mut self, entry: EntryId);
       pub fn move_entry(&mut self, entry: EntryId, to: usize);     // position dans l'ordre de lecture
+      pub fn move_after(&mut self, entry: EntryId, after: Option<EntryId>) -> bool; // juste après `after` (None : la courante) ; false si l'une est inconnue
       pub fn set_shuffle(&mut self, on: bool, seed: u64);          // la piste courante reste courante
       pub fn set_repeat(&mut self, r: Repeat);
       pub fn upcoming(&self) -> Vec<&QueueEntry>;                  // ordre de lecture après la courante
@@ -411,14 +412,15 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
     `plays::start` (source = id du plugin ou `download`), `NowPlaying`, file sauvée.
   - **`Position`** : écoute cumulée mise à jour, file sauvée avec la position.
   - **`Error { Forbidden }`** : une seule nouvelle résolution sans cache, `Play` à
-    `position_ms` de l'erreur, `autoplay` = intention de l'utilisateur (dernier `Play`, puis
+    `position_ms` de l'erreur (0 : la dernière position connue), `autoplay` = intention de l'utilisateur (dernier `Play`, puis
     `Resumed`/`Paused` : en pause, on reste en pause) ; second échec → candidat suivant
     (`tried` += id) ; échec final → piste suivante + `Notice::Skipped`.
     `Error { Network }` → pause + `Notice`.
   - **Échecs à la suite** (`failed_in_row`) : `Decode`/`Other` sur la piste courante et
     l'échelle 403 épuisée comptent ; remis à zéro par le premier `Position` de l'entrée
-    courante et par les actions de l'utilisateur (play, skip, previous, jump, undo_stop,
-    édition qui change la courante). À `MAX_SKIPS` (3) : `Stop`, file gardée et sauvée,
+    courante, par `Ended` (une piste courte finit avant tout `Position`) et par les actions
+    de l'utilisateur (play, skip, previous, jump, undo_stop, choose_match, édition qui
+    change la courante). À `MAX_SKIPS` (3) : `Stop`, file gardée et sauvée,
     `Notice::Error` (sinon `Repeat::All` sur des fichiers illisibles boucle sans fin).
   - **`Msg::Refresh`** : envoyé par `set_liked` et par un téléchargement `Done` ; relit la
     piste courante, renvoie `NowPlaying` et `QueueView`.
@@ -603,7 +605,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub async fn home() -> Result<HomeView, CoreError>;
   pub struct HomeView { pub recent: Vec<TrackView>, pub liked: Vec<TrackView>, pub playlists: Vec<CollectionView>, pub downloads: Vec<TrackView> } // 20 de chaque
   pub async fn set_liked(id: String, liked: bool) -> Result<(), CoreError>;   // + player::refresh()
-  pub async fn tracks(ids: Vec<String>) -> Result<Vec<TrackView>, CoreError>; // dans l'ordre, inconnus omis (lignes de téléchargement, notifications)
+  pub async fn tracks(ids: Vec<String>) -> Result<Vec<TrackView>, CoreError>; // dans l'ordre, inconnus omis (lignes de téléchargement, notifications) ; chaque vue sous l'id demandé, même fusionné
   pub async fn liked(kind: ItemKind, offset: u32, limit: u32) -> Result<Vec<CollectionView>, CoreError>;
   pub async fn liked_tracks(offset: u32, limit: u32) -> Result<Vec<TrackView>, CoreError>;
   pub async fn history(offset: u32, limit: u32) -> Result<Vec<TrackView>, CoreError>;
@@ -633,7 +635,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub async fn refresh_feeds() -> Result<(), CoreError>;   // aussi le rafraîchissement de fond (→ LibraryChanged::Plugins)
   // refresh_feeds, add_feed, remove_feed : un seul tokio::sync::Mutex sur Plugins (un retrait
   // pendant un rafraîchissement reste fait ; jamais deux compilations du même plugin) ;
-  // client HTTP des feeds : connect_timeout 15 s + read_timeout 30 s, pas de délai total
+  // client HTTP des feeds : connect_timeout 15 s + read_timeout 30 s + 10 min au total par
+  // requête (un hôte qui distille ses octets ne tient pas le verrou indéfiniment)
   pub async fn capability_order(capability: String) -> Result<Vec<String>, CoreError>;
   pub async fn set_capability_order(capability: String, plugin_ids: Vec<String>) -> Result<(), CoreError>;
   // api/settings.rs
