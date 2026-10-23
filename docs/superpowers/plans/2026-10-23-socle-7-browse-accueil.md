@@ -529,7 +529,7 @@ Prérequis : plans 1, 2, 4 et 6 terminés. Le plan 5 (Tasks 6 et 7) consomme ce 
 - [ ] **Step 5 :** vérifications Rust → PASS.
 - [ ] **Step 6 : commit**, `feat(core): API du fil d'accueil, mixes, réglage découvertes`.
 
-### Task 8 : minuterie de sommeil, dernière sortie d'un artiste
+### Task 8 : minuterie de sommeil, dernière sortie d'un artiste, stockage des téléchargements
 
 **Files :**
 - Modify : `core/core/src/player.rs` (commande `Pause`, minuterie dans l'acteur), `core/core/src/events.rs` (`NowPlaying.sleep`).
@@ -549,6 +549,8 @@ Prérequis : plans 1, 2, 4 et 6 terminés. Le plan 5 (Tasks 6 et 7) consomme ce 
   pub async fn set_sleep_timer(timer: SleepTimer) -> Result<(), CoreError>;              // api/playback.rs
   pub struct ReleaseView { pub album: CollectionView, pub date: String }
   pub async fn artist_latest_release(artist_id: String) -> Result<Option<ReleaseView>, CoreError>;   // api/catalog.rs
+  pub struct StorageView { pub music_bytes: u64, pub free_bytes: u64 }
+  pub async fn download_storage() -> Result<StorageView, CoreError>;   // api/library.rs : somme des fichiers téléchargés terminés ; espace libre du volume du dossier de téléchargement (crate fs4, `available_space`)
   ```
 - Règles :
   - **`Minutes(n)`** : à l'échéance, l'acteur envoie `Pause { fade_ms: 5000 }` et efface la
@@ -574,9 +576,10 @@ Prérequis : plans 1, 2, 4 et 6 terminés. Le plan 5 (Tasks 6 et 7) consomme ce 
   #[tokio::test] async fn stop_cancels_the_timer()
   #[tokio::test] async fn now_playing_carries_sleep_state()
   #[tokio::test] async fn latest_release_within_90_days_or_none()        // 10 j → Some ; 120 j → None ; pas de browse → None
+  #[tokio::test] async fn download_storage_sums_done_files()             // 2 fichiers terminés + 1 en cours → somme des 2 ; free_bytes > 0
   ```
 - [ ] **Step 2 :** → FAIL.
 - [ ] **Step 3 : implémenter**, régénérer le pont, puis `flutter analyze`. Dans
   `bridge_test.dart`, ajouter `setSleepTimer(SleepTimer.off())`.
 - [ ] **Step 4 :** vérifications Rust, puis le test d'intégration macOS → PASS.
-- [ ] **Step 5 : commit**, `feat(core): minuterie de sommeil, dernière sortie d'un artiste`.
+- [ ] **Step 5 : commit**, `feat(core): minuterie de sommeil, dernière sortie d'un artiste, stockage`.

@@ -140,12 +140,17 @@ validation finale.
   // symbols.dart
   class VSymbol extends StatelessWidget { const VSymbol(IconData icon, {bool filled = false, double weight = 400, String? semanticLabel}); } // FILL / wght animés
   // components/
-  class VArtwork extends StatelessWidget { const VArtwork({required String itemId, required double size, bool circle = false, double radius = VSize.trackArtRadius, String? semanticLabel}); } // Image.file via artworkFile, décodée à la taille affichée
-  enum ArtShape { rounded, circle, cookie }   // cookie = forme M3E 12 lobes
+  enum ArtKind { item, artist }                // la forme se déduit du sens (spec UI §2.3) : un écran ne choisit jamais une forme
+  class VArtwork extends StatelessWidget { const VArtwork({required String itemId, required double size, ArtKind kind = ArtKind.item, bool playing = false, bool selected = false, double? progress, ValueChanged<double>? onSeek, String? semanticLabel}); }
+      // item : carré arrondi ; playing → cookie qui tourne (un tour en 20 s ; morph vers le carré quand playing passe à false) ; selected → cookie + coche ;
+      // artist : toujours le cercle (playing → égaliseur, selected → cookie + coche) ; progress non nul = anneau ondulé autour (plat si !playing) ; onSeek = l'anneau est un slider
+  enum VDecorShape { clover, flower, sunny, burst, pill, arch, gem, cookie }
+  VDecorShape decorFor(String id);             // stable : même id → même forme (hash), pour les genres, étapes, états vides
+  class VDecor extends StatelessWidget { const VDecor({required VDecorShape shape, required double size, String? imageItemId, Widget? child, double tilt = 0}); } // image découpée dans la forme, ou une icône au centre
+  class VFlexibleHeader extends StatelessWidget { const VFlexibleHeader({required Widget artwork, required String title, String? subtitle, required List<Widget> actions, required Widget fab}); } // sliver : la pochette rétrécit jusqu'à l'app bar, le titre la suit, les actions étendues → FAB
+  class VOfflineChip extends StatelessWidget {}  // « Hors ligne · tes téléchargements restent là »
+  class VRefresh extends StatelessWidget { const VRefresh({required Future<void> Function() onRefresh, required Widget child}); } // tirer pour rafraîchir avec le loading indicator M3E
   class VMosaicArtwork extends StatelessWidget { const VMosaicArtwork({required List<String> itemIds, required double size}); } // pochette d'une playlist perso sans image : 2×2 des 4 premiers titres distincts (1 → pleine, 2-3 → 2×2 avec répétition), 0 → icône
-  class VArtwork extends StatelessWidget { const VArtwork({required String itemId, required double size, ArtShape shape = ArtShape.rounded, bool spinning = false, double? progress, ValueChanged<double>? onSeek, String? semanticLabel}); }
-      // une seule pochette pour toute l'app : cookie + spinning = un tour en 20 s ; en pause (spinning false) cookie → carré arrondi par morph ;
-      // progress non nul = anneau ondulé autour (onde plate quand spinning == false) ; onSeek = l'anneau est un slider (glisser, ←/→, Semantics slider)
   class VWaveArtwork extends StatelessWidget { const VWaveArtwork({required String itemId, required double width, required double progress, required bool playing, required ValueChanged<double> onSeek}); } // style Vague : bord bas en onde, partie jouée en primary, glisser le long du bord
   class VWaveProgress extends StatelessWidget { const VWaveProgress({required double progress, required bool playing, required ValueChanged<double> onSeek}); } // linéaire (téléchargements, premier lancement)
   class VControls extends StatelessWidget { const VControls({required bool playing, required bool loading, required bool shuffle, required RepeatMode repeat, required VoidCallback onPlayPause, required VoidCallback onNext, required VoidCallback onPrevious, required VoidCallback onShuffle, required VoidCallback onRepeat, bool compact = false}); } // button group M3E, largeurs qui morphent ; ⏯ morphe ; loading → loading indicator M3E
@@ -164,7 +169,7 @@ validation finale.
   class VSideSheet extends StatelessWidget { const VSideSheet({required bool open, required Widget child, double width = 360}); } // side sheet standard, coplanaire
   class VShelf extends StatelessWidget { const VShelf({required String title, String? subtitle, VoidCallback? onMore, required double extent, required List<Widget> items}); } // rangée horizontale aimantée, hauteur fixe
   class VLoading extends StatelessWidget {}   // loading indicator M3E
-  class VEmptyState extends StatelessWidget { const VEmptyState({required IconData icon, required String message, Widget? action}); }
+  class VEmptyState extends StatelessWidget { const VEmptyState({required IconData icon, required String message, Widget? action}); } // grande VDecor (decorFor(message)) + icône, aucune image externe
   void showVSnack(BuildContext c, String message, {String? actionLabel, VoidCallback? onAction, Duration duration = const Duration(seconds: 4)});
   ```
 - Règles (spec UI §2, §3, §5) :
@@ -187,6 +192,10 @@ validation finale.
 ```dart
 testWidgets('VNowPlaying keeps the block order in every size and style', ...);
 testWidgets('mosaic artwork tiles 1, 2, 4 and 0 items', ...);
+testWidgets('artwork shape follows meaning: idle rounded, playing cookie, artist circle, selected check', ...);
+testWidgets('playing cookie stops spinning and morphs back when paused or with reduce motion', ...);
+test('decorFor is stable per id and spreads over the shapes', ...);
+testWidgets('flexible header docks the artwork into the app bar on scroll', ...);
 testWidgets('reduce motion turns every page transition into a fade', ...);
 test('haptics are silent on desktop and when the system disables them', ...);  // en-tête, pochette, titre, groupe connecté, progression, contrôles, sélecteur
 testWidgets('VNowPlaying compact is artwork, title, like and play/pause only', ...);
@@ -452,6 +461,11 @@ test('downloads service starts on first running download and stops when idle', .
       - fermer la fenêtre garde la lecture (l'app reste dans le Dock) ; ⌘Q quitte ;
       - la barre de menus macOS (Lecture, Aller, Fenêtre) porte les raccourcis.
     - **Raccourcis** : le tableau de la spec UI §4.2, aucun quand un champ texte a le focus.
+  - **Ce qui joue** : la coque fournit un `NowPlayingScope` (InheritedWidget : id du titre en
+    cours, id de son contexte, en lecture ou non). Chaque `VArtwork` des écrans le lit pour
+    savoir s'il est « playing » (spec UI §2.3). Aucun écran ne recalcule cette information.
+  - **Hors ligne** : sous l'app bar de chaque destination, `VOfflineChip` apparaît tant que
+    `Network` est hors ligne.
   - **Transitions** : chaque route go_router prend sa page dans `motion.dart`. Les pages
     album, artiste, playlist et catégorie s'ouvrent en container transform ; le changement de
     destination se fait en fade through. Les gestes du mini-lecteur appellent `VHaptics` au
@@ -480,6 +494,8 @@ test('downloads service starts on first running download and stops when idle', .
 testWidgets('narrow width uses the navigation bar and mini player', ...);   // 400 dp : 4 destinations
 testWidgets('menu button opens the modal rail with domains and global sections', ...);
 testWidgets('900 dp starts with the collapsed strip, no bottom bar', ...);
+testWidgets('the playing album is a cookie in lists, shortcuts and pinned', ...);   // NowPlayingScope : contexte = album X → toutes ses VArtwork en playing
+testWidgets('offline shows the chip under the app bar', ...);
 testWidgets('1280 dp starts with the side sheet; collapsing is remembered', ...); // replier → ui.now_playing_open = "false" ; relance → bande
 testWidgets('immersive opens from the pane icon and closes with Escape', ...);
 testWidgets('dropping tracks on a pinned playlist adds them', ...);
@@ -558,7 +574,10 @@ testWidgets('first launch redirects to onboarding', ...);
   - **Explorer** (spec UI §6.2) :
     - au repos : la search bar, les catégories `featured` en deux grandes cartes, puis la
       grille « Parcourir » (2 colonnes sur mobile, de 3 à 5 sur desktop). La teinte d'une
-      tuile est `pastelSeed` d'une teinte tirée du hash de `CategoryView.id` ;
+      tuile est `pastelSeed` d'une teinte tirée du hash de `CategoryView.id`. Son image est un
+      `VDecor(decorFor(id), imageItemId: artwork)` incliné qui dépasse du coin. Au toucher, la
+      forme grossit et morphe en carré pendant le container transform. Les cartes vedettes
+      font de même, en plus grand ;
     - pendant la frappe, la search view plein écran ne contient **que** :
       - « Dans ta bibliothèque » : `searchLibrary`, au plus 3 lignes, un toucher ouvre
         l'élément ;
@@ -573,7 +592,8 @@ testWidgets('first launch redirects to onboarding', ...);
       (`fromCache`) quand elle existe ;
     - `/category/:id` : `browseCategory`, avec ses étagères paginées.
   - **Pages** (spec UI §6.4, §6.5) :
-    - la pochette ou la photo est en grand, fondue dans la surface, sans teinte propre ;
+    - la pochette ou la photo est en grand, fondue dans la surface, sans teinte propre, dans un
+      `VFlexibleHeader` (album, playlist, artiste en cercle, catégorie) ;
     - album : lignes numérotées, et split button « Lire | ▾ » (aléatoire, lire ensuite,
       ajouter à la file) ;
     - le FAB lecture reste quand l'en-tête est replié ;
@@ -645,6 +665,9 @@ testWidgets('player style setting switches Disque and Vague live', ...);
 testWidgets('sleep timer menu sets the timer and the header shows the moon', ...);
 testWidgets('artist page shows the latest release card only when present', ...);
 testWidgets('user playlist without image shows a mosaic', ...);
+testWidgets('genre tile uses the same decor shape for the same id', ...);
+testWidgets('album header collapses into the app bar and the play FAB remains', ...);
+testWidgets('home pull to refresh uses VRefresh', ...);
 testWidgets('queue view reorders with move(entry, after) and removes on swipe left', ...);
 testWidgets('desktop: double click plays, single click selects, shift selects a range', ...);
 testWidgets('desktop: hover shows play on the row number', ...);
@@ -683,15 +706,29 @@ testWidgets('desktop: hover shows play on the row number', ...);
     - tuiles Likés / Téléchargés / Top 50 / Historique ;
     - puces Playlists / Albums / Artistes, puis la liste ;
     - FAB menu : nouvelle playlist, importer un lien ;
-    - Top 50 : ordre fixe, sans menu de tri ;
-    - Historique : groupé par jour local (« Aujourd'hui », « Hier », puis la date longue).
+    - tuiles : Likés montre un collage des 3 dernières pochettes likées ; chaque tuile a son
+      icône dans une `VDecor` de forme différente ;
+    - **Top 50 en podium** (`top_page`) :
+      - les 3 premiers en tête, le n°1 au centre et plus grand, en `VArtwork` (cookie + anneau
+        s'il joue) ;
+      - puis les rangs en grands chiffres arrondis en contour (style `displaySmall` ROND 100,
+        trait `primary`), à la place du numéro de `VTrackRow` ;
+      - le sous-titre donne le nombre d'écoutes ;
+      - ▶ et aléatoire dans l'app bar, ordre fixe, sans menu de tri ;
+    - Historique : groupé par jour local (« Aujourd'hui », « Hier », puis la date longue), avec
+      des en-têtes de jour qui restent visibles au défilement.
   - **Tri** :
     - bottom sheet sur mobile, menu sur desktop ;
     - collections : Récents (défaut), Dernière écoute, Nom A→Z ;
     - titres : Date d'ajout (défaut), Titre, Artiste ;
     - le choix est passé à l'API et retenu par liste (`setUiPref("ui.sort.<liste>")`).
   - **Réglages** : listes M3E en groupes arrondis.
-    - Apparence : source de couleur (Ce qui joue, par défaut / Système / Préréglage + choix),
+    - Apparence (`appearance_page`) :
+      - en haut, un **aperçu en direct** : un `VNowPlaying` compact sur ce qui joue, ou sur une
+        pochette d'exemple, qui se met à jour à chaque toucher ;
+      - les choix sont des groupes de boutons connectés.
+
+      Les réglages : source de couleur (Ce qui joue, par défaut / Système / Préréglage + choix),
       noir pur, thème clair/sombre/système, style du lecteur (Disque, par défaut / Vague), le
       tout dans `ui.*` et appliqué en direct (`ThemeController`, `ui.player_style`).
     - Lecture : radio de fin de file, normalisation.
@@ -708,16 +745,20 @@ testWidgets('desktop: hover shows play on the row number', ...);
        Après `refreshFeeds`, l'étape décide du réessai par `hasResolver()` ;
     3. « Ajouter un dépôt », facultatif ;
     4. **« Choisis au moins 3 artistes »** (spec UI §6.7) :
-       - une grille de pochettes rondes, tirée de l'étagère « artists » de
-         `browseCategory("chart:0")`, avec une recherche au-dessus (`search`, artistes) ;
-       - un toucher appelle `setLiked(id, true)` : la pochette passe en cookie et une coche
-         s'affiche ;
-       - « Continuer » s'active à partir de 3 artistes, « Passer » est toujours là ;
+       - des **bulles** de tailles variées (3 tailles, réparties sans chevauchement, qui
+         flottent doucement ; immobiles avec « réduire les animations »), tirées de l'étagère
+         « artists » de `browseCategory("chart:0")`, avec une recherche au-dessus (`search`,
+         artistes) ;
+       - un toucher appelle `setLiked(id, true)` : la bulle grossit et devient
+         `VArtwork(kind: artist, selected: true)` (cookie avec coche), puis
+         `VHaptics.light()` ;
+       - « Continuer · N » s'active à partir de 3 artistes, « Passer » est toujours là ;
        - l'étape est sautée sans `browse` ou hors ligne ;
     5. télémétrie : deux boutons, **aucun présélectionné**, et on ne peut pas continuer sans
        choisir.
 
-    Les étapes s'enchaînent en shared axis.
+    Les étapes s'enchaînent en shared axis. Chacune a sa grande `VDecor`, qui morphe vers
+    celle de l'étape suivante.
   - **Ajout d'un dépôt** : URL + clé publique → `previewFeed` → empreinte, domaines déclarés
     et capacités affichés → bouton d'accord explicite → `addFeed`. Ordre des capacités :
     liste réordonnable par capacité. Sources : `feeds()` (nom, officiel, nombre de plugins,
@@ -731,8 +772,12 @@ testWidgets('desktop: hover shows play on the row number', ...);
   - **« Envoyer un rapport »** : `exportLogs` vers un fichier du dossier cache, que Dart
     enregistre ou partage, puis ouverture de
     `https://github.com/Vehicoule/vehicoule/issues/new` sans aucune donnée dans l'URL.
-  - **Téléchargements** (`/downloads`, ouvert depuis le rail) : `downloads()` avec les
-    titres via `tracks(ids)`, et l'annulation.
+  - **Téléchargements** (`/downloads`, ouvert depuis le rail) :
+    - `downloads()`, avec les titres via `tracks(ids)`, et l'annulation ;
+    - en tête, la barre de stockage (`downloadStorage()` du plan 7, Task 8 : musique
+      téléchargée / espace libre) ;
+    - un titre en cours affiche `VArtwork(progress: pourcentage)`, avec l'anneau ondulé du
+      mini-lecteur.
 
 - [ ] **Step 1 : tests qui échouent**
 
@@ -748,6 +793,10 @@ testWidgets('import shows progress then opens the new playlist', ...);
 testWidgets('local library search shows fuzzy hits', ...);
 testWidgets('telemetry choice has no default and blocks continue', ...);
 testWidgets('artist step likes picks and enables continue at 3', ...);
+testWidgets('top 50 shows a podium then outlined ranks', ...);
+testWidgets('history keeps the day header pinned while scrolling', ...);
+testWidgets('appearance preview updates on every choice', ...);
+testWidgets('downloads show the storage bar and a ring per running item', ...);
 testWidgets('artist step is skipped without browse or offline', ...);
 testWidgets('onboarding_offline_explains_and_continues', ...);
 testWidgets('adding a feed requires seeing fingerprint and domains', ...);
