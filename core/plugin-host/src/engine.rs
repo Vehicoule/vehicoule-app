@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
-use contract::music::{entity, lyrics, radio, resolve, search, suggest};
+use contract::music::{browse, entity, lyrics, radio, resolve, search, suggest};
 use contract::{clock, kv, log, types};
 use sha2::{Digest, Sha256};
 use wasmtime::component::{Component, HasSelf, Instance, InstancePre, Linker, ResourceTable};
@@ -380,6 +380,7 @@ impl Host {
             (Capability::Resolve, resolve::GuestIndices::new(&pre).is_ok()),
             (Capability::Lyrics, lyrics::GuestIndices::new(&pre).is_ok()),
             (Capability::Radio, radio::GuestIndices::new(&pre).is_ok()),
+            (Capability::Browse, browse::GuestIndices::new(&pre).is_ok()),
         ];
         let capabilities = capabilities.into_iter().filter_map(|(c, ok)| ok.then_some(c)).collect();
         let rate_limiter = manifest.rate_limit.map(RateLimiter::new);

@@ -95,6 +95,7 @@ pub enum Capability {
     Resolve,
     Lyrics,
     Radio,
+    Browse,
 }
 
 #[derive(Debug, Clone, PartialEq)]

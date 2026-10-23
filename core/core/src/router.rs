@@ -22,6 +22,7 @@ pub(crate) fn cap_name(cap: Capability) -> &'static str {
         Capability::Resolve => "resolve",
         Capability::Lyrics => "lyrics",
         Capability::Radio => "radio",
+        Capability::Browse => "browse",
     }
 }
 

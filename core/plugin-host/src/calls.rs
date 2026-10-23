@@ -1,5 +1,6 @@
 //! One public call per capability; returned URLs are checked before the core sees them.
 
+use contract::music::browse::{self, Category, CategoryPage, Release};
 use contract::music::entity::{self, Entity, EntityPage};
 use contract::music::lyrics::{self, Lyrics};
 use contract::music::radio;
@@ -67,6 +68,51 @@ impl Host {
         .await
     }
 
+    pub async fn browse_categories(
+        &self,
+        p: &Plugin,
+        region: &str,
+    ) -> Result<Vec<Category>, CallError> {
+        self.call(p, Capability::Browse, async |store, instance| {
+            browse::GuestIndices::new(p.pre())?
+                .load(&mut *store, instance)?
+                .call_categories(store, region)
+                .await
+        })
+        .await
+    }
+
+    pub async fn browse_category(
+        &self,
+        p: &Plugin,
+        id: &str,
+        region: &str,
+        cursor: Option<String>,
+    ) -> Result<CategoryPage, CallError> {
+        self.call(p, Capability::Browse, async |store, instance| {
+            let guest = browse::GuestIndices::new(p.pre())?.load(&mut *store, instance)?;
+            guest
+                .call_fetch_category(store, id, region, cursor.as_deref())
+                .await
+        })
+        .await
+    }
+
+    pub async fn browse_releases(
+        &self,
+        p: &Plugin,
+        artist_id: &str,
+        region: &str,
+    ) -> Result<Vec<Release>, CallError> {
+        self.call(p, Capability::Browse, async |store, instance| {
+            browse::GuestIndices::new(p.pre())?
+                .load(&mut *store, instance)?
+                .call_releases(store, artist_id, region)
+                .await
+        })
+        .await
+    }
+
     /// Drops artwork outside the plugin's allowlist.
     fn keep_allowed(&self, p: &Plugin, images: &mut Vec<Image>) {
         images.retain(|i| self.check_url(p, &i.url).is_ok());
@@ -100,16 +146,43 @@ impl Returned for SearchResults {
 
 impl Returned for EntityPage {
     fn checked(mut self, host: &Host, p: &Plugin) -> Result<Self, CallError> {
-        let artwork = match &mut self.entity {
-            Entity::Track(t) => &mut t.artwork,
-            Entity::Album(a) => &mut a.artwork,
-            Entity::Artist(a) => &mut a.artwork,
-            Entity::Playlist(pl) => &mut pl.artwork,
-        };
-        host.keep_allowed(p, artwork);
+        host.keep_allowed(p, artwork(&mut self.entity));
         host.keep_allowed_tracks(p, &mut self.tracks);
         self.albums.iter_mut().for_each(|a| host.keep_allowed(p, &mut a.artwork));
         Ok(self)
+    }
+}
+
+impl Returned for Vec<Category> {
+    fn checked(mut self, host: &Host, p: &Plugin) -> Result<Self, CallError> {
+        self.iter_mut()
+            .for_each(|c| host.keep_allowed(p, &mut c.artwork));
+        Ok(self)
+    }
+}
+
+impl Returned for CategoryPage {
+    fn checked(mut self, host: &Host, p: &Plugin) -> Result<Self, CallError> {
+        let items = self.shelves.iter_mut().flat_map(|s| &mut s.items);
+        items.for_each(|e| host.keep_allowed(p, artwork(e)));
+        Ok(self)
+    }
+}
+
+impl Returned for Vec<Release> {
+    fn checked(mut self, host: &Host, p: &Plugin) -> Result<Self, CallError> {
+        self.iter_mut()
+            .for_each(|r| host.keep_allowed(p, &mut r.album.artwork));
+        Ok(self)
+    }
+}
+
+fn artwork(e: &mut Entity) -> &mut Vec<Image> {
+    match e {
+        Entity::Track(t) => &mut t.artwork,
+        Entity::Album(a) => &mut a.artwork,
+        Entity::Artist(a) => &mut a.artwork,
+        Entity::Playlist(pl) => &mut pl.artwork,
     }
 }
 

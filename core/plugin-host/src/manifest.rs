@@ -11,7 +11,7 @@ pub struct Manifest {
     pub id: String,
     pub name: String,
     pub version: String,
-    /// "1.0": the only value this host accepts (major 1, minor 0).
+    /// "1.0" or "1.1": the values this host accepts (major 1, minor 0 or 1).
     pub contract: String,
     pub domains: Vec<String>,
     pub rate_limit: Option<RateLimit>,
@@ -56,12 +56,16 @@ pub(crate) fn validate_id(id: &str) -> Result<(), String> {
     if ok { Ok(()) } else { Err(format!("invalid plugin id: {id:?}")) }
 }
 
-/// Only major 1, minor 0 is accepted by this host.
+/// Major 1, minor 0 or 1: a 1.0 plugin loads under the 1.1 contract (1.1 only adds `browse`).
 pub(crate) fn validate_contract(contract: &str) -> Result<(), String> {
     let (major, minor) = contract.split_once('.').ok_or_else(|| format!("invalid contract: {contract:?}"))?;
     let major: u32 = major.parse().map_err(|_| format!("invalid contract: {contract:?}"))?;
     let minor: u32 = minor.parse().map_err(|_| format!("invalid contract: {contract:?}"))?;
-    if major == 1 && minor == 0 { Ok(()) } else { Err(format!("unsupported contract: {contract:?}")) }
+    if major == 1 && minor <= 1 {
+        Ok(())
+    } else {
+        Err(format!("unsupported contract: {contract:?}"))
+    }
 }
 
 /// Domains an installed plugin may reach over HTTP: exact hosts or `*.`-prefixed suffixes.
@@ -196,7 +200,8 @@ mod tests {
         assert!(bad("Deezer", "1.0").is_err());
         assert!(bad("-x", "1.0").is_err());
         assert!(bad("deezer", "2.0").is_err());
-        assert!(bad("deezer", "1.1").is_err());
+        assert!(bad("deezer", "1.2").is_err());
+        assert!(bad("deezer", "1.1").is_ok());
         assert!(bad("deezer", "1.0").is_ok());
     }
 

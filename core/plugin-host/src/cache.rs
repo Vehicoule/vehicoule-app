@@ -35,7 +35,7 @@ pub(crate) fn cache_key(plugin: &str, req: &Request) -> [u8; 32] {
 }
 
 /// `None` means "do not cache": `no-store`, or the `resolve` capability (streams are never
-/// cached). Otherwise, for a catalogue capability (search/suggest/entity/lyrics/radio), at least
+/// cached). Otherwise, for a catalogue capability (search/suggest/entity/lyrics/radio/browse), at least
 /// 24h regardless of a shorter `max-age`/`s-maxage` or a `no-cache` directive (spec: minimum 24h
 /// for the catalogue).
 pub(crate) fn ttl_ms(headers: &[(String, String)], capability: Capability) -> Option<u64> {
@@ -76,6 +76,13 @@ mod tests {
         assert_eq!(ttl_ms(&headers(&[("cache-control", "max-age=60")]), Capability::Search), Some(86_400_000));
         assert_eq!(ttl_ms(&headers(&[("cache-control", "max-age=172800")]), Capability::Search), Some(172_800_000));
         assert_eq!(ttl_ms(&headers(&[]), Capability::Suggest), Some(86_400_000));
+        assert_eq!(
+            ttl_ms(
+                &headers(&[("cache-control", "max-age=60")]),
+                Capability::Browse
+            ),
+            Some(86_400_000)
+        );
     }
 
     #[test]
