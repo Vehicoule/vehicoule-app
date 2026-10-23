@@ -20,7 +20,7 @@ premier domaine branché dessus : la musique**. L'anime et les livres auront cha
 | Pont | `flutter_rust_bridge` |
 | Plugins | Composants WASM (WIT), Wasmtime + Pulley ; repli prévu sur Wasmi + JSON (section 4.2 bis) |
 | Lecture | `media_kit` (vidéo et audio) + `audio_service` (écran verrouillé, service d'arrière-plan). `just_audio` seulement si un problème est mesuré |
-| Design | Material 3 officiel + nos tokens réglés sur M3E ; `material_3_expressive` seulement pour les composants manquants, derrière `app/lib/design/` |
+| Design | `material_ui` + `material_3_expressive` 1.2.0, derrière `app/lib/design/` ; identité, composants et écrans : `2026-10-23-socle-ui-design.md` |
 | Métadonnées | Deezer en principal ; iTunes puis Cover Art Archive en repli pour les pochettes ; YouTube Music pour la lecture et en dernier recours |
 | Paroles | LRCLIB |
 | Langues | Français et anglais dès le départ (`gen-l10n` de Flutter) |
@@ -40,8 +40,8 @@ premier domaine branché dessus : la musique**. L'anime et les livres auront cha
 - **Import** : copier une playlist publique Deezer ou YouTube Music (coller son lien) dans
   ses playlists.
 - **Historique d'écoute**, enregistré dès le premier jour.
-- **Accueil** construit sur les données locales : récemment écoutés, likes, playlists,
-  téléchargements.
+- **Accueil** : fil personnel préparé une fois par jour (tes données + radio des plugins) ;
+  **Explorer** : recherche + classements et genres (`music.browse`). Voir la spec d'interface.
 - Contrôles écran verrouillé, téléchargements hors ligne (y compris app en arrière-plan sur
   Android), paroles simples et synchronisées, normalisation du volume.
 - **Mode hors ligne** (section 3.6) et **mises à jour de l'app** signalées (section 3.7).
@@ -147,8 +147,8 @@ Règles :
 - **Radio** : quand la file se termine, `core` appelle `music.radio` (graine = dernier titre)
   et ajoute des titres. Sources : Deezer (radio d'artiste, artistes proches) ; YouTube Music
   (« à suivre ») en repli. Activée par défaut.
-- **Accueil** : uniquement des données locales (historique, likes, playlists,
-  téléchargements). Pas de flux éditorial en v1.
+- **Accueil** : fil personnel, détaillé dans `2026-10-23-socle-ui-design.md` §7.2. Le contenu
+  éditorial (`music.browse`) vit dans Explorer.
 - **Import** : l'utilisateur colle le lien d'une playlist publique ; `core` appelle
   `music.entity` et crée une copie locale.
 
@@ -503,7 +503,6 @@ rattraper est conçu dès maintenant.
 | Version stores | `plugin-host` est une crate séparée, retirable par une option de compilation |
 | Exécution de JavaScript pour YouTube | Interface hôte `js` prévue (section 4.5) |
 | Cache des octets pendant la lecture | Crate `stream` en place ; le serveur local s'ajoute sans toucher au reste |
-| Accueil éditorial (classements, nouveautés) | Une capacité `music.browse` s'ajoute au contrat |
 | CarPlay, Android Auto, Chromecast | `audio_service` + flux `NowPlaying` déjà en place |
 | Dossier de téléchargement au choix | Crate `stream` ; il manque seulement le pont vers le sélecteur système d'Android |
 | Scrobbling (Last.fm, ListenBrainz) | Table `plays` remplie dès le premier jour |
