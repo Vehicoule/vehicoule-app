@@ -152,7 +152,8 @@ test('every CoreError variant has a message in both languages', ...);
 - Test : `app/test/platform/player_test.dart`, `app/test/platform/player_errors_test.dart`
 
 **Interfaces :**
-- Consumes : `playerCommands()`, `playerEvent(e:)`, `reportPerf` (plan 4).
+- Consumes : `playerCommands()`, `playerEvent(e:)` (synchrone, `void` : appelé dans l'ordre
+  des événements, jamais attendu), `reportPerf` (plan 4).
 - Produces :
   ```dart
   abstract interface class MediaBackend {        // media_kit en vrai, faux dans les tests
@@ -191,7 +192,9 @@ test('every CoreError variant has a message in both languages', ...);
   L'adaptateur tient la liste `index mpv → entry` et le gain de chaque entrée (appliqué au
   changement d'index). Événements : `TrackStarted` à chaque changement d'index,
   `Duration` dès connue, `Position` toutes les 10 s pendant la lecture et à chaque pause,
-  `Paused`/`Resumed`, `Seeked`, `Ended` quand `completed` sans suivante, `Error` classée.
+  `Paused`/`Resumed`, `Seeked`, `Ended` quand `completed` sans suivante, `Error` classée
+  avec `positionMs` = position au moment de l'erreur (un 403 reprend là ; en pause, Rust
+  renvoie un `Play` sans autoplay).
 
 - [ ] **Step 1 : tests qui échouent** (avec un `FakeBackend` et un flux de commandes de test)
 
@@ -227,7 +230,8 @@ test('first position after a tap reports tap-to-first-sound', ...);
   Future<AppConfig> appConfig();                     // path_provider : data = applicationSupport, cache = applicationCache,
                                                      // downloads = Android getExternalStorageDirectory()/music, macOS applicationSupport/downloads ; région = pays de la locale
   class LockScreen extends BaseAudioHandler { LockScreen(PlayerAdapter p); } // play/pause/seek → adaptateur ; skipToNext/Previous → skipNext()/previous() ; mediaItem depuis nowPlaying() (artUri file://)
-  class DownloadsService { void start(); }           // canal app.vehicoule/downloads : start/update(title, done, total)/stop selon downloadProgress()
+  class DownloadsService { void start(); }           // canal app.vehicoule/downloads : start/update(title, done, total)/stop selon downloadProgress() ;
+                                                     // titres par tracks(ids) (plan 4)
   class Network { void start(); }                    // connectivity_plus → setOnline
   Future<void> installUpdate(UpdateInfo u);          // Android : downloadUpdate puis canal app.vehicoule/update install(path) ; macOS : url_launcher(pageUrl)
   void installErrorHooks();                          // FlutterError.onError et PlatformDispatcher.onError → reportDartError
@@ -236,8 +240,8 @@ test('first position after a tap reports tap-to-first-sound', ...);
   `FOREGROUND_SERVICE_DATA_SYNC`, `POST_NOTIFICATIONS`, `REQUEST_INSTALL_PACKAGES`,
   `INTERNET`, `WAKE_LOCK` ; service audio_service `foregroundServiceType="mediaPlayback"` ;
   `DownloadService` `foregroundServiceType="dataSync"` ; `FileProvider` pour l'APK.
-  `DownloadService` : démarré quand un téléchargement est `Queued`/`Running`, arrêté quand
-  il n'y en a plus ; notification de progression mise à jour au rythme des événements
+  `DownloadService` (service de premier plan) : actif seulement tant qu'un téléchargement
+  est `Running` (pas pour `Queued` : hors ligne, la file attend sans service), arrêté sinon ; notification de progression mise à jour au rythme des événements
   (≤ 2/s, déjà limité par Rust).
 
 - [ ] **Step 1 : tests qui échouent**
@@ -273,9 +277,12 @@ test('downloads service starts on first running download and stops when idle', .
   class DesktopShortcuts extends StatelessWidget { const DesktopShortcuts({required Widget child, required PlayerAdapter player, required VoidCallback focusSearch}); }
   ```
 - `main.dart` : `RustLib.init()`, `installErrorHooks()`, `initApp(await appConfig())`,
-  `AudioService.init(LockScreen)`, `windowManager` (desktop), démarrage de
-  `PlayerAdapter`, `Network`, `DownloadsService`, puis `runApp` ; après le premier frame :
-  `checkUpdates()` (jamais bloquant).
+  `AudioService.init(LockScreen)`, `windowManager` (desktop), abonnements de
+  `PlayerAdapter`, `LockScreen`, `Network`, `DownloadsService`, **puis `start()`** (la
+  restauration de la file et la reprise des téléchargements arrivent sur des flux déjà
+  écoutés), puis `runApp` ; après le premier frame : `checkUpdates(force: false)` (jamais
+  bloquant). Une mise à jour arrive par `Notice.updateAvailable(UpdateInfo)`, seul signal
+  affiché.
 
 - [ ] **Step 1 : tests qui échouent** (API simulée, voir tâche 8 pour `FakeApi`)
 
@@ -313,7 +320,11 @@ testWidgets('first launch redirects to onboarding', ...);
   explication avec un lien vers « Ajouter un dépôt » ; hors ligne, la recherche affiche un
   message et non une erreur ; `Notice.skipped` → `SnackBar` discrète ; paroles
   synchronisées : ligne active = dernière ligne dont `startMs ≤ position`, défilement
-  automatique ; pages paginées par 100 (`entity(cursor)`) au défilement.
+  automatique ; pages paginées par 100 (`entity(cursor)`) au défilement. Bouton lecture
+  sans piste chargée (après un arrêt sur erreurs, ou `NowPlaying.track` sans `Play` reçu) :
+  `queueOp(QueueOp.jumpTo(currentEntry))`. Réordonner la file :
+  `QueueOp.move(entry, after: voisin du dessus)` (`null` = juste après la courante), sans
+  calcul d'index. `NowPlaying.source`/`mime` alimentent « détails du flux ».
 
 - [ ] **Step 1 : tests qui échouent**
 
@@ -348,14 +359,20 @@ testWidgets('desktop actions use a menu, mobile a bottom sheet', ...);
   `searchLibrary`, `libraryChanges`, `settings`, `setSettings`, `installedPlugins`,
   `capabilityOrder`, `setCapabilityOrder`, `previewFeed`, `addFeed`, `removeFeed`,
   `refreshFeeds`, `onboarding`, `finishOnboarding`, `diagnostics`, `exportLogs`,
-  `checkUpdates`), `installUpdate`.
+  `checkUpdates`, `feeds`, `tracks`, `hasResolver`), `installUpdate`.
 - Règles : premier lancement (spec 4.6) = 1. ce qu'est l'app, livrée sans source de
   streaming ; 2. installation du feed officiel (`refreshFeeds`, progression, réessai si
   hors ligne) ; 3. « Ajouter un dépôt » facultatif ; 4. télémétrie : deux boutons, **aucun
-  pré-sélectionné**, impossible de continuer sans choisir. Ajout d'un dépôt : URL + clé
+  pré-sélectionné**, impossible de continuer sans choisir. Après `refreshFeeds`, l'étape 2
+  décide du réessai par `hasResolver()` (un feed en échec est journalisé, pas levé). Ajout d'un dépôt : URL + clé
   publique → `previewFeed` → empreinte, domaines déclarés et capacités affichés → bouton
   d'accord explicite → `addFeed`. Ordre des capacités : liste réordonnable par capacité.
-  « Envoyer un rapport » : `exportLogs` vers un fichier choisi, puis ouverture de
+  Sources : `feeds()` (nom, officiel, nombre de plugins, empreinte) ; `removeFeed(url)`.
+  Import : `ImportResult.truncated` → mention « playlist tronquée à 50 pages ».
+  Réglages : « Rechercher une mise à jour » = `checkUpdates(force: true)`.
+  « Envoyer un rapport » : `exportLogs` vers un fichier du dossier cache, puis Dart
+  l'enregistre ou le partage (sélecteur système : les URI `content://` d'Android ne sont
+  pas des chemins pour Rust), puis ouverture de
   `https://github.com/Vehicoule/vehicoule/issues/new` sans aucune donnée dans l'URL.
 
 - [ ] **Step 1 : tests qui échouent**

@@ -47,8 +47,9 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
 - **Android :** `rustls-platform-verifier` doit être initialisé par JNI avant toute requête
   HTTPS, sinon reqwest panique (constat 1).
 - Futures de l'API publique : `Send` (flutter_rust_bridge et runtime multi-thread).
-- `plugin-host` n'est vu que par `core/core/src/plugins.rs` ; un seul point à retirer pour la
-  version stores.
+- `plugin-host` n'est vu que par la couche plugins : `plugins`, `router`, `error`, `storage`,
+  `player`, `lyrics`, `telemetry`, `catalog`, `convert` (revue finale) ; ces modules sont ce
+  qu'un build stores retouche (~9 fichiers).
 - Adresses embarquées : feed officiel `https://feeds.vehicoule.app/official/feed.json`,
   mises à jour `https://updates.vehicoule.app/releases` (redirige vers
   `https://api.github.com/repos/Vehicoule/vehicoule/releases`), télémétrie : DSN lu à la
@@ -238,7 +239,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub(crate) async fn search(query: &str) -> Result<SearchView, CoreError>;      // résultats vides = not-found → plugin suivant ; enregistre la requête
   pub(crate) async fn suggest(prefix: &str) -> Result<Vec<String>, CoreError>;   // historique local d'abord, puis capacité suggest ; jamais d'erreur bloquante
   pub(crate) async fn entity(id: &str, cursor: Option<String>) -> Result<EntityView, CoreError>; // réseau KO → cache local, from_cache = true
-  pub(crate) async fn import_playlist(link: &str) -> Result<String, CoreError>;  // id de la playlist perso créée
+  pub(crate) async fn import_playlist(link: &str) -> Result<ImportResult, CoreError>;
+  pub struct ImportResult { pub id: String, pub truncated: bool }  // playlist perso créée ; truncated = plafond de 50 pages atteint
   pub(crate) async fn artwork_file(id: &str, size: u32) -> Result<Option<String>, CoreError>; // chemin local
   // stream::artwork
   pub struct ArtworkCache { /* dir, max_bytes = 256 Mio */ }
@@ -358,7 +360,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
       TrackStarted { entry: String }, Duration { entry: String, ms: u64 },
       Position { entry: String, ms: u64 }, Paused { entry: String, ms: u64 }, Resumed { entry: String },
       Seeked { entry: String, ms: u64 }, Ended { entry: String },
-      Error { entry: String, kind: PlayerErrorKind, message: String },
+      Error { entry: String, kind: PlayerErrorKind, message: String, position_ms: u64 },  // position où le lecteur s'est arrêté
   }
   pub enum PlayerErrorKind { Forbidden, Network, Decode, Other }   // Forbidden = HTTP 403
   pub struct QueueView { pub current_entry: Option<String>, pub current: Option<TrackView>,
@@ -367,14 +369,18 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   // Une entrée par élément de la file (ids d'entrée pour Remove/Move/JumpTo) ; une entrée
   // dont la piste manque au catalogue n'est pas listée (current = None, current_entry gardé).
   pub struct QueueItemView { pub entry: String, pub track: TrackView, pub from_radio: bool }
-  pub struct NowPlaying { pub track: Option<TrackView>, pub artwork_path: Option<String>, pub duration_ms: Option<u64> }
-  pub enum Notice { Skipped { title: String, reason: CoreError }, UpdateAvailable { version: String }, Error(CoreError) }
+  pub struct NowPlaying { pub track: Option<TrackView>, pub artwork_path: Option<String>, pub duration_ms: Option<u64>,
+                          pub source: Option<String>,   // id du plugin ou "download" ; None sans piste chargée
+                          pub mime: Option<String> }
+  pub enum Notice { Skipped { title: String, reason: CoreError }, UpdateAvailable(UpdateInfo), Error(CoreError) }
   pub enum LibraryChanged { Likes, Playlists, Playlist { id: String }, Downloads, History, Plugins }
   // events.rs : diffusions vers Dart (tokio::sync::broadcast, abonnées par les StreamSink de api/)
   pub(crate) struct Events { pub commands, pub queue, pub now_playing, pub library, pub notices, pub downloads }
   // player.rs
   pub(crate) async fn play(items: Vec<String>, start: usize, context: Option<PlayContext>) -> Result<(), CoreError>;
-  pub(crate) async fn on_event(e: PlayerEvent);
+  pub(crate) fn send_event(e: PlayerEvent);          // file non bornée de l'acteur : ne bloque jamais, garde l'ordre d'appel
+  pub(crate) async fn on_event(e: PlayerEvent);       // tests : attend le traitement
+  pub(crate) fn refresh();                            // relit la piste courante et la file (like, téléchargement terminé)
   pub(crate) async fn skip_next(); pub(crate) async fn previous(position_ms: u64);
   pub(crate) async fn edit(op: QueueOp) -> Result<(), CoreError>;  // enqueue next/last, remove, move, shuffle, repeat, jump
   pub(crate) async fn fix_match(item: &str) -> Result<Vec<Candidate>, CoreError>; // candidats de la dernière résolution ; s'il n'y en a pas (référence déjà connue), `resolve` avec `tried = [id courant]` pour en obtenir
@@ -404,9 +410,18 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   - **`TrackStarted`** : `jump_to`, clôture de l'écoute précédente (`plays::set_listened`),
     `plays::start` (source = id du plugin ou `download`), `NowPlaying`, file sauvée.
   - **`Position`** : écoute cumulée mise à jour, file sauvée avec la position.
-  - **`Error { Forbidden }`** : une seule nouvelle résolution sans cache, `Play` à la
-    dernière position connue ; second échec → candidat suivant (`tried` += id) ; échec
-    final → piste suivante + `Notice::Skipped`. `Error { Network }` → pause + `Notice`.
+  - **`Error { Forbidden }`** : une seule nouvelle résolution sans cache, `Play` à
+    `position_ms` de l'erreur, `autoplay` = intention de l'utilisateur (dernier `Play`, puis
+    `Resumed`/`Paused` : en pause, on reste en pause) ; second échec → candidat suivant
+    (`tried` += id) ; échec final → piste suivante + `Notice::Skipped`.
+    `Error { Network }` → pause + `Notice`.
+  - **Échecs à la suite** (`failed_in_row`) : `Decode`/`Other` sur la piste courante et
+    l'échelle 403 épuisée comptent ; remis à zéro par le premier `Position` de l'entrée
+    courante et par les actions de l'utilisateur (play, skip, previous, jump, undo_stop,
+    édition qui change la courante). À `MAX_SKIPS` (3) : `Stop`, file gardée et sauvée,
+    `Notice::Error` (sinon `Repeat::All` sur des fichiers illisibles boucle sans fin).
+  - **`Msg::Refresh`** : envoyé par `set_liked` et par un téléchargement `Done` ; relit la
+    piste courante, renvoie `NowPlaying` et `QueueView`.
   - **`Ended`** (fin de la dernière piste) : `Repeat::Off` sans radio → `Stop`.
 
 - [ ] **Step 1 : tests qui échouent**
@@ -497,7 +512,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   ```rust
   pub struct UpdateInfo { pub version: String, pub notes: String, pub page_url: String,
                           pub asset_url: Option<String>, pub sha256_url: Option<String> } // asset pour la plateforme courante
-  pub(crate) async fn check_updates(current: &str, platform: Platform) -> Result<Option<UpdateInfo>, CoreError>;
+  pub(crate) async fn check(force: bool) -> Result<Option<UpdateInfo>, CoreError>;  // force : sans l'attente de 24 h, hors ligne = Offline ; horodatage enregistré dans les deux cas
   pub(crate) async fn download_update(info: &UpdateInfo) -> Result<String, CoreError>; // chemin de l'APK vérifié (sha256)
   pub(crate) fn pick_release(releases_json: &[u8], current: &str, platform: Platform) -> Option<UpdateInfo>;
   // telemetry
@@ -511,7 +526,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
 - Règles : `pick_release` ignore brouillons, et préversions sauf si la version courante en
   est une ; compare en `semver`. Vérification au plus une fois par 24 h (horodatage dans
   `settings_device`), déclenchée par Dart après le premier affichage puis par un minuteur
-  de `App`. `scrub` garde seulement : type d'erreur (nom de variante, jamais sa chaîne),
+  de `App` ; la vérification manuelle des réglages (`force`) passe outre. Une version plus
+  récente part en `Notice::UpdateAvailable(UpdateInfo)` complet. `scrub` garde seulement : type d'erreur (nom de variante, jamais sa chaîne),
   id et version du plugin, capacité, version de l'app, OS, modèle d'appareil, cadres de
   pile ; vide `request`, `user`, `breadcrumbs`, `extra` ; passe les messages d'exception
   par `logs::redact`. `CallReport` du plugin-host alimente `ResolveMs` et les erreurs typées.
@@ -561,12 +577,12 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub async fn search(query: String) -> Result<SearchView, CoreError>;
   pub async fn suggest(prefix: String) -> Result<Vec<String>, CoreError>;
   pub async fn entity(id: String, cursor: Option<String>) -> Result<EntityView, CoreError>;
-  pub async fn import_playlist(link: String) -> Result<String, CoreError>;
+  pub async fn import_playlist(link: String) -> Result<ImportResult, CoreError>;
   pub async fn artwork_file(id: String, size: u32) -> Result<Option<String>, CoreError>;
   pub async fn lyrics(id: String) -> Result<Option<LyricsView>, CoreError>;
   // api/playback.rs
   pub async fn play(items: Vec<String>, start: u32, context: Option<PlayContext>) -> Result<(), CoreError>;
-  pub async fn player_event(e: PlayerEvent);
+  #[frb(sync)] pub fn player_event(e: PlayerEvent);  // empile dans l'acteur, ne bloque jamais, garde l'ordre
   pub async fn skip_next();  pub async fn previous(position_ms: u64);
   pub async fn queue_op(op: QueueOp) -> Result<(), CoreError>;
   pub async fn stop();       // PlayerCommand::Stop, now-playing vidé (le mini-lecteur se cache),
@@ -574,7 +590,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub async fn undo_stop();  // rétablit cette file, Play { autoplay: true } à la position gardée
                              // (si l'entrée arrêtée est jouable, sinon la suivante à 0) ;
                              // toute autre op de file ou play() l'oublie ; rien à annuler = rien
-  pub enum QueueOp { EnqueueNext(Vec<String>), EnqueueLast(Vec<String>), Remove(String), Move { entry: String, to: u32 },
+  pub enum QueueOp { EnqueueNext(Vec<String>), EnqueueLast(Vec<String>), Remove(String),
+                     Move { entry: String, after: Option<String> },  // juste après `after` ; None = juste après la courante
                      Shuffle(bool), Repeat(Repeat), JumpTo(String) }
   pub async fn fix_match(id: String) -> Result<Vec<Candidate>, CoreError>;
   pub async fn choose_match(id: String, candidate_id: String) -> Result<(), CoreError>;
@@ -585,7 +602,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   // api/library.rs
   pub async fn home() -> Result<HomeView, CoreError>;
   pub struct HomeView { pub recent: Vec<TrackView>, pub liked: Vec<TrackView>, pub playlists: Vec<CollectionView>, pub downloads: Vec<TrackView> } // 20 de chaque
-  pub async fn set_liked(id: String, liked: bool) -> Result<(), CoreError>;
+  pub async fn set_liked(id: String, liked: bool) -> Result<(), CoreError>;   // + player::refresh()
+  pub async fn tracks(ids: Vec<String>) -> Result<Vec<TrackView>, CoreError>; // dans l'ordre, inconnus omis (lignes de téléchargement, notifications)
   pub async fn liked(kind: ItemKind, offset: u32, limit: u32) -> Result<Vec<CollectionView>, CoreError>;
   pub async fn liked_tracks(offset: u32, limit: u32) -> Result<Vec<TrackView>, CoreError>;
   pub async fn history(offset: u32, limit: u32) -> Result<Vec<TrackView>, CoreError>;
@@ -606,11 +624,16 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   // api/plugins.rs
   pub async fn installed_plugins() -> Result<Vec<PluginView>, CoreError>;   // PluginView défini dans plugins.rs, réexporté
   pub struct PluginView { pub id: String, pub name: String, pub version: String, pub feed: String, pub capabilities: Vec<String>, pub enabled: bool }
+  pub async fn feeds() -> Result<Vec<FeedView>, CoreError>;
+  pub struct FeedView { pub url: String, pub name: String, pub official: bool, pub plugin_count: u32, pub fingerprint: String }
   pub async fn has_resolver() -> bool;
   pub async fn preview_feed(url: String, public_key: String) -> Result<FeedPreview, CoreError>;
   pub async fn add_feed(url: String, public_key: String) -> Result<(), CoreError>;
   pub async fn remove_feed(url: String) -> Result<(), CoreError>;
-  pub async fn refresh_feeds() -> Result<(), CoreError>;
+  pub async fn refresh_feeds() -> Result<(), CoreError>;   // aussi le rafraîchissement de fond (→ LibraryChanged::Plugins)
+  // refresh_feeds, add_feed, remove_feed : un seul tokio::sync::Mutex sur Plugins (un retrait
+  // pendant un rafraîchissement reste fait ; jamais deux compilations du même plugin) ;
+  // client HTTP des feeds : connect_timeout 15 s + read_timeout 30 s, pas de délai total
   pub async fn capability_order(capability: String) -> Result<Vec<String>, CoreError>;
   pub async fn set_capability_order(capability: String, plugin_ids: Vec<String>) -> Result<(), CoreError>;
   // api/settings.rs
@@ -618,7 +641,7 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub enum Quality { Low, Normal, High }
   pub async fn settings() -> Result<Settings, CoreError>;  pub async fn set_settings(s: Settings) -> Result<(), CoreError>;
   // api/system.rs
-  pub async fn check_updates() -> Result<Option<UpdateInfo>, CoreError>;
+  pub async fn check_updates(force: bool) -> Result<Option<UpdateInfo>, CoreError>;  // force : bouton des réglages
   pub async fn download_update(info: UpdateInfo) -> Result<String, CoreError>;
   pub fn report_perf(metric: PerfMetric, value_ms: u64);
   pub fn report_dart_error(kind: String, stack: String);            // passe par scrub
@@ -654,7 +677,7 @@ testWidgets('core boots and searches through a local feed', (t) async {
 testWidgets('bad input is a typed error, not a crash', (t) async {
   await expectLater(entity(id: 'not-a-uuid'), throwsA(isA<CoreError_Internal>()));
 });
-testWidgets('https works', (t) async { expect(await checkUpdates(), anything); }); // aucune exception TLS
+testWidgets('https works', (t) async { expect(await checkUpdates(force: true), anything); }); // aucune exception TLS
 ```
   Le feed de test n'est accepté qu'en build debug (`cfg(debug_assertions)`), par une clé
   lue dans `VEHICOULE_TEST_FEED_KEY` et ajoutée aux clés de confiance.
