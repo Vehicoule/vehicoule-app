@@ -1,11 +1,12 @@
 # Vehicoule — Interface de la musique v1 : design
 
-Date : 2026-10-23 · Statut : en relecture (v1)
+Date : 2026-10-23 · Statut : en relecture (v2 : lecteur, mini-lecteur, desktop, réutilisation)
 
 Spec parente : `2026-10-18-socle-musique-design.md` (le « socle »). Celle-ci fixe l'identité
 visuelle, les composants, les écrans et les deux nouveautés de cœur qu'ils demandent
 (`music.browse`, le fil d'accueil). Maquettes de référence : `.superpowers/brainstorm/…/content/`
-(`revision-1.html`, `composants.html`, `desktop.html`, `retours-2.html`, `accueil.html`).
+(`revision-1.html`, `composants.html`, `desktop.html`, `retours-2.html`, `accueil.html`, puis
+`59588-…/content/desktop-2.html` et `lecteur-v3.html`).
 
 ## 1. Ce que cette spec change dans le socle
 
@@ -44,8 +45,8 @@ pochette mise en avant, sélection) ; le reste est calme.
   pochette. Le thème passe à la nouvelle couleur en fondu (environ 400 ms) au changement de titre
   seulement, et sans animation quand « réduire les animations » est actif. Aucune extraction par
   carte ou par ligne.
-- Dégradés : seulement le haut des écrans (`surfaceContainer` → `surface`) et le lecteur
-  (pochette fondue dans la surface). Les deux viennent du schéma.
+- Dégradés : seulement le haut des écrans (`surfaceContainer` → `surface`) et le fond du
+  lecteur (un dégradé radial teinté derrière la pochette). Les deux viennent du schéma.
 
 ### 2.3 Formes
 
@@ -100,7 +101,10 @@ Tout vient de `design/tokens.dart`. Aucun nombre magique dans les écrans (véri
   typographie, ressorts.
 - À construire dans `design/`, faute d'équivalent :
   - la side sheet standard (M3 l'indique « indisponible » sur Flutter) ;
-  - l'anneau ondulé autour d'une pochette ronde ;
+  - la pochette à forme M3E (cookie 12 lobes) qui tourne et morphe en carré arrondi, avec
+    son anneau ondulé ;
+  - la pochette à bord en vague (style « Vague » du lecteur) ;
+  - le widget `NowPlaying` (section 5.5) et le sélecteur Lecteur · Paroles · File ;
   - la ligne de titre (section 5.1) ;
   - le menu expressif avec élément soulevé, s'il manque au paquet ;
   - les transitions partagées mini-lecteur → lecteur et carte → page.
@@ -119,24 +123,86 @@ Tout vient de `design/tokens.dart`. Aucun nombre magique dans les écrans (véri
 
   La barre du bas montre les destinations du domaine courant.
 - **Mini-lecteur** flottant au-dessus de la barre (section 5.3).
-- **Bottom sheets** pour la file d'attente, « ajouter à une playlist », le tri et le filtre,
-  l'import de lien, et les détails du flux.
+- **Bottom sheets** pour « ajouter à une playlist », le tri et le filtre, l'import de lien, et les
+  détails du flux. La file et les paroles ne sont pas des feuilles : ce sont des vues du lecteur
+  (5.5).
 
-### 4.2 Desktop (et fenêtres ≥ 1000 px)
+### 4.2 Desktop (fenêtres ≥ 840 px)
 
-- **Rail permanent** à gauche, replié ↔ déplié, avec le même contenu que le rail modal, plus les
-  quatre destinations.
-- **Panneau « en lecture » à droite**, en side sheet standard : coplanaire, repliable. Il
-  contient la pochette, les contrôles, et les onglets File / Paroles / Infos. Sous ~1000 px, il
-  devient une **barre de lecture ancrée en bas**. Une seule logique pour toutes les tailles.
-- Les bottom sheets deviennent :
-  - file et paroles → le panneau de droite ;
-  - ajouter à une playlist, tri et filtre → menus ;
-  - import de lien → dialogue ;
-  - détails du flux → dialogue.
-- Raccourcis clavier et touches média : socle §1.
+- **Barre de titre maison** (macOS : `TitleBarStyle.hidden`) :
+  - ← → pour l'historique de navigation (aussi ⌘[ ⌘]) ;
+  - au centre, **la recherche, toujours visible** (⌘F). Taper ouvre les suggestions (mêmes
+    règles que 6.2) en menu déroulant sous le champ ; Entrée ouvre les résultats dans Explorer ;
+  - à droite, les téléchargements en cours, puis Dépôts et plugins.
+- **Rail à gauche**, replié (icônes) ↔ déplié :
+  - les quatre destinations ;
+  - puis **« Épinglés »** : Likés, Téléchargés et les collections que l'utilisateur épingle
+    (pochettes seules quand le rail est replié). Ce sont aussi des cibles de glisser-déposer ;
+  - en bas, le domaine (Musique / Anime / Manga), qui remplace le ☰ du mobile.
+- **Pages en largeur** :
+  - en-tête horizontal (pochette à gauche, titre et actions à droite) ;
+  - les listes de titres deviennent un tableau : #, titre + artistes, album, durée, ⋮. C'est la
+    même ligne de titre (5.1), avec deux colonnes de plus quand la place le permet.
+- **Souris** :
+  - au survol d'une ligne, le numéro devient ▶ et ⋮ apparaît ;
+  - **double-clic = lire**, clic simple = sélectionner ;
+  - ⇧ / ⌘ clic = sélection multiple ; Entrée lit la sélection ;
+  - clic droit = menu expressif (5.2) ;
+  - glisser une sélection vers un épinglé, vers une playlist ou vers la file ;
+  - au survol d'une carte, un bouton ▶ apparaît.
+- **Panneau « en lecture » à droite** : le widget `NowPlaying` en taille moyenne (5.5), dans
+  une side sheet standard.
+  - Il se replie en une **bande de 76 px**, symétrique du rail : pochette du disque avec son
+    anneau, like, ⏯, ⏭, volume. Cette bande est le mini-lecteur du desktop. Il n'y a ni
+    barre en bas ni mini-lecteur flottant.
+  - Déplié par défaut au-dessus de 1000 px, replié en dessous. Le choix de l'utilisateur
+    (⌘⌥B) est retenu (`ui.now_playing_open`).
+- **Vue immersive** : une icône ⤢ dans l'en-tête du panneau, ou ⌘⇧F. Le lecteur prend toute la
+  fenêtre : pochette à gauche, la vue Paroles ou File à droite, contrôles en bas. Échap pour
+  sortir.
+- **Les bottom sheets deviennent :**
+  - « ajouter à une playlist », tri et filtre → menus ;
+  - import de lien et détails du flux → dialogues.
+- **Clavier** :
+
+  | Touches | Action |
+  |---|---|
+  | Espace | lecture / pause |
+  | ← / → | ±10 s |
+  | ⇧← / ⇧→ | précédent / suivant |
+  | ⌘↑ / ⌘↓ | volume |
+  | ⌘L | like |
+  | ⌘F | recherche |
+  | ⌘[ / ⌘] | historique |
+  | ⌘⌥B | panneau |
+  | ⌘⇧F | immersif |
+  | ⌘, | réglages |
+  | ⌘R | rafraîchir l'accueil |
+  | Suppr | retire de la playlist ou de la file |
+
+  Aucun raccourci quand un champ texte a le focus. La barre de menus macOS (Lecture, Aller,
+  Fenêtre) et les touches média portent les mêmes actions.
+- **Fenêtre** :
+  - taille minimale 840 × 600 ;
+  - taille, position et état du rail et du panneau retenus ;
+  - fermer la fenêtre **garde la musique** (l'app reste dans le Dock) ; ⌘Q quitte.
+- **Le desktop n'a pas** de bottom sheets, de gestes du mini-lecteur, ni de tirer pour
+  rafraîchir.
 
 ## 5. Composants partagés
+
+**Règle de réutilisation, pour toute l'app :** chaque élément visuel existe **une seule fois**
+dans `design/`, paramétré par sa taille et son état. Un écran ou une coque n'en recrée jamais
+une variante. Les six briques :
+
+- **la pochette** (`VArtwork` : forme, anneau, rotation) ;
+- **le groupe de contrôles** ;
+- **la progression ondulée** (circulaire autour d'une pochette, linéaire, ou bord en vague) ;
+- **le sélecteur** de vues ;
+- **la ligne de titre** ;
+- **le menu expressif**.
+
+Les tests de `design/` vérifient que les écrans n'importent pas leurs propres versions (§9).
 
 ### 5.1 La ligne de titre (une seule, partout)
 
@@ -152,7 +218,7 @@ Recherche, album, playlist, file, historique, likés, téléchargés : même com
 - **Page album, seule exception** : le numéro de piste prend la place de la pochette, avec la
   même géométrie (12 fois la même image n'apporte rien).
 - Gestes :
-  - toucher = lire ;
+  - toucher = lire (desktop : double-clic, voir 4.2) ;
   - glisser à droite = « Lire ensuite » (fond tonal qui se révèle, ressort) ;
   - appui long, ou clic droit sur desktop = menu expressif (5.2).
 - Si M3E propose mieux plus tard, par exemple des listes segmentées en groupes, on change ce
@@ -164,15 +230,23 @@ Appui long sur mobile, clic droit sur desktop, ⋮ partout. L'élément se soul�
 à côté : d'abord une rangée d'actions rapides en groupe connecté (lire ensuite, ajouter à la
 file, like), puis des groupes séparés par des espaces. Même menu sur mobile et sur desktop.
 
-### 5.3 Mini-lecteur
+### 5.3 Mini-lecteur (mobile) : toolbar flottante + FAB
 
-- Carte flottante avec une pochette ronde entourée d'un anneau de progression ondulé (pas de
-  ligne sous la carte). Titre, artiste, like et pause seulement.
-- Gestes :
-  - ← / → : titre suivant / précédent (la carte suit le doigt, ressort) ;
-  - ↑ : ouvre le lecteur (la pochette grandit en continu) ;
+- Le couple officiel M3E, flottant au-dessus de la barre de navigation :
+  - une **toolbar flottante** en pilule, qui contient la pochette du disque (forme cookie qui
+    tourne pendant la lecture, avec l'anneau ondulé de progression), le titre, l'artiste et
+    like ;
+  - à côté, un **FAB carré arrondi ⏯**. Il morphe entre lecture et pause et, pendant un
+    chargement, devient le loading indicator M3E (formes qui se transforment).
+- Gestes, sur la toolbar :
+  - ← / → : titre suivant / précédent (la toolbar suit le doigt, ressort) ;
+  - ↑ (ou toucher) : ouvre le lecteur. La pochette grandit en continu jusqu'au lecteur ;
   - ↓ : arrête et masque, avec une snackbar « Lecture arrêtée — Annuler » pendant 5 s
     (`stop()` / `undoStop()` du plan 4).
+
+  Chaque geste a son équivalent dans le menu de la toolbar.
+- Le même assemblage (pochette + titre + like + ⏯) sert d'en-tête compact aux vues Paroles et
+  File du lecteur (5.5) : c'est le même widget.
 
 ### 5.4 Autres composants
 
@@ -186,12 +260,67 @@ file, like), puis des groupes séparés par des espaces. Même menu sur mobile e
 | Split button | Album / playlist : « Lire » \| ▾ (aléatoire, lire ensuite, ajouter à la file) |
 | Groupe de boutons connectés | Lecteur (like / playlist / télécharger), rangée rapide des menus |
 | Loading indicator M3E | Résultats de recherche, chargement de page, premier lancement |
-| Progress ondulé | Lecteur (slider), mini-lecteur (anneau), téléchargements |
-| Toolbar flottante | Lecteur (File / Paroles / Sortie), sélection multiple |
+| Progress ondulé | Anneau du disque (lecteur, mini-lecteur, bande desktop), bord en vague, téléchargements |
+| Toolbar flottante | Mini-lecteur (+ FAB ⏯), sélecteur Lecteur · Paroles · File, sélection multiple |
+| FAB | ⏯ du mini-lecteur (devient le loading indicator pendant un chargement) |
 | Chips | Filtres de recherche et de bibliothèque |
 | Listes en groupes arrondis | Réglages |
 | Snackbar, dialogues, badges, switch, tirer pour rafraîchir | Où l'usage M3 les place |
 | Squelettes | Toute zone qui charge ; même taille que le contenu final |
+
+### 5.5 Le lecteur : un seul widget `NowPlaying`, trois tailles
+
+Le même widget sert partout. Seules la taille et la mise en page changent :
+
+| Taille | Où |
+|---|---|
+| **compact** | mini-lecteur mobile (5.3), bande desktop (4.2), en-tête des vues Paroles et File |
+| **moyen** | panneau desktop |
+| **grand** | lecteur plein écran mobile, vue immersive desktop |
+
+**Les blocs, toujours dans cet ordre :**
+
+1. En-tête : ⌄ ou replier · « Lecture depuis … » · sortie audio · ⤢ (desktop) · ⋮.
+2. La pochette, selon le style choisi (ci-dessous).
+3. Le titre (Google Sans arrondie) et les artistes.
+4. Le groupe connecté Like / Ajouter à une playlist / Télécharger.
+5. La progression (ci-dessous) et les temps.
+6. Le groupe de contrôles : aléatoire · ⏮ · ⏯ · ⏭ · répétition.
+   - C'est un button group M3E : les largeurs morphent à l'appui.
+   - ⏯ morphe et devient le loading indicator pendant un chargement.
+7. Le **sélecteur Lecteur · Paroles · File**, une toolbar flottante en bas.
+   - L'onglet actif s'élargit et affiche son libellé.
+   - Sur desktop, le volume se place juste au-dessus.
+
+**Les trois vues** du sélecteur partagent le même cadre :
+
+- **Lecteur** : tous les blocs.
+- **Paroles** : la pochette se rétracte en en-tête compact (transition partagée). Les paroles
+  synchronisées suivent : la ligne active est en grand, et toucher une ligne y amène la
+  lecture.
+- **File** : le même en-tête compact, puis « À suivre » et « Radio · titres proches », en
+  lignes de titre (5.1) avec poignée. On glisse une ligne pour réordonner, et on la glisse à
+  gauche pour la retirer.
+
+**Deux styles**, au choix dans Réglages › Apparence › « Style du lecteur »
+(`ui.player_style`) ; le défaut est **Disque** :
+
+- **Disque.** La pochette est masquée par une forme M3E « cookie » à 12 lobes.
+  - Pendant la lecture, elle tourne lentement (un tour en 20 s). En pause, elle morphe en carré
+    arrondi, et la pochette entière redevient visible.
+  - Autour, l'**anneau ondulé est la progression**. On le fait glisser pour avancer.
+    Sémantique : un slider accessible, avec ←/→ au clavier.
+  - Les temps sont sous l'anneau.
+- **Vague.** La pochette est en pleine largeur, et son **bord bas est une onde** qui ondule
+  pendant la lecture et s'aplatit en pause.
+  - La partie déjà jouée de l'onde est tracée en `primary` : **le bord est la progression**.
+    On glisse le long du bord pour avancer, avec la même sémantique de slider.
+  - L'onde rogne le bas de l'image d'environ 10 px.
+  - Les temps sont sous le titre.
+
+Dans les deux styles, le mini-lecteur, la bande desktop et l'en-tête compact gardent la pochette
+du disque. Avec « réduire les animations », il n'y a ni rotation ni ondulation : la forme et
+l'onde restent statiques.
 
 ## 6. Écrans
 
@@ -300,22 +429,19 @@ désactivé, l'accueil ne garde que les étagères locales, et aucune graine ne 
 Photo en grand fondue dans la surface, bouton Radio (la radio remplace la file), titres
 populaires, albums en carousel multi-browse.
 
-### 6.6 Lecteur plein écran
+### 6.6 Lecteur plein écran (mobile)
 
-- Pochette pleine largeur fondue dans le fond teinté.
-- En haut : ⌄, « Lecture depuis … », ⋮ (menu expressif).
-- Titre en Google Sans arrondie, artistes.
-- Groupe de boutons connectés : Like / Ajouter à une playlist / Télécharger.
-- **Slider ondulé M3E** : l'onde s'aplatit en pause, avec les temps dessous.
-- Aléatoire, précédent et suivant en boutons tonaux, **lecture/pause qui morphe** (carré arrondi
-  ↔ pilule), répétition.
-- **Toolbar flottante** File / Paroles / Sortie. Sur mobile, File et Paroles ouvrent des bottom
-  sheets.
+`NowPlaying` en grande taille (5.5), sur le fond teinté du thème.
+
+- On l'ouvre depuis le mini-lecteur (↑ ou toucher).
+- On le ferme avec ⌄ ou en glissant vers le bas.
+- La sortie audio ouvre le sélecteur du système.
+- File et Paroles sont des vues du lecteur, pas des feuilles.
 
 ### 6.7 Réglages, premier lancement, sources, téléchargements
 
 - **Réglages** : listes M3E en groupes arrondis.
-  - Apparence : source de couleur, noir pur, thème.
+  - Apparence : source de couleur, noir pur, thème, style du lecteur (Disque / Vague).
   - Lecture : radio de fin de file, normalisation.
   - Téléchargements.
   - Sources : dépôts, ordre des plugins.
@@ -467,16 +593,26 @@ porte des `TrackView` et la raison de chacun.
   - Top 50 (seuil 30 s, fenêtre de 90 jours, complément) ;
   - `browse` routé et mis en cache ;
   - un plugin 1.0 chargé par un hôte 1.1.
-- **Plugin Deezer** : `categories`, `category` et `releases` sur des réponses enregistrées.
+- **Plugin Deezer** : `categories`, `fetch-category` et `releases` sur des réponses enregistrées.
 - **Dart, widgets** :
   - variantes de la ligne de titre ;
   - suggestions puis résultats (pas de recherche avant validation, annulation à 150 ms) ;
   - pagination du fil ;
-  - geste ↓ du mini-lecteur puis Annuler ;
+  - geste ↓ du mini-lecteur puis Annuler ; FAB ⏯ qui devient le loading indicator pendant un
+    chargement ;
+  - `NowPlaying` dans ses trois tailles et ses deux styles (Disque, Vague) : mêmes blocs dans
+    le même ordre ; le sélecteur change de vue ; l'anneau et le bord en vague se manipulent
+    comme un slider (glisser, ←/→) ;
+  - desktop : le panneau se replie en bande et s'en souvient ; double-clic lit, clic simple
+    sélectionne ; ⇧/⌘ clic sélectionne plusieurs lignes ; glisser une sélection sur un
+    épinglé l'ajoute ; ⌘F donne le focus à la recherche de la barre de titre ;
   - « réduire les animations » sans mouvement ;
   - aucune extraction de couleur hors du titre en cours.
-- **Revue** : aucun import de `package:flutter/material.dart` ni de `material_3_expressive`
-  hors de `design/` ; aucun nombre d'espacement hors des tokens.
+- **Revue** :
+  - aucun import de `package:flutter/material.dart`, ni de `material_3_expressive` hors de
+    `design/` ;
+  - aucun nombre d'espacement hors des tokens ;
+  - aucun écran ni coque qui recrée une des six briques de la règle de réutilisation (§5).
 
 ## 10. Impact sur les plans
 
@@ -487,9 +623,11 @@ porte des `TrackView` et la raison de chacun.
   - `browse` dans le plugin Deezer (plan 6, dépôt `vehicoule-plugins`).
 - **Plan 5, mis à jour** :
   - Task 1 (design) : `material_ui`, `material_3_expressive` 1.2.0, tokens, composants de la
-    section 5 ;
-  - Task 5 (routes et coques) : navigation de la section 4 ;
-  - Task 6 (écrans d'écoute) : 6.1, 6.2, 6.4 à 6.6 ;
+    section 5, `NowPlaying` (5.5) compris, puis la galerie de validation ;
+  - Task 5 (routes et coques) : navigation de la section 4 (barre de titre, rail avec
+    épinglés, panneau et bande), mini-lecteur (5.3), puis le point de contrôle du shell ;
+  - Task 6 (écrans d'écoute) : 6.1, 6.2, 6.4 à 6.6, dont les vues Paroles et File du
+    lecteur ;
   - Task 7 : 6.3 et 6.7.
 
   Les Tasks 2 à 4 ne changent pas.
