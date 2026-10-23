@@ -1,6 +1,7 @@
 # Vehicoule — Interface de la musique v1 : design
 
-Date : 2026-10-23 · Statut : en relecture (v2 : lecteur, mini-lecteur, desktop, réutilisation)
+Date : 2026-10-23 · Statut : en relecture (v2 : lecteur, mini-lecteur, desktop, réutilisation,
+mouvement, haptique, minuterie, widget Android, barre des menus macOS)
 
 Spec parente : `2026-10-18-socle-musique-design.md` (le « socle »). Celle-ci fixe l'identité
 visuelle, les composants, les écrans et les deux nouveautés de cœur qu'ils demandent
@@ -281,6 +282,9 @@ Le même widget sert partout. Seules la taille et la mise en page changent :
 **Les blocs, toujours dans cet ordre :**
 
 1. En-tête : ⌄ ou replier · « Lecture depuis … » · sortie audio · ⤢ (desktop) · ⋮.
+   - Le ⋮ contient : Aller à l'album · Aller à l'artiste · **Minuterie** (15, 30, 45 ou 60 min,
+     fin du titre, annuler) · « Ce n'est pas le bon morceau » · Détails du flux.
+   - Quand une minuterie tourne, une lune et le temps restant s'affichent dans l'en-tête.
 2. La pochette, selon le style choisi (ci-dessous).
 3. Le titre (Google Sans arrondie) et les artistes.
 4. Le groupe connecté Like / Ajouter à une playlist / Télécharger.
@@ -321,6 +325,31 @@ Le même widget sert partout. Seules la taille et la mise en page changent :
 Dans les deux styles, le mini-lecteur, la bande desktop et l'en-tête compact gardent la pochette
 du disque. Avec « réduire les animations », il n'y a ni rotation ni ondulation : la forme et
 l'onde restent statiques.
+
+### 5.6 Transitions et haptique (une fois, dans `design/`)
+
+**Transitions de page.** Elles sont toutes définies dans `design/motion.dart`. Une route n'en
+choisit jamais d'autre.
+
+| Transition | Où |
+|---|---|
+| **Container transform** | carte ou ligne → sa page (album, artiste, playlist, catégorie) ; la carte s'agrandit en page |
+| **Shared axis horizontal** | vues du sélecteur Lecteur · Paroles · File ; étapes du premier lancement |
+| **Fade through** | changement de destination (barre du bas, rail) |
+| **Élément partagé** | pochette du mini-lecteur → lecteur ; en-tête compact ↔ grande pochette |
+
+Avec « réduire les animations », tout devient un fondu de 150 ms.
+
+**Haptique** (mobile seulement), discrète, toujours liée à un mouvement :
+
+| Retour | Déclencheur |
+|---|---|
+| léger | like ; ⏯ |
+| « sélection » | changement de vue du sélecteur ; franchissement du seuil d'un geste du mini-lecteur ou d'un glissement de ligne |
+| moyen | arrêt par ↓ ; dépôt d'un élément réordonné |
+
+Les réglages système sont respectés (haptique désactivée → rien). Un seul point d'entrée :
+`design/haptics.dart`.
 
 ## 6. Écrans
 
@@ -423,11 +452,17 @@ désactivé, l'accueil ne garde que les étagères locales, et aucune graine ne 
 - Lignes de titre (numérotées pour un album).
 - Au défilement, l'en-tête se replie et un FAB lecture reste.
 - Playlist perso : réordonner par glisser, et sélection multiple avec toolbar flottante.
+- **Pochette d'une playlist perso** : sa pochette propre si elle en a une. Sinon, une
+  **mosaïque 2×2** des pochettes des 4 premiers titres distincts, ou moins s'il y en a moins.
+  Vide, la playlist affiche une icône. La mosaïque est une forme de `VArtwork`, partout où
+  la playlist apparaît.
 
 ### 6.5 Artiste
 
-Photo en grand fondue dans la surface, bouton Radio (la radio remplace la file), titres
-populaires, albums en carousel multi-browse.
+Photo en grand fondue dans la surface, bouton Radio (la radio remplace la file), puis une carte
+**« Dernière sortie »** quand l'artiste a sorti quelque chose depuis moins de 90 jours
+(`browse.releases`, mis en cache 24 h ; sans plugin `browse` ou sans sortie récente, pas de
+carte). Viennent ensuite les titres populaires, puis les albums en carousel multi-browse.
 
 ### 6.6 Lecteur plein écran (mobile)
 
@@ -451,8 +486,41 @@ populaires, albums en carousel multi-browse.
   Pour une vérification forcée des mises à jour : `Ok(None)` affiche « à jour » ; une mise à
   jour disponible n'apparaît que par la notice.
 - **Premier lancement** : loading indicator M3E, étapes, puis le choix de télémétrie sans option
-  présélectionnée (socle §4.6).
+  présélectionnée (socle §4.6). Une étape s'ajoute après l'installation des sources :
+  **« Choisis au moins 3 artistes »**.
+  - Une grille de pochettes rondes, tirée de l'étagère « artists » de la catégorie vedette
+    `chart:0`, avec un champ de recherche au-dessus.
+  - Un toucher like l'artiste : la pochette prend la forme cookie et une coche apparaît.
+  - « Continuer » s'active dès 3 artistes ; « Passer » reste toujours possible.
+  - Sans plugin `browse`, ou hors ligne, l'étape est sautée.
+  - Ces likes servent de graines au fil d'accueil dès la première ouverture (7.2).
 - **Dépôts et plugins**, **Téléchargements** : sections globales, ouvertes depuis le rail.
+
+### 6.8 Hors de l'app : widget Android, barre des menus macOS
+
+Ce sont les deux seules exceptions à la règle de réutilisation : Flutter ne dessine ni les
+widgets d'écran d'accueil Android ni les popovers de la barre des menus. Ils sont donc natifs.
+Ils reprennent les mêmes couleurs (Material You sur Android, la teinte « ce qui joue » sinon),
+la pochette en forme cookie et l'ordre des blocs du lecteur compact. Ils ne contiennent aucune
+logique : ils affichent l'état et envoient des commandes.
+
+- **Widget Android** (Jetpack Glance, Kotlin), en deux tailles :
+  - 2×2 : la pochette cookie avec l'anneau, et ⏯ ;
+  - 4×2 : la pochette, le titre, l'artiste, ⏮ ⏯ ⏭ et like.
+
+  Les couleurs dynamiques sont celles d'Android 12 et plus. Toucher la pochette ouvre le
+  lecteur. Les boutons passent par la session média d'`audio_service` (MediaButtonReceiver),
+  si bien qu'ils marchent même quand l'interface Flutter n'est pas lancée. Dart publie l'état
+  (titre, artiste, chemin de la pochette, en lecture) à chaque `NowPlaying`, avec le paquet
+  `home_widget`. Sans lecture en cours, le widget affiche « Reprendre » sur la dernière file.
+- **Barre des menus macOS** (SwiftUI, `NSStatusItem` + popover) :
+  - l'icône est une note qui s'anime pendant la lecture ;
+  - le popover montre la pochette cookie avec l'anneau, le titre, l'artiste, ⏮ ⏯ ⏭, like et
+    « Ouvrir Vehicoule ».
+
+  L'état et les commandes passent par un canal de plateforme vers Dart. Le popover vit tant
+  que l'app tourne, y compris fenêtre fermée (4.2). Un réglage desktop « Afficher dans la
+  barre des menus » est activé par défaut.
 
 ## 7. Cœur : ce qui s'ajoute
 
@@ -518,7 +586,10 @@ Un module `home` du cœur, sans nouvelle capacité à part `browse`.
 
 - **Graines** (local) :
   - jusqu'à 5 titres parmi les likés récents et le top sur 90 jours ;
-  - les artistes du top sur 90 jours ;
+  - les artistes du top sur 90 jours, complétés par les artistes likés ;
+  - s'il manque des graines de titres, le titre le plus écouté de chaque artiste liké, ou à
+    défaut le premier titre de sa page `entity`. C'est ce qui rend le fil personnel dès le
+    premier lancement (6.7) ;
   - pas de genre : le contrat ne porte pas de genre par titre, donc pas d'étagère « ton
     genre ». Le classement du fil est la première catégorie vedette de `browse`.
 - **Découverte** :
@@ -563,6 +634,9 @@ Un module `home` du cœur, sans nouvelle capacité à part `browse`.
 | `liked(kind, sort, offset, limit)`, `liked_tracks(sort, …)`, `playlists(sort)`, `downloaded(sort, offset, limit)` | Tri côté cœur (6.3) |
 | `top_tracks() -> Vec<TrackView>` | Top 50 (6.3) |
 | `history(offset, limit) -> Vec<HistoryEntryView { played_at, track }>` | L'historique groupé par jour a besoin de l'heure |
+| `set_sleep_timer(SleepTimer)` | `Off`, `Minutes(u32)` ou `EndOfTrack`. À l'échéance, le lecteur met en pause (le volume baisse en fondu sur 5 s avant). Le timer ne survit pas à un redémarrage |
+| `NowPlaying.sleep: Option<SleepState>` | `ends_at_ms` ou `end_of_track`, pour l'icône lune et le compte à rebours affichés dans l'en-tête du lecteur |
+| `artist_latest_release(artist_id) -> Option<ReleaseView { album: CollectionView, date }>` | Carte « Dernière sortie » (6.5), depuis le cache de `browse.releases` |
 
 Une étagère est `ShelfView { kind: ShelfKind, seed: Option<String>, items: Vec<CardView> }`.
 `ShelfKind` vaut Shortcuts, Discovery, Mixes, BecauseYouListened, NewReleases, Rediscover,
@@ -608,6 +682,14 @@ porte des `TrackView` et la raison de chacun.
     épinglé l'ajoute ; ⌘F donne le focus à la recherche de la barre de titre ;
   - « réduire les animations » sans mouvement ;
   - aucune extraction de couleur hors du titre en cours.
+- **Natif** :
+  - widget Android : un test instrumenté pour l'état publié, puis les boutons, puis la session
+    média ;
+  - popover macOS : un test de l'état reçu par le canal.
+- **Cœur** :
+  - la minuterie (échéance, fin de titre, annulation, fondu) ;
+  - la dernière sortie (moins de 90 jours, sinon `None`) ;
+  - les graines venant d'artistes likés sans aucune écoute.
 - **Revue** :
   - aucun import de `package:flutter/material.dart`, ni de `material_3_expressive` hors de
     `design/` ;
@@ -630,7 +712,10 @@ porte des `TrackView` et la raison de chacun.
     lecteur ;
   - Task 7 : 6.3 et 6.7.
 
-  Les Tasks 2 à 4 ne changent pas.
+  Les Tasks 2 à 4 ne changent pas. Nouvelle **Task 10** : widget Android et barre des menus
+  macOS (6.8), après la Task 6.
+- **Plan 7, Task 8 (nouvelle)** : minuterie de sommeil, `artist_latest_release`. Les graines
+  issues des artistes likés s'ajoutent à la Task 6 du plan 7.
 
 ## 11. Hors de cette spec
 
