@@ -3,7 +3,7 @@ name = "vehicoule-sdk"
 version = "1.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Guest-side helpers for Vehicoule plugins (contract vehicoule:music@1.0.0)."
+description = "Guest-side helpers for Vehicoule plugins (contract vehicoule:music@1.1.0)."
 
 [lib]
 name = "vehicoule_sdk"

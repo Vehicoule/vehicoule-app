@@ -4,14 +4,23 @@ use std::process::Command;
 use sha2::{Digest, Sha256};
 
 fn sha256_hex(text: &str) -> String {
-    Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 #[test]
-fn wit_1_0_is_frozen() {
-    // Update these hashes only together with a new major version of the packages.
-    assert_eq!(sha256_hex(contract::HOST_WIT), "33d578d40b088073fddf5d879819dad3b62bf6cfe0409620db4661e9e1a1314b");
-    assert_eq!(sha256_hex(contract::MUSIC_WIT), "ced30733b017c0ba27a9d12775c88c0b62507579dd88ca377a7726fbbb4b5368");
+fn wit_is_frozen() {
+    // A published package never changes: update a hash only with a new version (and its tag).
+    assert_eq!(
+        sha256_hex(contract::HOST_WIT),
+        "33d578d40b088073fddf5d879819dad3b62bf6cfe0409620db4661e9e1a1314b"
+    );
+    assert_eq!(
+        sha256_hex(contract::MUSIC_WIT),
+        "17957ee74e7dd2464ae3dcbeba7f7a3aa45b9dcbf9238eadb9eeecae24f422e1"
+    );
 }
 
 fn wasm_tools_wit(dir: &Path) {
@@ -20,7 +29,12 @@ fn wasm_tools_wit(dir: &Path) {
         .arg(dir)
         .output()
         .expect("wasm-tools not found: `cargo install wasm-tools`");
-    assert!(out.status.success(), "{}: {}", dir.display(), String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}: {}",
+        dir.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 #[test]
@@ -35,4 +49,12 @@ fn wit_parses_with_wasm_tools() {
     std::fs::copy(wit.join("host/host.wit"), tmp.join("deps/host/host.wit")).unwrap();
     wasm_tools_wit(&tmp);
     std::fs::remove_dir_all(&tmp).unwrap();
+}
+
+#[test]
+fn music_wit_is_1_1_with_browse() {
+    assert!(contract::MUSIC_WIT.starts_with("package vehicoule:music@1.1.0;"));
+    assert!(contract::MUSIC_WIT.contains("interface browse {"));
+    assert!(contract::MUSIC_WIT.contains("export browse;"));
+    assert!(contract::HOST_WIT.contains("package vehicoule:host@1.0.0;"));
 }

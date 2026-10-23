@@ -2,10 +2,10 @@ package vehicoule:core-test-guests;
 
 world fake-catalog {
     include vehicoule:host/imports@1.0.0;
-    export vehicoule:music/search@1.0.0;
-    export vehicoule:music/suggest@1.0.0;
-    export vehicoule:music/entity@1.0.0;
-    export vehicoule:music/resolve@1.0.0;
-    export vehicoule:music/radio@1.0.0;
-    export vehicoule:music/lyrics@1.0.0;
+    export vehicoule:music/search@1.1.0;
+    export vehicoule:music/suggest@1.1.0;
+    export vehicoule:music/entity@1.1.0;
+    export vehicoule:music/resolve@1.1.0;
+    export vehicoule:music/radio@1.1.0;
+    export vehicoule:music/lyrics@1.1.0;
 }

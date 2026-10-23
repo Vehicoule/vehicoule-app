@@ -22,7 +22,7 @@ pub use bindings::vehicoule::music::types;
 
 /// `vehicoule:host@1.0.0`, the text this SDK was built against.
 pub const HOST_WIT: &str = include_str!("../../core/contract/wit/host/host.wit");
-/// `vehicoule:music@1.0.0`, the text this SDK was built against.
+/// `vehicoule:music@1.1.0`, the text this SDK was built against.
 pub const MUSIC_WIT: &str = include_str!("../../core/contract/wit/music/music.wit");
 
 /// Runs a future that never waits: host imports are synchronous.

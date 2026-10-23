@@ -1,6 +1,6 @@
 # vehicoule-sdk
 
-Aides côté plugin (guest) pour le contrat `vehicoule:music@1.0.0` : bindings des imports de
+Aides côté plugin (guest) pour le contrat `vehicoule:music@1.1.0` : bindings des imports de
 l'hôte (`http`, `kv`, `clock`, `log`), types partagés (`types::Track`, `types::Error`…),
 JSON typé sur HTTP et traduction des statuts fournisseur en erreurs typées.
 
@@ -11,7 +11,7 @@ pas de la crate `contract`, qui tire Wasmtime.
 
 ```toml
 [dependencies]
-vehicoule-sdk = { git = "file:///Users/btw/Documents/repo/Vehicoule", tag = "contract-v1.0.0" }
+vehicoule-sdk = { git = "file:///Users/btw/Documents/repo/Vehicoule", tag = "contract-v1.1.0" }
 wit-bindgen = "0.63"
 ```
 
@@ -24,7 +24,7 @@ package exemple:paroles;
 
 world plugin {
     include vehicoule:host/imports@1.0.0;
-    export vehicoule:music/lyrics@1.0.0;
+    export vehicoule:music/lyrics@1.1.0;
 }
 ```
 
@@ -41,7 +41,7 @@ wit_bindgen::generate!({
         "vehicoule:host/kv@1.0.0": vehicoule_sdk::kv,
         "vehicoule:host/clock@1.0.0": vehicoule_sdk::clock,
         "vehicoule:host/log@1.0.0": vehicoule_sdk::log,
-        "vehicoule:music/types@1.0.0": vehicoule_sdk::types,
+        "vehicoule:music/types@1.1.0": vehicoule_sdk::types,
     },
 });
 
