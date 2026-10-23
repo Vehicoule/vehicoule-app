@@ -38,18 +38,27 @@ validation finale.
   `material_3_expressive` n'est importé **que** dans `app/lib/design/` ; les écrans passent
   par `design/`. Aucun nombre d'espacement hors des tokens. Des tests le vérifient (tâche 1).
 - Navigation : **go_router**. Coque choisie par `LayoutBuilder` (spec UI §4) :
-  - largeur ≥ **840 dp** → desktop : rail M3E permanent, barre de titre maison sur macOS via
-    `window_manager` (`TitleBarStyle.hidden`). En dessous de **1000 dp**, la barre de lecture
-    est ancrée en bas ; à partir de 1000 dp, c'est le panneau « en lecture » en side sheet à
-    droite ;
+  - largeur ≥ **840 dp** → desktop (spec UI §4.2) :
+    - barre de titre maison avec la recherche, sur macOS via `window_manager`
+      (`TitleBarStyle.hidden`) ;
+    - rail M3E permanent avec ses épinglés ;
+    - à droite, le panneau « en lecture », qui se replie en bande de 76 px : replié par défaut
+      sous **1000 dp**, déplié au-delà. Pas de barre de lecture en bas ;
   - sinon mobile : barre de navigation M3E (Accueil, Explorer, Bibliothèque, Réglages), ☰ qui
     ouvre le rail déplié en modal, mini-lecteur flottant au-dessus.
 - Listes : `CustomScrollView` + `SliverAppBar` + `SliverList.builder` (paresseux ; une
   playlist de 10 000 titres défile sans tout charger : pages de 100 via l'API).
 - Recherche : search bar et search view M3E de `design/`. Suggestions pendant la frappe,
   résultats à la validation seulement (spec UI §6.2).
-- Lecteur plein écran : `DraggableScrollableSheet` ; `Slider` de progression branché sur
+- Lecteur : **un seul widget `VNowPlaying`** dans `design/` (spec UI §5.5) :
+  - trois tailles (compact, moyen, grand) et deux styles (Disque, Vague) ;
+  - le sélecteur Lecteur · Paroles · File, dont les contenus sont fournis par `features/`.
+
+  Plein écran mobile : `DraggableScrollableSheet`. La progression est branchée sur
   `player.stream.position` côté Dart (Rust ne reçoit qu'une position toutes les ~10 s).
+- Réutilisation (spec UI §5) : les six briques (pochette, contrôles, progression ondulée,
+  sélecteur, ligne de titre, menu) n'existent qu'une fois, dans `design/`. Un test l'impose
+  (tâche 1).
 - Pochettes : `Image.file` sur le chemin rendu par `artworkFile` (cache Rust), jamais
   d'image réseau.
 - Actions sur un titre : le menu expressif `showVMenu` (appui long, clic droit, ⋮), le même
@@ -96,7 +105,7 @@ validation finale.
 **Files :**
 - Create :
   - `app/lib/design/{design,tokens,theme,color,typography,motion,symbols}.dart` ;
-  - `app/lib/design/components/{artwork,artwork_ring,track_row,menu,side_sheet,shelf,loading,empty_state,snack}.dart` ;
+  - `app/lib/design/components/{artwork,wave_artwork,wave_progress,controls,view_selector,now_playing,track_row,menu,side_sheet,shelf,loading,empty_state,snack}.dart` ;
   - `app/lib/design/gallery.dart` : la galerie de validation, une route de debug
     `/debug/gallery` enregistrée seulement si `kDebugMode`, sans `FakeApi` (données en dur,
     pochettes de `app/assets/gallery/`) ;
@@ -126,7 +135,22 @@ validation finale.
   class VSymbol extends StatelessWidget { const VSymbol(IconData icon, {bool filled = false, double weight = 400, String? semanticLabel}); } // FILL / wght animés
   // components/
   class VArtwork extends StatelessWidget { const VArtwork({required String itemId, required double size, bool circle = false, double radius = VSize.trackArtRadius, String? semanticLabel}); } // Image.file via artworkFile, décodée à la taille affichée
-  class VArtworkRing extends StatelessWidget { const VArtworkRing({required String itemId, required double size, required double progress, required bool playing}); } // anneau ondulé, plat en pause
+  enum ArtShape { rounded, circle, cookie }   // cookie = forme M3E 12 lobes
+  class VArtwork extends StatelessWidget { const VArtwork({required String itemId, required double size, ArtShape shape = ArtShape.rounded, bool spinning = false, double? progress, ValueChanged<double>? onSeek, String? semanticLabel}); }
+      // une seule pochette pour toute l'app : cookie + spinning = un tour en 20 s ; en pause (spinning false) cookie → carré arrondi par morph ;
+      // progress non nul = anneau ondulé autour (onde plate quand spinning == false) ; onSeek = l'anneau est un slider (glisser, ←/→, Semantics slider)
+  class VWaveArtwork extends StatelessWidget { const VWaveArtwork({required String itemId, required double width, required double progress, required bool playing, required ValueChanged<double> onSeek}); } // style Vague : bord bas en onde, partie jouée en primary, glisser le long du bord
+  class VWaveProgress extends StatelessWidget { const VWaveProgress({required double progress, required bool playing, required ValueChanged<double> onSeek}); } // linéaire (téléchargements, premier lancement)
+  class VControls extends StatelessWidget { const VControls({required bool playing, required bool loading, required bool shuffle, required RepeatMode repeat, required VoidCallback onPlayPause, required VoidCallback onNext, required VoidCallback onPrevious, required VoidCallback onShuffle, required VoidCallback onRepeat, bool compact = false}); } // button group M3E, largeurs qui morphent ; ⏯ morphe ; loading → loading indicator M3E
+  enum PlayerView { player, lyrics, queue }
+  class VViewSelector extends StatelessWidget { const VViewSelector({required PlayerView value, required ValueChanged<PlayerView> onChanged}); } // toolbar flottante segmentée, l'actif s'élargit avec son libellé
+  enum PlayerSize { compact, medium, large }
+  enum PlayerStyle { disc, wave }
+  class NowPlayingData { const NowPlayingData({required TrackView track, required String sourceTitle, required bool playing, required bool loading, required int positionMs, required int durationMs, required bool liked, required DownloadState? download, required bool shuffle, required RepeatMode repeat}); }
+  class VNowPlaying extends StatelessWidget { const VNowPlaying({required NowPlayingData data, required PlayerSize size, required PlayerStyle style, required PlayerView view, required ValueChanged<PlayerView> onView, required NowPlayingActions actions, required WidgetBuilder lyrics, required WidgetBuilder queue, VoidCallback? onImmersive, Widget? volume}); }
+      // présentation seulement : les blocs de la spec UI §5.5 dans l'ordre ; compact = pochette cookie + titre + like + ⏯ (mini-lecteur, bande, en-tête des vues Paroles/File) ;
+      // en vues Paroles et File, la pochette se rétracte en en-tête compact (transition partagée)
+  class NowPlayingActions { /* onPlayPause, onNext, onPrevious, onSeek, onLike, onAddToPlaylist, onDownload, onShuffle, onRepeat, onOutput, onMenu, onCollapse */ }
   class VTrackRow extends StatelessWidget { const VTrackRow({required TrackView track, int? number, bool playing = false, bool offline = false, required VoidCallback onTap, required VoidCallback onPlayNext, required List<VAction> quick, required List<List<VAction>> groups}); }
   class VAction { const VAction(String label, IconData icon, VoidCallback onSelected); }
   Future<void> showVMenu(BuildContext c, {required Rect anchor, required List<VAction> quick, required List<List<VAction>> groups}); // menu expressif, mobile et desktop
@@ -154,6 +178,14 @@ validation finale.
 - [ ] **Step 1 : tests qui échouent**
 
 ```dart
+testWidgets('VNowPlaying keeps the block order in every size and style', ...);  // en-tête, pochette, titre, groupe connecté, progression, contrôles, sélecteur
+testWidgets('VNowPlaying compact is artwork, title, like and play/pause only', ...);
+testWidgets('view selector switches views and widens the active one', ...);
+testWidgets('lyrics and queue views show the compact header', ...);
+testWidgets('disc ring and wave edge seek like a slider', ...);              // glisser → onSeek(0.5) ; ←/→ au clavier ; Semantics slider
+testWidgets('paused disc morphs to a rounded square and stops spinning', ...);
+testWidgets('loading turns play/pause into the loading indicator', ...);
+test('no feature or shell file defines its own artwork, controls, progress, selector, track row or menu', ...); // grep lib/features, lib/shell_* : aucune classe CustomPainter de pochette/onde, aucun widget Slider/ProgressIndicator/SegmentedButton/MenuAnchor direct
 test('token color pairs meet WCAG AA for every source', ...);   // seeds : 12 teintes HCT × {clair, sombre, sombre+pureBlack} ; onPrimary/primary, onSurface/surface, onSurfaceVariant/surface, onSecondaryContainer/secondaryContainer ≥ 4.5:1
 test('pastelSeed caps chroma at 48', ...);
 test('seedFromArtwork caches by path', ...);           // 2 appels, même chemin → 1 quantification
@@ -172,10 +204,12 @@ testWidgets('reduce motion settles in one frame', ...);  // disableAnimations : 
   existe. Sinon, le construire dans `components/` à partir des tokens.
 - [ ] **Step 4 : vérifier** : `flutter test test/design` puis `flutter analyze` → PASS.
 - [ ] **Step 5 : galerie.** `gallery.dart` montre :
-  - chaque composant de `components/` dans tous ses états (`VTrackRow` normal, numéroté, en
-    lecture, hors ligne, glissé ; mini-lecteur avec anneau en lecture et en pause ; menu
-    ouvert ; étagère ; carte héros ; split button ; groupe connecté ; slider ondulé ;
-    `VLoading` ; snackbar avec action ; side sheet) ;
+  - chaque composant de `components/` dans tous ses états :
+    - `VTrackRow` : normal, numéroté, en lecture, hors ligne, glissé, mode large desktop ;
+    - `VNowPlaying` dans ses 3 tailles × 2 styles × 3 vues, en lecture, en pause et en
+      chargement ;
+    - le menu ouvert, une étagère, une carte héros, un split button, un groupe connecté ;
+    - `VLoading`, une snackbar avec action, une side sheet ;
   - la typographie ;
   - l'échelle d'espacement.
 
@@ -338,7 +372,7 @@ test('downloads service starts on first running download and stops when idle', .
 - Create :
   - `app/lib/router.dart` ;
   - `app/lib/shell_mobile/{mobile_shell,mini_player,domain_rail}.dart` ;
-  - `app/lib/shell_desktop/{desktop_shell,now_playing_pane,player_bar,title_bar,shortcuts}.dart` ;
+  - `app/lib/shell_desktop/{desktop_shell,now_playing_pane,title_bar,pinned,shortcuts,immersive}.dart` ;
   - `app/lib/features/music/now_playing/now_playing_sheet.dart` (squelette, rempli à la
     Task 6) ;
   - `app/lib/theme_controller.dart`.
@@ -352,7 +386,7 @@ test('downloads service starts on first running download and stops when idle', .
   ```dart
   GoRouter buildRouter();   // StatefulShellRoute.indexedStack, branches : /home, /explore, /library, /settings
                             // routes : /album/:id, /artist/:id, /playlist/:id, /category/:id, /library/liked, /library/downloaded,
-                            //          /library/top, /library/history, /queue, /downloads, /settings/plugins, /settings/feeds/add,
+                            //          /library/top, /library/history, /downloads, /settings/plugins, /settings/feeds/add,
                             //          /settings/diagnostics, /onboarding (redirect tant que onboarding().done == false)
   class AdaptiveShell extends StatelessWidget { const AdaptiveShell({required StatefulNavigationShell shell}); } // < 840 mobile ; ≥ 840 desktop ; panneau à droite ≥ 1000
   class DesktopShortcuts extends StatelessWidget { const DesktopShortcuts({required Widget child, required PlayerAdapter player, required VoidCallback focusSearch}); }
@@ -365,21 +399,43 @@ test('downloads service starts on first running download and stops when idle', .
     - ☰ ouvre `domain_rail` : le rail déplié en modal, avec le domaine Musique, puis
       « Dépôts et plugins » (`/settings/plugins`) et « Téléchargements » (`/downloads`) ;
     - le mini-lecteur flottant est au-dessus de la barre.
-  - **Mini-lecteur** : `VArtworkRing`, titre, artiste, like et pause.
+  - **Mini-lecteur** (spec UI §5.3) : une toolbar flottante qui contient `VNowPlaying` en
+    taille compacte (pochette cookie qui tourne, avec son anneau, titre, artiste, like), et à
+    côté un FAB carré arrondi ⏯ qui morphe et devient le loading indicator pendant un
+    chargement. Gestes, sur la toolbar :
     - glisser horizontalement de plus de 30 % de la largeur, ou lancer → titre
       suivant / précédent (`queueOp`) ;
     - vers le haut → le lecteur s'ouvre (`Hero` sur la pochette) ;
     - vers le bas → `stop()`, puis `showVSnack` « Lecture arrêtée », action « Annuler » →
       `undoStop()`, pendant 5 s ;
     - chaque geste a son équivalent dans le menu du mini-lecteur (« Arrêter »…).
-  - **Desktop** :
-    - rail permanent, replié ↔ déplié (`ui.rail_expanded`), avec le même contenu que le rail
-      modal, plus les 4 destinations ;
-    - barre de titre maison sur macOS (`TitleBarStyle.hidden`, `DragToMoveArea`, la place des
-      boutons natifs est laissée à gauche) ;
-    - largeur ≥ 1000 : `now_playing_pane` dans un `VSideSheet` à droite, repliable
-      (`ui.now_playing_open`), avec les onglets File / Paroles / Infos ;
-    - de 840 à 1000 : `player_bar` ancrée en bas.
+  - **Desktop** (spec UI §4.2) :
+    - **Barre de titre** maison (`TitleBarStyle.hidden`, `DragToMoveArea`, place laissée aux
+      boutons natifs à gauche) :
+      - ← → (historique go_router, ⌘[ ⌘]) ;
+      - le champ de recherche au centre (⌘F). Ses suggestions sont celles de la Task 6, en menu
+        déroulant ;
+      - à droite, téléchargements, puis Dépôts et plugins.
+    - **Rail** permanent, replié ↔ déplié (`ui.rail_expanded`) :
+      - les 4 destinations ;
+      - « Épinglés » (`pinned.dart`) : ids dans `ui.pinned` (JSON), par défaut Likés et
+        Téléchargés ; pochettes seules quand le rail est replié ;
+      - en bas, le domaine.
+
+      Déposer une sélection de titres sur un épinglé fait ceci : playlist → `addToPlaylist` ;
+      Likés → `setLiked` ; Téléchargés → `download`.
+    - **Panneau à droite** : `VNowPlaying` en taille moyenne dans un `VSideSheet`, avec le
+      volume. Replié, c'est une **bande de 76 px** : `VNowPlaying` compact en colonne, ⏭ et
+      volume. `ui.now_playing_open` est retenu ; sans valeur, déplié si la largeur ≥ 1000,
+      replié sinon. Pas de barre en bas.
+    - **Immersif** (`immersive.dart`) : l'icône ⤢ du panneau, ou ⌘⇧F. `VNowPlaying` en grande
+      taille sur toute la fenêtre, mis en largeur (pochette à gauche, vue Paroles ou File à
+      droite). Échap pour sortir.
+    - **Fenêtre** :
+      - taille minimale 840 × 600 ; taille et position retenues ;
+      - fermer la fenêtre garde la lecture (l'app reste dans le Dock) ; ⌘Q quitte ;
+      - la barre de menus macOS (Lecture, Aller, Fenêtre) porte les raccourcis.
+    - **Raccourcis** : le tableau de la spec UI §4.2, aucun quand un champ texte a le focus.
   - **Thème** :
     - le changement de couleur se fait en fondu de 400 ms (`AnimatedTheme`), seulement quand
       le titre change ;
@@ -403,15 +459,19 @@ test('downloads service starts on first running download and stops when idle', .
 ```dart
 testWidgets('narrow width uses the navigation bar and mini player', ...);   // 400 dp : 4 destinations
 testWidgets('menu button opens the modal rail with domains and global sections', ...);
-testWidgets('840–1000 uses the rail and the docked player bar', ...);        // 900 dp
-testWidgets('≥ 1000 uses the rail and the now playing side sheet', ...);     // 1280 dp ; replier → ui.now_playing_open = "false"
+testWidgets('900 dp starts with the collapsed strip, no bottom bar', ...);
+testWidgets('1280 dp starts with the side sheet; collapsing is remembered', ...); // replier → ui.now_playing_open = "false" ; relance → bande
+testWidgets('immersive opens from the pane icon and closes with Escape', ...);
+testWidgets('dropping tracks on a pinned playlist adds them', ...);
+testWidgets('title bar history buttons navigate back and forward', ...);
+testWidgets('mini player FAB shows the loading indicator while loading', ...);
 testWidgets('mini player swipe left skips, right goes back', ...);
 testWidgets('mini player swipe down stops and Annuler undoes', ...);        // stop() puis undoStop() ; sans Annuler en 5 s : un seul stop()
 testWidgets('mini player swipe up opens the player', ...);
 testWidgets('theme seed changes once per track, not per position', ...);    // 3 NowPlaying même titre → 1 seedFromArtwork
 testWidgets('space toggles playback on desktop', ...);
 testWidgets('shortcuts_ignored_while_typing', ...);                         // focus dans la search bar, Espace → texte " ", lecteur inchangé
-testWidgets('cmd+f focuses search', ...);                                    // ouvre /explore et donne le focus au champ
+testWidgets('cmd+f focuses search', ...);                                    // desktop : le champ de la barre de titre ; mobile : /explore
 testWidgets('first launch redirects to onboarding', ...);
 ```
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
@@ -424,9 +484,11 @@ testWidgets('first launch redirects to onboarding', ...);
   Écrans fictifs simples, sans contenu réel. Faire valider par l'utilisateur :
   - la barre du bas, le ☰ et le rail modal ;
   - le rail desktop replié et déplié ;
-  - la barre ancrée de 840 à 1000 dp, puis le panneau « en lecture » au-delà (fenêtre
-    redimensionnée en direct) ;
-  - le mini-lecteur : anneau, like, pause, et les 4 gestes avec l'Annuler ;
+  - la barre de titre (recherche, ← →), les épinglés et le glisser-déposer ;
+  - le panneau « en lecture » déplié, puis replié en bande (fenêtre redimensionnée en
+    direct), puis l'immersif ;
+  - les deux styles du lecteur (Disque, Vague), le sélecteur Lecteur · Paroles · File ;
+  - le mini-lecteur : toolbar + FAB, anneau, like, ⏯, et les 4 gestes avec l'Annuler ;
   - l'ouverture du lecteur ;
   - le thème qui suit la pochette, et « réduire les animations ».
 
@@ -441,8 +503,8 @@ testWidgets('first launch redirects to onboarding', ...);
   - `app/lib/features/music/home/{home_page,discovery_hero,feed_shelf}.dart` ;
   - `features/music/explore/{explore_page,suggestions_view,results_view,category_page}.dart` ;
   - `features/music/entity/{album_page,artist_page,playlist_page}.dart` ;
-  - `features/music/now_playing/{now_playing_sheet,lyrics_view}.dart` ;
-  - `features/music/queue/queue_page.dart` ;
+  - `features/music/now_playing/{now_playing_sheet,now_playing_controller,lyrics_view,queue_view}.dart`
+    (les données de `VNowPlaying` et les contenus des vues Paroles et File) ;
   - `features/music/actions/track_actions.dart` : like, lire ensuite, ajouter à la file,
     ajouter à une playlist, télécharger, « ce n'est pas le bon morceau ».
 - Test : `app/test/features/{home,explore,entity,now_playing,actions}_test.dart`.
@@ -497,16 +559,26 @@ testWidgets('first launch redirects to onboarding', ...);
     - le FAB lecture reste quand l'en-tête est replié ;
     - artiste : bouton Radio, titres populaires, albums en carousel multi-browse ;
     - les pages sont paginées par 100 (`entity(cursor)`).
-  - **Lecteur** (spec UI §6.6) :
-    - la pochette pleine largeur, fondue ;
-    - ⌄, « Lecture depuis … », ⋮ ;
-    - le groupe connecté like / playlist / télécharger ;
-    - le slider ondulé, plat en pause, branché sur `player.stream.position` ;
-    - aléatoire, puis précédent et suivant tonaux, la lecture/pause qui morphe, puis la
-      répétition ;
-    - la toolbar flottante File / Paroles / Sortie (bottom sheets sur mobile, panneau sur
-      desktop) ;
-    - `NowPlaying.source` et `mime` alimentent « détails du flux ».
+  - **Lecteur** (spec UI §5.5, §6.6) :
+    - `now_playing_controller` construit `NowPlayingData` depuis `nowPlaying`, `queueStates`
+      et `PlayerAdapter.position`, et fournit `NowPlayingActions`. Le style vient de
+      `ui.player_style` (Disque par défaut).
+    - Vue Paroles : `lyrics_view`. Vue File : `queue_view`, avec « À suivre » puis
+      « Radio · titres proches », en `VTrackRow` avec poignée. Glisser pour réordonner ;
+      glisser à gauche pour retirer (`QueueOp.remove`).
+    - Les mêmes contenus servent au plein écran mobile, au panneau desktop et à l'immersif.
+    - La sortie audio ouvre le sélecteur du système (mobile) ou le menu des sorties (desktop,
+      à côté du volume).
+    - `NowPlaying.source` et `mime` alimentent « détails du flux » (menu ⋮).
+  - **Desktop, listes** (spec UI §4.2) :
+    - les listes de titres sont en tableau (#, titre + artistes, album, durée, ⋮), avec la
+      même `VTrackRow` en mode large ;
+    - au survol, le numéro devient ▶ et ⋮ apparaît ;
+    - **double-clic = lire**, clic = sélectionner, ⇧/⌘ clic = sélection multiple, Entrée lit
+      la sélection ;
+    - glisser la sélection vers un épinglé, une playlist ou la file ;
+    - au survol d'une carte, un bouton ▶ apparaît ;
+    - « Épingler / Désépingler » figure dans le menu des collections.
   - **Règles reprises du plan 4** :
     - sans résolveur, le bouton lecture explique pourquoi et renvoie vers « Ajouter un
       dépôt » ;
@@ -541,6 +613,10 @@ testWidgets('synced lyrics highlight the current line', ...);
 testWidgets('not the right track lists candidates and pins the choice', ...);
 testWidgets('track actions use the expressive menu on both shells', ...);
 testWidgets('player progress wave is flat when paused', ...);
+testWidgets('player style setting switches Disque and Vague live', ...);
+testWidgets('queue view reorders with move(entry, after) and removes on swipe left', ...);
+testWidgets('desktop: double click plays, single click selects, shift selects a range', ...);
+testWidgets('desktop: hover shows play on the row number', ...);
 ```
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
 - [ ] **Step 3 : implémenter.**
@@ -585,8 +661,8 @@ testWidgets('player progress wave is flat when paused', ...);
     - le choix est passé à l'API et retenu par liste (`setUiPref("ui.sort.<liste>")`).
   - **Réglages** : listes M3E en groupes arrondis.
     - Apparence : source de couleur (Ce qui joue, par défaut / Système / Préréglage + choix),
-      noir pur, thème clair/sombre/système, le tout dans `ui.*` et appliqué en direct par
-      `ThemeController`.
+      noir pur, thème clair/sombre/système, style du lecteur (Disque, par défaut / Vague), le
+      tout dans `ui.*` et appliqué en direct (`ThemeController`, `ui.player_style`).
     - Lecture : radio de fin de file, normalisation.
     - Téléchargements.
     - Sources : dépôts, ordre des capacités.
