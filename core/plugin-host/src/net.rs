@@ -333,10 +333,9 @@ pub(crate) async fn fetch(
     };
     // A failing recheck is treated as a miss: `fetch_uncached` below runs its own `policy.check`
     // and will `Deny` it properly, instead of a stale/no-longer-allowed entry being served.
-    let cached = cached.filter(|entry| cache_hit_allowed(policy, allow, &req.url, &entry.url));
-    if let Some(entry) = &cached
-        && entry.expires_at_ms > now_ms()
-    {
+    let mut cached = cached.filter(|entry| cache_hit_allowed(policy, allow, &req.url, &entry.url));
+    // Moved out, never cloned: a cached body can be 2 MiB.
+    if let Some(entry) = cached.take_if(|entry| entry.expires_at_ms > now_ms()) {
         return Ok(cached_response(entry));
     }
 
@@ -348,7 +347,7 @@ pub(crate) async fn fetch(
             Ok(response)
         }
         Err(e @ (HttpError::Network(_) | HttpError::Timeout)) => {
-            cached.map_or(Err(e), |entry| Ok(cached_response(&entry)))
+            cached.map_or(Err(e), |entry| Ok(cached_response(entry)))
         }
         Err(e) => Err(e),
     }
@@ -368,8 +367,8 @@ fn cache_hit_allowed(policy: &NetPolicy, allow: &Allowlist, req_url: &str, entry
     ok(req_url) && ok(entry_url)
 }
 
-fn cached_response(entry: &CachedResponse) -> Response {
-    Response { status: entry.status, url: entry.url.clone(), headers: entry.headers.clone(), body: entry.body.clone() }
+fn cached_response(entry: CachedResponse) -> Response {
+    Response { status: entry.status, url: entry.url, headers: entry.headers, body: entry.body }
 }
 
 fn store_if_cacheable(cache: CacheCtx<'_>, key: &[u8; 32], response: &Response) {

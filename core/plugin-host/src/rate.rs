@@ -36,7 +36,7 @@ impl RateLimiter {
     }
 
     /// Waits for, then takes, one slot. Returns `Err(())` instead of waiting past
-    /// `deadline - DEADLINE_MARGIN`; never otherwise fails. Uses `tokio::time::Instant`
+    /// `deadline - DEADLINE_MARGIN`, or at once with a capacity of 0; never otherwise fails. Uses `tokio::time::Instant`
     /// throughout so a `#[tokio::test(start_paused = true)]` can drive it without real sleeps.
     pub async fn acquire(&self, deadline: Instant) -> Result<(), ()> {
         loop {
@@ -50,7 +50,9 @@ impl RateLimiter {
                     log.push_back(now);
                     None
                 } else {
-                    Some(*log.front().unwrap() + self.window)
+                    // Empty only with a capacity of 0: no slot will ever free up.
+                    let Some(&oldest) = log.front() else { return Err(()) };
+                    Some(oldest + self.window)
                 }
             };
             match wait_until {
@@ -143,6 +145,14 @@ mod tests {
             let ms: Vec<_> = times.iter().map(|t| t.duration_since(start).as_millis()).collect();
             assert!(in_window <= 3, "{in_window} sends in one window, at ms {ms:?}");
         }
+    }
+
+    /// The manifest refuses `requests: 0`; a limiter built with it anyway never grants a slot,
+    /// and fails instead of panicking on its empty log.
+    #[tokio::test(start_paused = true)]
+    async fn zero_capacity_fails_instead_of_panicking() {
+        let rl = RateLimiter::new(RateLimit { requests: 0, per_seconds: 1 });
+        assert!(rl.acquire(Instant::now() + FAR).await.is_err());
     }
 
     #[tokio::test(start_paused = true)]

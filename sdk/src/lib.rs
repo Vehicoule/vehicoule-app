@@ -28,6 +28,10 @@ pub const HOST_WIT: &str = include_str!("../../core/contract/wit/host/host.wit")
 pub const MUSIC_WIT: &str = include_str!("../../core/contract/wit/music/music.wit");
 
 /// Runs a future that never waits: host imports are synchronous.
+///
+/// # Panics
+///
+/// If `f` is not ready on its first poll: it waits on something other than a host import.
 pub fn block_on<F: Future>(f: F) -> F::Output {
     match pin!(f).poll(&mut Context::from_waker(Waker::noop())) {
         Poll::Ready(v) => v,
