@@ -73,12 +73,25 @@ pub async fn set_liked(id: String, liked: bool) -> Result<(), CoreError> {
 }
 
 /// The tracks of these ids, in order (download rows, notifications); unknown ones left out.
+/// Each under the id asked, a merged one included (every input resolves merges).
 pub async fn tracks(ids: Vec<String>) -> Result<Vec<TrackView>, CoreError> {
     let items = ids
         .iter()
         .map(|i| parse_id(i))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(app().db.read(move |c| track_views(c, &items)).await?)
+    Ok(app()
+        .db
+        .read(move |c| {
+            let mut views = Vec::new();
+            for (id, item) in ids.into_iter().zip(items) {
+                if let Some(mut v) = catalog::track(c, item)?.map(track_view) {
+                    v.id = id;
+                    views.push(v);
+                }
+            }
+            Ok(views)
+        })
+        .await?)
 }
 
 /// Liked albums, artists or playlists, most recent first.
@@ -304,5 +317,31 @@ mod tests {
         let titles: Vec<_> = views.iter().map(|t| t.title.as_str()).collect();
         assert_eq!(titles, ["rows b", "rows a"], "a missing one is left out");
         assert!(tracks(vec!["nope".into()]).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn tracks_come_back_under_the_ids_asked() {
+        let (_lock, app) = catalog::tests::setup().await;
+        let old = catalog::search("merged old").await.unwrap().tracks[0]
+            .id
+            .clone();
+        let new = catalog::search("merged new").await.unwrap().tracks[0]
+            .id
+            .clone();
+        let (a, b) = (parse_id(&old).unwrap(), parse_id(&new).unwrap());
+        app.db
+            .write(move |tx| crate::library::items::merge(tx, a, b))
+            .await
+            .unwrap();
+        let views = tracks(vec![new.clone(), old.clone()]).await.unwrap();
+        let got: Vec<_> = views
+            .iter()
+            .map(|t| (t.id.as_str(), t.title.as_str()))
+            .collect();
+        // The newer one points to the older: both read the root, each under its own id.
+        assert_eq!(
+            got,
+            [(new.as_str(), "merged old"), (old.as_str(), "merged old")]
+        );
     }
 }

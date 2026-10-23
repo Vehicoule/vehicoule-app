@@ -1127,3 +1127,69 @@ async fn move_goes_right_after_the_current_entry() {
         Err(CoreError::NotFound)
     );
 }
+
+#[tokio::test]
+async fn forbidden_at_zero_keeps_the_last_position() {
+    let mut t = setup().await;
+    play(vec![track("zero after open").await], 0, None)
+        .await
+        .unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    on_event(ev_pos(&entry, 40_000)).await;
+    // A player that reset its position on open reports 0: not where it stopped.
+    on_event(forbidden(&entry)).await;
+    let (_, _, position, _) = played(now(&mut t.cmds));
+    assert_eq!(position, 40_000);
+}
+
+/// Starts `entry`, fails it on a decode error: the entry played next.
+async fn fails(t: &mut T, entry: &str) -> String {
+    started(entry, 180_000).await;
+    on_event(failed(entry, PlayerErrorKind::Decode)).await;
+    played(now(&mut t.cmds)).0
+}
+
+#[tokio::test]
+async fn a_track_played_to_its_end_starts_the_count_over() {
+    let mut t = setup().await;
+    edit(QueueOp::Repeat(Repeat::All)).await.unwrap();
+    let ids = vec![track("ends a").await, track("ends b").await];
+    play(ids, 0, None).await.unwrap();
+    let a = played(now(&mut t.cmds)).0;
+    let b = fails(&mut t, &a).await;
+    // A short track: it ends before any position.
+    started(&b, 9_000).await;
+    on_event(PlayerEvent::Ended { entry: b.clone() }).await;
+    let a = played(now(&mut t.cmds)).0;
+    let b = fails(&mut t, &a).await;
+    fails(&mut t, &b).await;
+}
+
+#[tokio::test]
+async fn user_actions_start_the_failure_count_over() {
+    let mut t = setup().await;
+    edit(QueueOp::Repeat(Repeat::All)).await.unwrap();
+    let a = track("count a").await;
+    let ids = vec![a.clone(), track("count b").await];
+    play(ids.clone(), 0, None).await.unwrap();
+    let first = played(now(&mut t.cmds)).0;
+    // Each time: two failures, a user action, then a failure that must go on to the next.
+    let e = fails(&mut t, &first).await;
+    let e = fails(&mut t, &e).await;
+    assert_eq!(e, first, "a again");
+    let other = fix_match(&a).await.unwrap()[0].id.clone();
+    choose_match(&a, &other).await.unwrap();
+    let e = played(now(&mut t.cmds)).0;
+    let b = fails(&mut t, &e).await;
+
+    fails(&mut t, &b).await;
+    edit(QueueOp::JumpTo(b)).await.unwrap();
+    let e = played(now(&mut t.cmds)).0;
+    let e = fails(&mut t, &e).await;
+
+    fails(&mut t, &e).await;
+    play(ids, 0, None).await.unwrap();
+    let e = played(now(&mut t.cmds)).0;
+    fails(&mut t, &e).await;
+}

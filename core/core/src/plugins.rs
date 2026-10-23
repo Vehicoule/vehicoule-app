@@ -22,6 +22,8 @@ use crate::router::cap_name;
 use crate::storage::DbStorage;
 
 const MAX_FEED_BYTES: usize = 1 << 20;
+/// Per request, a 32 MiB .wasm included; 2 s in tests, so one can see it cut.
+const FEED_REQUEST_CAP: Duration = Duration::from_secs(if cfg!(test) { 2 } else { 600 });
 const MAX_MANIFEST_BYTES: usize = 64 << 10;
 const MAX_WASM_BYTES: usize = 32 << 20;
 
@@ -91,11 +93,12 @@ impl Plugins {
         let dir = Path::new(&cfg.data_dir).join("plugins");
         std::fs::create_dir_all(&dir)?;
         // ponytail: plain http only in debug builds (local test feeds); the signature and the sha256s guard integrity either way
-        // No total timeout: a 32 MiB .wasm on a slow link takes what it takes while bytes flow.
+        // A total cap too: a host trickling bytes would hold `feed_ops` (and `remove_feed`).
         let http = reqwest::Client::builder()
             .https_only(!cfg!(debug_assertions))
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(30))
+            .timeout(FEED_REQUEST_CAP)
             .build()?;
         Ok(Plugins {
             host: Arc::new(host),

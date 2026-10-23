@@ -523,3 +523,23 @@ async fn feeds_list_their_plugin_counts() {
         }]
     );
 }
+
+#[tokio::test]
+async fn a_request_that_drags_on_is_cut_at_the_cap() {
+    let env = Env::new();
+    let server = MockServer::start().await;
+    // Under the read timeout, over the total cap (2 s in tests).
+    Mock::given(path("/slow.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_bytes(b"{}".to_vec())
+                .set_delay(Duration::from_secs(8)),
+        )
+        .mount(&server)
+        .await;
+    let url = Url::parse(&format!("{}/slow.json", server.uri())).unwrap();
+    let started = std::time::Instant::now();
+    let got = env.plugins().get(&url, MAX_FEED_BYTES).await;
+    assert_eq!(got, Err(CoreError::Network));
+    assert!(started.elapsed() < Duration::from_secs(6));
+}

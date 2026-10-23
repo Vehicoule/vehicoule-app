@@ -668,7 +668,11 @@ impl Player {
         // The user acts: earlier failures no longer count.
         if matches!(
             msg,
-            Msg::Play(..) | Msg::SkipNext(_) | Msg::Previous(..) | Msg::UndoStop(_)
+            Msg::Play(..)
+                | Msg::SkipNext(_)
+                | Msg::Previous(..)
+                | Msg::UndoStop(_)
+                | Msg::ChooseMatch(..)
         ) {
             self.failed_in_row = 0;
         }
@@ -1144,6 +1148,7 @@ impl Player {
     }
 
     async fn ended(&mut self) {
+        self.failed_in_row = 0; // it played (a short track ends before any position)
         // Played to the end: the rest counts as listened.
         let catalogue = self.track.as_ref().and_then(|t| t.duration_ms);
         if let Some(d) = self.duration_ms.or(catalogue.map(u64::from)) {
@@ -1159,13 +1164,16 @@ impl Player {
         let _ = self.start(entries, 0, true).await;
     }
 
-    /// The player stopped on an error, at `position_ms`.
+    /// The player stopped on an error, at `position_ms`; 0 (a player that reset it on open)
+    /// keeps the last known position.
     async fn error(&mut self, entry: &str, kind: PlayerErrorKind, position_ms: u64) {
         if !self.is_current(entry) {
             self.next_failed(entry, kind).await;
             return;
         }
-        self.position(position_ms);
+        if position_ms > 0 {
+            self.position(position_ms);
+        }
         self.playing = false;
         self.deadline = None;
         let Some(e) = self.q.current() else {

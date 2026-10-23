@@ -442,3 +442,40 @@ async fn progress_is_throttled_to_2_per_second() {
         }
     );
 }
+
+#[tokio::test]
+async fn done_refreshes_the_playing_track() {
+    use crate::player::{PlayerCommand, PlayerEvent};
+    let (_lock, app) = setup().await;
+    let server = MockServer::start().await;
+    Mock::given(path_regex("^/stream/"))
+        .respond_with(Ranges {
+            body: body(1 << 10),
+            stall: Duration::ZERO,
+        })
+        .mount(&server)
+        .await;
+    stream_at(&server).await;
+    let id = track("playing then downloaded").await;
+    player::reset();
+    let mut cmds = app.events.commands.subscribe();
+    player::play(vec![id.clone()], 0, None).await.unwrap();
+    let Ok(PlayerCommand::Play { entry, .. }) = cmds.try_recv() else {
+        panic!("a Play");
+    };
+    player::on_event(PlayerEvent::TrackStarted { entry }).await;
+    let mut np = app.events.now_playing.subscribe();
+    let mut rx = app.events.downloads.subscribe();
+
+    enqueue(vec![id.clone()]).await.unwrap();
+    assert_eq!(
+        wait(&mut rx, &id, finished).await.state,
+        DownloadStateView::Done
+    );
+    let refreshed =
+        async { while !np.recv().await.unwrap().track.is_some_and(|t| t.downloaded) {} };
+    tokio::time::timeout(Duration::from_secs(5), refreshed)
+        .await
+        .expect("the playing track read again");
+    cancel(&id).await.unwrap();
+}
