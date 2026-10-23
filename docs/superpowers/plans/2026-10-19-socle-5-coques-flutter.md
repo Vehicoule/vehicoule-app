@@ -129,13 +129,20 @@ validation finale.
   // theme.dart
   ThemeData vTheme({required Brightness brightness, required Color seed, bool pureBlack = false}); // M3ETheme + nos réglages ; pureBlack : surfaces sombres à 0
   // typography.dart : titres ROND 100, texte courant ROND 0, repli Noto Sans JP
-  // motion.dart
+  // motion.dart — les seules transitions de l'app (spec UI §5.6)
   bool reduceMotion(BuildContext c);          // MediaQuery.disableAnimations
+  Page<T> vContainerTransformPage<T>({required LocalKey key, required Widget child, required Object heroTag}); // carte/ligne → page
+  Page<T> vFadeThroughPage<T>({required LocalKey key, required Widget child});   // changement de destination
+  Widget vSharedAxis({required Widget child, required Object key});             // vues du sélecteur, étapes du premier lancement
+  // reduceMotion → toutes deviennent un fondu de 150 ms
+  // haptics.dart — mobile seulement, respecte le réglage système
+  abstract final class VHaptics { static void light(); static void selection(); static void medium(); } // like / ⏯ ; sélecteur, seuils de geste ; arrêt ↓, dépôt réordonné
   // symbols.dart
   class VSymbol extends StatelessWidget { const VSymbol(IconData icon, {bool filled = false, double weight = 400, String? semanticLabel}); } // FILL / wght animés
   // components/
   class VArtwork extends StatelessWidget { const VArtwork({required String itemId, required double size, bool circle = false, double radius = VSize.trackArtRadius, String? semanticLabel}); } // Image.file via artworkFile, décodée à la taille affichée
   enum ArtShape { rounded, circle, cookie }   // cookie = forme M3E 12 lobes
+  class VMosaicArtwork extends StatelessWidget { const VMosaicArtwork({required List<String> itemIds, required double size}); } // pochette d'une playlist perso sans image : 2×2 des 4 premiers titres distincts (1 → pleine, 2-3 → 2×2 avec répétition), 0 → icône
   class VArtwork extends StatelessWidget { const VArtwork({required String itemId, required double size, ArtShape shape = ArtShape.rounded, bool spinning = false, double? progress, ValueChanged<double>? onSeek, String? semanticLabel}); }
       // une seule pochette pour toute l'app : cookie + spinning = un tour en 20 s ; en pause (spinning false) cookie → carré arrondi par morph ;
       // progress non nul = anneau ondulé autour (onde plate quand spinning == false) ; onSeek = l'anneau est un slider (glisser, ←/→, Semantics slider)
@@ -178,7 +185,10 @@ validation finale.
 - [ ] **Step 1 : tests qui échouent**
 
 ```dart
-testWidgets('VNowPlaying keeps the block order in every size and style', ...);  // en-tête, pochette, titre, groupe connecté, progression, contrôles, sélecteur
+testWidgets('VNowPlaying keeps the block order in every size and style', ...);
+testWidgets('mosaic artwork tiles 1, 2, 4 and 0 items', ...);
+testWidgets('reduce motion turns every page transition into a fade', ...);
+test('haptics are silent on desktop and when the system disables them', ...);  // en-tête, pochette, titre, groupe connecté, progression, contrôles, sélecteur
 testWidgets('VNowPlaying compact is artwork, title, like and play/pause only', ...);
 testWidgets('view selector switches views and widens the active one', ...);
 testWidgets('lyrics and queue views show the compact header', ...);
@@ -208,7 +218,9 @@ testWidgets('reduce motion settles in one frame', ...);  // disableAnimations : 
     - `VTrackRow` : normal, numéroté, en lecture, hors ligne, glissé, mode large desktop ;
     - `VNowPlaying` dans ses 3 tailles × 2 styles × 3 vues, en lecture, en pause et en
       chargement ;
-    - le menu ouvert, une étagère, une carte héros, un split button, un groupe connecté ;
+    - le menu ouvert, une étagère, une carte héros, un split button, un groupe connecté,
+      une mosaïque ;
+    - les trois transitions de page, rejouables ;
     - `VLoading`, une snackbar avec action, une side sheet ;
   - la typographie ;
   - l'échelle d'espacement.
@@ -295,7 +307,10 @@ test('every CoreError variant has a message in both languages', ...);
   rien à rejouer (erreur réseau : le lecteur reste arrêté, l'utilisateur relance).
 - Règles : `Play` → `open([source], play: autoplay)` puis `seek(position)` ;
   `EnqueueNext`/`ReplaceNext` → `removeAt(courant + 1)` s'il y a une suivante, puis `add` ;
-  `ClearNext` → `removeAt(courant + 1)` s'il y en a une ; `Stop` → `pause` + `open([])`.
+  `ClearNext` → `removeAt(courant + 1)` s'il y en a une ; `Stop` → `pause` + `open([])` ;
+  `Pause { fadeMs }` (minuterie de sommeil, plan 7 Task 8) → volume ramené à 0 en fondu sur
+  `fadeMs`, `pause`, volume restauré, puis `Paused`. C'est une pause « système », conforme
+  au contrat de `Paused`.
   L'adaptateur tient la liste `index mpv → entry` et le gain de chaque entrée (appliqué au
   changement d'index). Événements : `TrackStarted` à chaque changement d'index,
   `Duration` dès connue, `Position` toutes les 10 s pendant la lecture et à chaque pause,
@@ -308,6 +323,7 @@ test('every CoreError variant has a message in both languages', ...);
 
 ```dart
 test('play opens the source at the given position', ...);
+test('pause command fades out, pauses, restores volume, reports Paused', ...);
 test('auto_advance_reports_preloaded_entry', ...);   // EnqueueNext(e2) puis index 0→1 → TrackStarted(e2)
 test('replace_next swaps the queued source', ...);
 test('position is reported every 10s and on pause', ...); // fakeAsync
@@ -436,6 +452,10 @@ test('downloads service starts on first running download and stops when idle', .
       - fermer la fenêtre garde la lecture (l'app reste dans le Dock) ; ⌘Q quitte ;
       - la barre de menus macOS (Lecture, Aller, Fenêtre) porte les raccourcis.
     - **Raccourcis** : le tableau de la spec UI §4.2, aucun quand un champ texte a le focus.
+  - **Transitions** : chaque route go_router prend sa page dans `motion.dart`. Les pages
+    album, artiste, playlist et catégorie s'ouvrent en container transform ; le changement de
+    destination se fait en fade through. Les gestes du mini-lecteur appellent `VHaptics` au
+    franchissement de leur seuil.
   - **Thème** :
     - le changement de couleur se fait en fondu de 400 ms (`AnimatedTheme`), seulement quand
       le titre change ;
@@ -557,7 +577,11 @@ testWidgets('first launch redirects to onboarding', ...);
     - album : lignes numérotées, et split button « Lire | ▾ » (aléatoire, lire ensuite,
       ajouter à la file) ;
     - le FAB lecture reste quand l'en-tête est replié ;
-    - artiste : bouton Radio, titres populaires, albums en carousel multi-browse ;
+    - artiste : bouton Radio, puis la carte « Dernière sortie » si `artistLatestRelease(id)`
+      rend une valeur (appel séparé, la page ne l'attend pas), puis les titres populaires et
+      les albums en carousel multi-browse ;
+    - les playlists perso sans image utilisent `VMosaicArtwork` (4 premiers titres de
+      `playlistEntries(id, 0, 4)`), partout où elles apparaissent ;
     - les pages sont paginées par 100 (`entity(cursor)`).
   - **Lecteur** (spec UI §5.5, §6.6) :
     - `now_playing_controller` construit `NowPlayingData` depuis `nowPlaying`, `queueStates`
@@ -570,6 +594,10 @@ testWidgets('first launch redirects to onboarding', ...);
     - La sortie audio ouvre le sélecteur du système (mobile) ou le menu des sorties (desktop,
       à côté du volume).
     - `NowPlaying.source` et `mime` alimentent « détails du flux » (menu ⋮).
+    - Le menu ⋮ porte aussi la **Minuterie** : 15, 30, 45 ou 60 min, fin du titre, annuler
+      (`setSleepTimer`). `NowPlaying.sleep` affiche une lune et le temps restant dans
+      l'en-tête.
+    - Like et ⏯ appellent `VHaptics.light()`, et le sélecteur `VHaptics.selection()`.
   - **Desktop, listes** (spec UI §4.2) :
     - les listes de titres sont en tableau (#, titre + artistes, album, durée, ⋮), avec la
       même `VTrackRow` en mode large ;
@@ -614,6 +642,9 @@ testWidgets('not the right track lists candidates and pins the choice', ...);
 testWidgets('track actions use the expressive menu on both shells', ...);
 testWidgets('player progress wave is flat when paused', ...);
 testWidgets('player style setting switches Disque and Vague live', ...);
+testWidgets('sleep timer menu sets the timer and the header shows the moon', ...);
+testWidgets('artist page shows the latest release card only when present', ...);
+testWidgets('user playlist without image shows a mosaic', ...);
 testWidgets('queue view reorders with move(entry, after) and removes on swipe left', ...);
 testWidgets('desktop: double click plays, single click selects, shift selects a range', ...);
 testWidgets('desktop: hover shows play on the row number', ...);
@@ -669,13 +700,24 @@ testWidgets('desktop: hover shows play on the row number', ...);
     - Confidentialité : télémétrie, « Découvertes à partir de mon écoute »
       (`Settings.discover`).
     - À propos : mises à jour, diagnostics, rapport de bug.
+    - Desktop : « Afficher dans la barre des menus » (macOS, `ui.menu_bar`, activé par
+      défaut).
   - **Premier lancement** (spec 4.6) : `VLoading`, puis 4 étapes :
     1. ce qu'est l'app, livrée sans source de streaming ;
     2. installation du feed officiel (`refreshFeeds`, progression, réessai si hors ligne).
        Après `refreshFeeds`, l'étape décide du réessai par `hasResolver()` ;
     3. « Ajouter un dépôt », facultatif ;
-    4. télémétrie : deux boutons, **aucun présélectionné**, et on ne peut pas continuer sans
+    4. **« Choisis au moins 3 artistes »** (spec UI §6.7) :
+       - une grille de pochettes rondes, tirée de l'étagère « artists » de
+         `browseCategory("chart:0")`, avec une recherche au-dessus (`search`, artistes) ;
+       - un toucher appelle `setLiked(id, true)` : la pochette passe en cookie et une coche
+         s'affiche ;
+       - « Continuer » s'active à partir de 3 artistes, « Passer » est toujours là ;
+       - l'étape est sautée sans `browse` ou hors ligne ;
+    5. télémétrie : deux boutons, **aucun présélectionné**, et on ne peut pas continuer sans
        choisir.
+
+    Les étapes s'enchaînent en shared axis.
   - **Ajout d'un dépôt** : URL + clé publique → `previewFeed` → empreinte, domaines déclarés
     et capacités affichés → bouton d'accord explicite → `addFeed`. Ordre des capacités :
     liste réordonnable par capacité. Sources : `feeds()` (nom, officiel, nombre de plugins,
@@ -705,6 +747,8 @@ testWidgets('playlist reorder calls moveInPlaylist with the new neighbour', ...)
 testWidgets('import shows progress then opens the new playlist', ...);
 testWidgets('local library search shows fuzzy hits', ...);
 testWidgets('telemetry choice has no default and blocks continue', ...);
+testWidgets('artist step likes picks and enables continue at 3', ...);
+testWidgets('artist step is skipped without browse or offline', ...);
 testWidgets('onboarding_offline_explains_and_continues', ...);
 testWidgets('adding a feed requires seeing fingerprint and domains', ...);
 testWidgets('report never puts data in the issue URL', ...);  // URL ouverte == URL fixe
@@ -769,3 +813,53 @@ testWidgets('no_overflow_at_text_scale_2', ...);       // MediaQuery textScaler 
 - [ ] **Step 6 : rapport** (mesures, constructeur et modèle du téléphone, écarts), puis
   démarrage des deux semaines d'usage quotidien (critère 1). Commit —
   `docs: validation du socle sur appareils`.
+
+### Task 10 : widget Android et barre des menus macOS (exécutée entre les Tasks 7 et 8)
+
+**Files :**
+- Create :
+  - `app/android/app/src/main/kotlin/app/vehicoule/widget/{NowPlayingWidget,NowPlayingWidgetReceiver}.kt` (Jetpack Glance) ;
+  - `app/android/app/src/main/res/xml/now_playing_widget_{small,large}.xml` ;
+  - `app/macos/Runner/MenuBar/{MenuBarController,NowPlayingPopover}.swift` (SwiftUI) ;
+  - `app/lib/platform/{home_widget,menu_bar}.dart`.
+- Modify : `app/pubspec.yaml` (`home_widget`, version figée), `AndroidManifest.xml`, `app/macos/Runner/AppDelegate.swift`, `app/lib/main.dart` (abonnements).
+- Test : `app/test/platform/{home_widget,menu_bar}_test.dart`, `app/android/app/src/androidTest/kotlin/app/vehicoule/widget/NowPlayingWidgetTest.kt`.
+
+**Interfaces :**
+- Consumes : `nowPlaying` (avec `sleep`), `queueStates`, `artworkFile`, `uiPref` (`ui.menu_bar`) ; la session média d'`audio_service` (Task 4).
+- Produces :
+  ```dart
+  class HomeWidgetPublisher { void start(Stream<NowPlaying> s); }  // publie title, artist, artworkPath, playing, resumable via home_widget, puis demande la mise à jour du widget
+  class MenuBar { void start(Stream<NowPlaying> s, PlayerAdapter p); }  // canal "vehicoule/menu_bar" : Dart → Swift `state` ; Swift → Dart `command` (prev, toggle, next, like, open)
+  ```
+- Règles (spec UI §6.8) : ce sont deux interfaces natives, sans logique.
+  - **Android** : deux tailles.
+    - 2×2 : pochette cookie avec l'anneau, et ⏯.
+    - 4×2 : pochette, titre, artiste, ⏮ ⏯ ⏭, like.
+
+    Couleurs dynamiques (Android 12+), repli sur la teinte publiée. Toucher la pochette ouvre
+    le lecteur (deep link `vehicoule://now-playing`). Les boutons envoient des intents à la
+    session média d'`audio_service` (`MediaButtonReceiver`), ce qui fonctionne sans interface
+    Flutter. Like passe par `home_widget` et une action en arrière-plan qui appelle
+    `setLiked`. Sans lecture, le widget affiche « Reprendre ».
+  - **macOS** :
+    - `NSStatusItem` avec une note, animée pendant la lecture ;
+    - popover SwiftUI : pochette cookie avec l'anneau, titre, artiste, ⏮ ⏯ ⏭, like,
+      « Ouvrir Vehicoule » ;
+    - masqué si `ui.menu_bar == "false"` ;
+    - vit tant que l'app tourne, fenêtre fermée comprise.
+
+- [ ] **Step 1 : tests qui échouent**
+  ```dart
+  test('home widget publishes state on every NowPlaying', ...);
+  test('menu bar sends state and maps commands to the player', ...);   // command "toggle" → PlayerAdapter.togglePlay
+  test('menu bar hides when ui.menu_bar is false', ...);
+  ```
+  Côté Android, le test instrumenté `NowPlayingWidgetTest` vérifie que l'état publié est
+  rendu, et que ⏯ envoie `KEYCODE_MEDIA_PLAY_PAUSE` à la session.
+- [ ] **Step 2 : vérifier l'échec** → FAIL.
+- [ ] **Step 3 : implémenter.**
+- [ ] **Step 4 : vérifier** : `flutter test test/platform`, puis le test instrumenté sur
+  l'émulateur. Ensuite, contrôle manuel : le widget posé sur l'écran d'accueil de l'émulateur,
+  et le popover sur macOS.
+- [ ] **Step 5 : commit** : `feat(app): widget Android et mini-lecteur de la barre des menus macOS`.

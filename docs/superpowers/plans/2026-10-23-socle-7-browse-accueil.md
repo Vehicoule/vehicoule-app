@@ -7,6 +7,7 @@
 - le fil d'accueil personnel ;
 - les tris paginés, le Top 50, l'historique daté et les suggestions typées ;
 - les préférences d'interface ;
+- la minuterie de sommeil et la « dernière sortie » d'un artiste (Task 8) ;
 - le pont régénéré.
 
 **Architecture :**
@@ -403,7 +404,12 @@ Prérequis : plans 1, 2, 4 et 6 terminés. Le plan 5 (Tasks 6 et 7) consomme ce 
 - **Construction (`build`)** :
   - **Graines locales** :
     - les likés récents (5), puis `top_items(Track, 90 j)`, sans doublon, jusqu'à 5 au total ;
-    - les artistes : `top_items(Artist, 90 j, 10)` ;
+    - les artistes : `top_items(Artist, 90 j, 10)`, complétés par les artistes likés (les plus
+      récents d'abord), sans doublon, jusqu'à 10 ;
+    - s'il reste moins de 5 graines de titres et qu'on est en ligne, on complète avec un titre
+      par artiste liké : son titre le plus écouté (`plays::top_track_of`, ajouté ici), sinon
+      le premier titre de sa page `entity`. C'est ce qui rend le fil personnel dès le premier
+      lancement, quand l'utilisateur a seulement liké 3 artistes (spec UI 6.7) ;
     - `mixes` = les 6 premiers artistes.
   - **Réseau** (seulement si `discover` est actif et en ligne) :
     - `radio_tracks` par graine de titre ;
@@ -426,6 +432,7 @@ Prérequis : plans 1, 2, 4 et 6 terminés. Le plan 5 (Tasks 6 et 7) consomme ce 
   ```rust
   #[tokio::test] async fn feed_offline_keeps_local_shelves()
   #[tokio::test] async fn feed_first_launch_seeds_from_chart()     // aucun plays / likes, browse de test → Discovery non vide ; sans browse → [End]
+  #[tokio::test] async fn liked_artists_seed_the_feed_without_plays() // 3 artistes likés, aucune écoute → graines = un titre par artiste (entity), Mixes = ces 3 artistes
   #[tokio::test] async fn discover_off_makes_no_network_call()    // compteur d'appels du plugin de test == 0
   #[tokio::test] async fn build_writes_the_feed_doc()             // kv "@core"/"home_feed" relu == doc rendu
   ```
@@ -521,3 +528,55 @@ Prérequis : plans 1, 2, 4 et 6 terminés. Le plan 5 (Tasks 6 et 7) consomme ce 
   Android → `All tests passed!`.
 - [ ] **Step 5 :** vérifications Rust → PASS.
 - [ ] **Step 6 : commit**, `feat(core): API du fil d'accueil, mixes, réglage découvertes`.
+
+### Task 8 : minuterie de sommeil, dernière sortie d'un artiste
+
+**Files :**
+- Modify : `core/core/src/player.rs` (commande `Pause`, minuterie dans l'acteur), `core/core/src/events.rs` (`NowPlaying.sleep`).
+- Modify : `core/core/src/api/playback.rs` (`set_sleep_timer`), `core/core/src/api/catalog.rs` (`artist_latest_release`).
+- Modify : `core/core/src/browse.rs` (lecture du cache des sorties).
+- Modify : `app/integration_test/bridge_test.dart`.
+- Test : `core/core/src/player.rs` (`#[cfg(test)]`, horloge simulée de l'acteur), `core/core/src/browse.rs`.
+
+**Interfaces :**
+- Consumes : `browse::releases` (Task 4) et l'acteur du lecteur (plan 4).
+- Produces :
+  ```rust
+  pub enum SleepTimer { Off, Minutes(u32), EndOfTrack }
+  pub enum SleepState { EndsAt { ends_at_ms: i64 }, EndOfTrack }
+  // events.rs : NowPlaying gagne `pub sleep: Option<SleepState>`
+  // player.rs : PlayerCommand gagne `Pause { fade_ms: u32 }`. Dart baisse le volume à 0 en fondu sur fade_ms, met en pause, remet le volume, puis envoie `Paused` (une pause « système », donc conforme au contrat Paused du plan 5)
+  pub async fn set_sleep_timer(timer: SleepTimer) -> Result<(), CoreError>;              // api/playback.rs
+  pub struct ReleaseView { pub album: CollectionView, pub date: String }
+  pub async fn artist_latest_release(artist_id: String) -> Result<Option<ReleaseView>, CoreError>;   // api/catalog.rs
+  ```
+- Règles :
+  - **`Minutes(n)`** : à l'échéance, l'acteur envoie `Pause { fade_ms: 5000 }` et efface la
+    minuterie. Une nouvelle minuterie remplace l'ancienne. `Off` l'annule.
+  - **`EndOfTrack`** : la suivante n'est pas préchargée (`ClearNext` si une suivante était
+    tenue). À `Ended`, la file avance d'une entrée et charge celle-ci **en pause**
+    (`Play { autoplay: false }`), puis la minuterie s'efface.
+  - **Durée de vie** : la minuterie vit dans l'acteur seulement. Elle ne survit pas à un
+    redémarrage, et `stop()` l'annule.
+  - **Diffusion** : `NowPlaying.sleep` est publié à chaque changement de minuterie.
+  - **`artist_latest_release`** :
+    - il prend la sortie la plus récente de `browse::releases(artist)`, servie depuis le cache
+      de 24 h ;
+    - il rend `None` si elle date de plus de 90 jours, ou sans plugin `browse`, ou en cas
+      d'erreur. Les erreurs sont consignées, jamais levées vers l'UI ;
+    - l'album passe par le catalogue, donc `CollectionView`.
+
+- [ ] **Step 1 : tests qui échouent**
+  ```rust
+  #[tokio::test] async fn sleep_minutes_pauses_with_fade_at_deadline()   // Minutes(1) ; horloge +60 s → PlayerCommand::Pause { fade_ms: 5000 } ; NowPlaying.sleep == None
+  #[tokio::test] async fn new_timer_replaces_old_and_off_cancels()
+  #[tokio::test] async fn end_of_track_holds_no_next_and_loads_next_paused()
+  #[tokio::test] async fn stop_cancels_the_timer()
+  #[tokio::test] async fn now_playing_carries_sleep_state()
+  #[tokio::test] async fn latest_release_within_90_days_or_none()        // 10 j → Some ; 120 j → None ; pas de browse → None
+  ```
+- [ ] **Step 2 :** → FAIL.
+- [ ] **Step 3 : implémenter**, régénérer le pont, puis `flutter analyze`. Dans
+  `bridge_test.dart`, ajouter `setSleepTimer(SleepTimer.off())`.
+- [ ] **Step 4 :** vérifications Rust, puis le test d'intégration macOS → PASS.
+- [ ] **Step 5 : commit**, `feat(core): minuterie de sommeil, dernière sortie d'un artiste`.
