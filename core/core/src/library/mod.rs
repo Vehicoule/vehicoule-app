@@ -44,6 +44,7 @@ pub enum TrackSort {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CollectionSort {
     Recent,
+    /// Counts plays of at least 30 s, the same rule as the Top 50 and Rediscover.
     Played,
     Title,
 }

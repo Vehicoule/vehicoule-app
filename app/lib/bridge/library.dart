@@ -9,7 +9,13 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 /// Albums, artists, playlists: date liked or created (newest first), latest play of one of
 /// their tracks, or folded title A→Z. (`Title`, not `Name`: Dart enums already have `.name`.)
-enum CollectionSort { recent, played, title }
+enum CollectionSort {
+  recent,
+
+  /// Counts plays of at least 30 s, the same rule as the Top 50 and Rediscover.
+  played,
+  title,
+}
 
 /// Liked or downloaded tracks: date added (newest first), or folded title / first artist A→Z.
 enum TrackSort { added, title, artist }

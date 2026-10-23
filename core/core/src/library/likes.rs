@@ -360,7 +360,8 @@ mod tests {
                     c.execute("INSERT INTO music_albums (item_id) VALUES (?1)", [a])?;
                     c.execute(
                         "INSERT INTO likes (item_id, liked_at, updated_at, device_id) VALUES (?1, ?2, ?3, ?4)",
-                        params![a, i as i64, stamp, dev],
+                        // Liked in the reverse of the play order: `Recent` would give 0, 1, ...
+                        params![a, 100 - i as i64, stamp, dev],
                     )?;
                 }
                 for i in 0..5000 {

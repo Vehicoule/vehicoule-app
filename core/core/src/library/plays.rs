@@ -532,7 +532,12 @@ pub(crate) mod tests {
         let db = Db::open_in_memory().unwrap();
         let now = now_ms();
         let recent = played_tracks(&db, "r", 30, now - DAY);
-        let old = played_tracks(&db, "o", 30, now - 100 * DAY);
+        // Two plays each: the all-time top 50 is only old tracks, so the backfill alone
+        // brings 50 more than the window's 30.
+        let old = played_tracks(&db, "o", 60, now - 100 * DAY);
+        for &t in &old {
+            play_at(&db, t, now - 101 * DAY, 60_000, None);
+        }
         let top = db.read_blocking(move |c| top_tracks(c, now)).unwrap();
         assert_eq!(top.len(), 50);
         let want: Vec<ItemId> = recent
