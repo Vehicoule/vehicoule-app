@@ -7,15 +7,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use plugin_host::{
-    CallError, FeedEntry, FeedError, Host, HostConfig, HostEvent, Limits, LogLevel, Manifest,
-    NetPolicy, Plugin, fingerprint, parse_manifest, sha256_matches, verify_feed,
+    CallError, FeedEntry, FeedError, Host, HostConfig, HostEvent, Limits, LoadError, LogLevel,
+    Manifest, NetPolicy, Plugin, fingerprint, parse_manifest, sha256_matches, verify_feed,
 };
 use reqwest::Url;
 
 use crate::app::AppConfig;
 use crate::error::CoreError;
 use crate::keys::{OFFICIAL_FEED_URL, OFFICIAL_KEYS};
-use crate::library::Db;
+use crate::library::{Db, DbError};
 use crate::library::plugins::{self as rows, FeedRow, PluginRow};
 use crate::logs;
 use crate::router::cap_name;
@@ -26,6 +26,47 @@ const MAX_FEED_BYTES: usize = 1 << 20;
 const FEED_REQUEST_CAP: Duration = Duration::from_secs(if cfg!(test) { 2 } else { 600 });
 const MAX_MANIFEST_BYTES: usize = 64 << 10;
 const MAX_WASM_BYTES: usize = 32 << 20;
+
+/// Why a feed or one of its plugins was not applied. Logged (its `Display` is the log text),
+/// never returned to the app as is: `From<PluginError> for CoreError` is that boundary.
+#[derive(Debug)]
+pub(crate) enum PluginError {
+    /// A download failed, or its URL is unusable.
+    Fetch(CoreError),
+    /// `verify_feed` refused the feed.
+    Feed(FeedError),
+    /// The host refused the plugin.
+    Load(LoadError),
+    Db(DbError),
+    /// The feed's own content: a sha256 or id mismatch, a bad manifest or entry URL.
+    Invalid(String),
+    /// The file system, or a blocking task that did not finish.
+    Internal(String),
+}
+
+impl std::fmt::Display for PluginError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PluginError::Fetch(e) => write!(f, "{e:?}"),
+            PluginError::Feed(e) => write!(f, "{e:?}"),
+            PluginError::Load(e) => write!(f, "{e:?}"),
+            PluginError::Db(e) => write!(f, "{e}"),
+            PluginError::Invalid(s) | PluginError::Internal(s) => f.write_str(s),
+        }
+    }
+}
+
+impl From<PluginError> for CoreError {
+    fn from(e: PluginError) -> Self {
+        match e {
+            PluginError::Fetch(e) => e,
+            PluginError::Feed(_) | PluginError::Invalid(_) => CoreError::InvalidFeed,
+            PluginError::Load(e) => CoreError::Internal(format!("{e:?}")),
+            PluginError::Db(e) => e.into(),
+            PluginError::Internal(s) => CoreError::Internal(s),
+        }
+    }
+}
 
 pub(crate) struct Plugins {
     /// Shared with `spawn_blocking` for the synchronous compilation in `Host::load`.
@@ -154,16 +195,17 @@ impl Plugins {
             let (host, path) = (self.host.clone(), self.wasm_path(&row.id, &row.wasm_sha256));
             let (manifest, sha) = (row.manifest, row.wasm_sha256);
             let plugin = blocking(move || {
-                let wasm = std::fs::read(&path).map_err(|e| e.to_string())?;
+                let wasm =
+                    std::fs::read(&path).map_err(|e| PluginError::Internal(e.to_string()))?;
                 if !sha256_matches(&wasm, &sha) {
-                    return Err("installed wasm sha256 mismatch".into());
+                    return Err(PluginError::Invalid("installed wasm sha256 mismatch".into()));
                 }
-                host.load(&manifest, &wasm).map_err(|e| format!("{e:?}"))
+                host.load(&manifest, &wasm).map_err(PluginError::Load)
             })
             .await;
             match plugin {
                 Ok(p) => loaded.push(p),
-                Err(e) => logs::push("error", &row.id, &e),
+                Err(e) => logs::push("error", &row.id, &e.to_string()),
             }
         }
         *self.loaded.write().unwrap_or_else(PoisonError::into_inner) = loaded;
@@ -184,7 +226,7 @@ impl Plugins {
             };
             let applied = match bytes {
                 Ok(bytes) => self.apply_feed(db, feed, bytes).await,
-                Err(e) => Err(format!("{e:?}")),
+                Err(e) => Err(PluginError::Fetch(e)),
             };
             match applied {
                 Ok(ids) => installed.extend(ids),
@@ -201,10 +243,10 @@ impl Plugins {
         db: &Db,
         mut row: FeedRow,
         bytes: Vec<u8>,
-    ) -> Result<Vec<String>, String> {
+    ) -> Result<Vec<String>, PluginError> {
         let feed = verify_feed(&bytes, &row.public_keys, row.last_sequence)
-            .map_err(|e| format!("{e:?}"))?;
-        let base = parse_url(&row.url).map_err(|e| format!("{e:?}"))?;
+            .map_err(PluginError::Feed)?;
+        let base = parse_url(&row.url).map_err(PluginError::Fetch)?;
         let official = row.official;
         row.name = sanitize(&feed.name);
         row.last_sequence = Some(feed.sequence);
@@ -213,9 +255,9 @@ impl Plugins {
         let feed_url = row.url.clone();
         db.write(move |tx| rows::put_feed(tx, &row))
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(PluginError::Db)?;
 
-        let installed = db.read(rows::plugins).await.map_err(|e| e.to_string())?;
+        let installed = db.read(rows::plugins).await.map_err(PluginError::Db)?;
         let mut ids = Vec::new();
         for entry in feed.plugins.iter().filter(|e| e.contract.starts_with("1.")) {
             let current = installed.iter().find(|r| r.id == entry.id);
@@ -245,7 +287,7 @@ impl Plugins {
             }
             match self.install(db, &base, &feed_url, entry, current).await {
                 Ok(()) => ids.push(entry.id.clone()),
-                Err(e) => logs::push("error", &entry.id, &e),
+                Err(e) => logs::push("error", &entry.id, &e.to_string()),
             }
         }
 
@@ -271,13 +313,13 @@ impl Plugins {
         feed_url: &str,
         entry: &FeedEntry,
         old: Option<&PluginRow>,
-    ) -> Result<(), String> {
+    ) -> Result<(), PluginError> {
         let (manifest, _, wasm) = self.fetch_entry(base, entry).await?;
         let path = self.wasm_path(&entry.id, &entry.wasm_sha256);
         let (host, m) = (self.host.clone(), manifest.clone());
         let plugin = blocking(move || {
-            let plugin = host.load(&m, &wasm).map_err(|e| format!("{e:?}"))?;
-            write_atomic(&path, &wasm).map_err(|e| e.to_string())?;
+            let plugin = host.load(&m, &wasm).map_err(PluginError::Load)?;
+            write_atomic(&path, &wasm).map_err(|e| PluginError::Internal(e.to_string()))?;
             Ok(plugin)
         })
         .await?;
@@ -291,7 +333,7 @@ impl Plugins {
         };
         db.write(move |tx| rows::put_plugin(tx, &row))
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(PluginError::Db)?;
         self.set_loaded(&entry.id, Some(plugin));
         if let Some(old) = old {
             let old_path = self.wasm_path(&old.id, &old.wasm_sha256);
@@ -308,26 +350,26 @@ impl Plugins {
         &self,
         base: &Url,
         entry: &FeedEntry,
-    ) -> Result<(Vec<u8>, Manifest, Vec<u8>), String> {
-        let join = |u: &str| base.join(u).map_err(|e| e.to_string());
-        let fetched = |e: CoreError| format!("{e:?}");
+    ) -> Result<(Vec<u8>, Manifest, Vec<u8>), PluginError> {
+        let join = |u: &str| base.join(u).map_err(|e| PluginError::Invalid(e.to_string()));
         let manifest = self
             .get(&join(&entry.manifest_url)?, MAX_MANIFEST_BYTES)
             .await
-            .map_err(fetched)?;
+            .map_err(PluginError::Fetch)?;
         if !sha256_matches(&manifest, &entry.manifest_sha256) {
-            return Err("manifest sha256 mismatch".into());
+            return Err(PluginError::Invalid("manifest sha256 mismatch".into()));
         }
-        let parsed = parse_manifest(&manifest)?;
+        let parsed = parse_manifest(&manifest).map_err(PluginError::Invalid)?;
         if parsed.id != entry.id {
-            return Err(format!("manifest id {:?} is not the feed's", parsed.id));
+            let id = &parsed.id;
+            return Err(PluginError::Invalid(format!("manifest id {id:?} is not the feed's")));
         }
         let wasm = self
             .get(&join(&entry.wasm_url)?, MAX_WASM_BYTES)
             .await
-            .map_err(fetched)?;
+            .map_err(PluginError::Fetch)?;
         if !sha256_matches(&wasm, &entry.wasm_sha256) {
-            return Err("wasm sha256 mismatch".into());
+            return Err(PluginError::Invalid("wasm sha256 mismatch".into()));
         }
         Ok((manifest, parsed, wasm))
     }
@@ -347,7 +389,7 @@ impl Plugins {
         for entry in feed.plugins.iter().filter(|e| e.contract.starts_with("1.")) {
             match self.preview_entry(&base, entry).await {
                 Ok(p) => plugins.push(p),
-                Err(e) => logs::push("error", &entry.id, &e),
+                Err(e) => logs::push("error", &entry.id, &e.to_string()),
             }
         }
         Ok(FeedPreview {
@@ -357,11 +399,14 @@ impl Plugins {
         })
     }
 
-    async fn preview_entry(&self, base: &Url, entry: &FeedEntry) -> Result<PluginPreview, String> {
+    async fn preview_entry(
+        &self,
+        base: &Url,
+        entry: &FeedEntry,
+    ) -> Result<PluginPreview, PluginError> {
         let (manifest, parsed, wasm) = self.fetch_entry(base, entry).await?;
         let host = self.host.clone();
-        let plugin =
-            blocking(move || host.load(&manifest, &wasm).map_err(|e| format!("{e:?}"))).await?;
+        let plugin = blocking(move || host.load(&manifest, &wasm).map_err(PluginError::Load)).await?;
         Ok(PluginPreview {
             id: entry.id.clone(),
             version: entry.version.clone(),
@@ -617,11 +662,11 @@ pub(crate) fn now_ms() -> i64 {
 }
 
 async fn blocking<R: Send + 'static>(
-    f: impl FnOnce() -> Result<R, String> + Send + 'static,
-) -> Result<R, String> {
+    f: impl FnOnce() -> Result<R, PluginError> + Send + 'static,
+) -> Result<R, PluginError> {
     tokio::task::spawn_blocking(f)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| PluginError::Internal(e.to_string()))?
 }
 
 /// Whole file or nothing: written next to `path`, synced, then renamed over it.

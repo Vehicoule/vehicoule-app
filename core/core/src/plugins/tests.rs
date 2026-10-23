@@ -543,3 +543,50 @@ async fn a_request_that_drags_on_is_cut_at_the_cap() {
     assert_eq!(got, Err(CoreError::Network));
     assert!(started.elapsed() < Duration::from_secs(6));
 }
+
+/// What a logged failure would be if it reached the app, and the log text it keeps.
+#[test]
+fn plugin_errors_map_to_core_errors() {
+    use plugin_host::{FeedError, LoadError};
+
+    use crate::library::DbError;
+
+    let cases = [
+        (PluginError::Fetch(CoreError::Network), CoreError::Network, "Network"),
+        (PluginError::Fetch(CoreError::NotFound), CoreError::NotFound, "NotFound"),
+        (
+            PluginError::Feed(FeedError::Rollback { seen: 3, got: 2 }),
+            CoreError::InvalidFeed,
+            "Rollback { seen: 3, got: 2 }",
+        ),
+        (
+            PluginError::Invalid("wasm sha256 mismatch".into()),
+            CoreError::InvalidFeed,
+            "wasm sha256 mismatch",
+        ),
+        (
+            PluginError::Load(LoadError::Compile("bad".into())),
+            CoreError::Internal("Compile(\"bad\")".into()),
+            "Compile(\"bad\")",
+        ),
+        (
+            PluginError::Db(DbError::Invalid("x".into())),
+            CoreError::NotFound,
+            "invalid argument: x",
+        ),
+        (
+            PluginError::Db(DbError::Sqlite("busy".into())),
+            CoreError::Internal("sqlite error: busy".into()),
+            "sqlite error: busy",
+        ),
+        (
+            PluginError::Internal("disk full".into()),
+            CoreError::Internal("disk full".into()),
+            "disk full",
+        ),
+    ];
+    for (e, core, logged) in cases {
+        assert_eq!(e.to_string(), logged);
+        assert_eq!(CoreError::from(e), core, "{logged}");
+    }
+}
