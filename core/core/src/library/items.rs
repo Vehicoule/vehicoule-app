@@ -64,7 +64,7 @@ pub fn merge(tx: &Tx, a: ItemId, b: ItemId) -> rusqlite::Result<ItemId> {
 /// instead of replacing another item's row.
 pub(crate) fn fts_rowid(id: ItemId) -> i64 {
     let b = id.0.as_bytes();
-    i64::from_be_bytes(b[8..].try_into().unwrap())
+    i64::from_be_bytes(b[8..].try_into().expect("a UUID is 16 bytes"))
 }
 
 /// A semantic error (bad argument for the store), as a `rusqlite::Error`; `Db` surfaces it as

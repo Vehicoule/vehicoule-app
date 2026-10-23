@@ -12,3 +12,6 @@ tokio = { version = "1", features = ["fs", "rt", "io-util"] }
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
 wiremock = "0.6"
+
+[lints]
+workspace = true

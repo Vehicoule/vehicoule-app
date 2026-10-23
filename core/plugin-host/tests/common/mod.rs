@@ -1,5 +1,6 @@
 //! Shared by the integration tests: test components, manifests, a host that records events.
-#![allow(dead_code)]
+// Helpers, not `#[test]` fns: clippy's `allow-unwrap-in-tests` does not reach them.
+#![allow(dead_code, clippy::unwrap_used)]
 
 use std::path::PathBuf;
 use std::process::Command;

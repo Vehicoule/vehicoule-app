@@ -136,7 +136,7 @@ pub fn sign_feed(feed: &Feed, key: &SigningKey) -> Vec<u8> {
 /// First 16 bytes of the sha256 of the public key, hex, grouped in 4 characters: "ab12 cd34 …".
 pub fn fingerprint(public_key: &[u8; 32]) -> String {
     let digest = Sha256::digest(public_key);
-    to_hex(&digest[..16]).as_bytes().chunks(4).map(|c| std::str::from_utf8(c).unwrap()).collect::<Vec<_>>().join(" ")
+    to_hex(&digest[..16]).as_bytes().chunks(4).map(|c| std::str::from_utf8(c).expect("hex is ASCII")).collect::<Vec<_>>().join(" ")
 }
 
 /// Case-insensitive sha256 check.

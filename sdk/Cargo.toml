@@ -16,3 +16,12 @@ wit-bindgen = "0.63"
 
 # Standalone: not part of the `core/` workspace.
 [workspace]
+
+# Google's Rust style guide, as clippy applies it: the same set as `core/Cargo.toml`. The
+# wit-bindgen output opts out with an `#[allow]` on its module.
+[lints.clippy]
+unwrap_used = "warn"
+undocumented_unsafe_blocks = "warn"
+wildcard_imports = "warn"
+redundant_clone = "warn"
+implicit_clone = "warn"

@@ -228,7 +228,7 @@ mod tests {
         .unwrap();
         assert_eq!(db.read_blocking(feeds).unwrap(), vec![a.clone(), b.clone()]);
         // Re-putting a feed that has plugins updates it in place.
-        let mut a3 = a.clone();
+        let mut a3 = a;
         a3.last_sequence = Some(8);
         let a4 = a3.clone();
         db.write_blocking(move |tx| put_feed(tx, &a4)).unwrap();

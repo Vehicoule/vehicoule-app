@@ -653,7 +653,7 @@ mod tests {
             QueueState {
                 shuffle: false,
                 order: vec![1, 0, 2, 3],
-                ..q.clone()
+                ..q
             },
         ];
         for b in broken {

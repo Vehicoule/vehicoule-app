@@ -19,6 +19,19 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
 
+# Google's Rust style guide, as clippy applies it. Generated code (`frb_generated`, bindgen
+# output) opts out with an `#[allow]` on its module, never by weakening these.
+[workspace.lints.clippy]
+unwrap_used = "warn"
+undocumented_unsafe_blocks = "warn"
+wildcard_imports = "warn"
+redundant_clone = "warn"
+implicit_clone = "warn"
+
+[workspace.lints.rust]
+# frb's own cfg, set when it expands the bridge (vehicoule-core).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
 # panic = "unwind": flutter_rust_bridge turns a panic into a Dart exception (vehicoule-core
 # refuses to build otherwise). Measured +6.46 MiB for Wasmtime in this profile.
 [profile.release]

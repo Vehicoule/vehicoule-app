@@ -57,28 +57,28 @@ pub struct MemoryStorage {
 #[cfg(any(test, feature = "test-util"))]
 impl Storage for MemoryStorage {
     fn kv_get(&self, plugin: &str, key: &str) -> Option<Vec<u8>> {
-        self.kv.lock().unwrap().get(&(plugin.into(), key.into())).cloned()
+        self.kv.lock().expect("kv poisoned: a thread panicked while holding it").get(&(plugin.into(), key.into())).cloned()
     }
 
     fn kv_set(&self, plugin: &str, key: &str, value: &[u8]) {
-        self.kv.lock().unwrap().insert((plugin.into(), key.into()), value.to_vec());
+        self.kv.lock().expect("kv poisoned: a thread panicked while holding it").insert((plugin.into(), key.into()), value.to_vec());
     }
 
     fn kv_delete(&self, plugin: &str, key: &str) {
-        self.kv.lock().unwrap().remove(&(plugin.into(), key.into()));
+        self.kv.lock().expect("kv poisoned: a thread panicked while holding it").remove(&(plugin.into(), key.into()));
     }
 
     fn kv_usage(&self, plugin: &str) -> u64 {
-        let kv = self.kv.lock().unwrap();
+        let kv = self.kv.lock().expect("kv poisoned: a thread panicked while holding it");
         kv.iter().filter(|((p, _), _)| p == plugin).map(|((_, k), v)| (k.len() + v.len()) as u64).sum()
     }
 
     fn cache_get(&self, key: &[u8; 32]) -> Option<CachedResponse> {
-        self.cache.lock().unwrap().get(key).cloned()
+        self.cache.lock().expect("cache poisoned: a thread panicked while holding it").get(key).cloned()
     }
 
     fn cache_put(&self, key: &[u8; 32], entry: &CachedResponse) {
-        self.cache.lock().unwrap().insert(*key, entry.clone());
+        self.cache.lock().expect("cache poisoned: a thread panicked while holding it").insert(*key, entry.clone());
     }
 }
 

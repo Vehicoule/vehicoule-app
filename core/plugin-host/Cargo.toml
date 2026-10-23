@@ -29,3 +29,6 @@ test-util = []
 plugin-host = { path = ".", features = ["test-util"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "test-util"] }
 wiremock = "0.6"
+
+[lints]
+workspace = true

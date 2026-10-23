@@ -140,7 +140,7 @@ fn valid_utf8_prefix(buf: &[u8]) -> &str {
         Ok(s) => s,
         // `valid_up_to()` is exactly the length of the valid prefix `from_utf8` found, so this
         // always succeeds; a rare error path, not worth an `unsafe` skip of the recheck.
-        Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).unwrap(),
+        Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).expect("valid_up_to ends a valid prefix"),
     }
 }
 
@@ -169,7 +169,7 @@ impl LogStream {
         if self.log.exhausted() {
             return;
         }
-        let mut partial = self.partial.lock().unwrap();
+        let mut partial = self.partial.lock().expect("log line poisoned: a thread panicked while holding it");
         for &b in bytes {
             if b == b'\n' {
                 if partial.last() == Some(&b'\r') {
@@ -189,7 +189,7 @@ impl LogStream {
 
     /// Flushes a trailing partial line (no final `\n`) once the call's instance has run.
     fn flush_partial(&self) {
-        let mut partial = self.partial.lock().unwrap();
+        let mut partial = self.partial.lock().expect("log line poisoned: a thread panicked while holding it");
         if !partial.is_empty() {
             self.log.emit(self.level, valid_utf8_prefix(&partial));
             partial.clear();
@@ -486,7 +486,7 @@ impl Host {
                 // A guest that caught `budget-exceeded` itself and returned `Ok` took the
                 // branch above and keeps that `Ok`; only an `Err` reaching here while the
                 // budget was hit is turned into the typed `BudgetExceeded(Http)`.
-                Ok(Ok(Err(_))) if store.data().http_budget.lock().unwrap().hit => {
+                Ok(Ok(Err(_))) if store.data().http_budget.lock().expect("http budget poisoned: a thread panicked while holding it").hit => {
                     Err(CallError::BudgetExceeded(Budget::Http))
                 }
                 Ok(Ok(Err(e))) => Err(e.into()),
@@ -508,7 +508,7 @@ impl Host {
             plugin: p.id().into(),
             capability,
             fuel_used: limits.fuel.saturating_sub(store.get_fuel().unwrap_or(limits.fuel)),
-            http_calls: store.data().http_budget.lock().unwrap().calls,
+            http_calls: store.data().http_budget.lock().expect("http budget poisoned: a thread panicked while holding it").calls,
             wall_ms: start.elapsed().as_millis() as u64,
             outcome: outcome.as_ref().map(|_| ()).map_err(Clone::clone),
         };

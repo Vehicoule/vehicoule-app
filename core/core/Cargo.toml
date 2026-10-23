@@ -40,5 +40,5 @@ wiremock = "0.6"
 ed25519-dalek = "3"
 sentry = { version = "0.49", default-features = false, features = ["test"] }
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+[lints]
+workspace = true

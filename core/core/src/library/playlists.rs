@@ -368,7 +368,7 @@ mod tests {
             let e = add(tx, pl, &[t[0], t[1]], Place::End)?;
             // Two devices picked the same key: the id breaks the tie, the same way every time.
             c.execute("UPDATE playlist_items SET order_key = 'V'", [])?;
-            let mut by_id = e.clone();
+            let mut by_id = e;
             by_id.sort_by_key(|x| x.0);
             let read = || -> rusqlite::Result<Vec<EntryId>> {
                 Ok(entries(c, pl, all())?.into_iter().map(|x| x.0).collect())

@@ -1,3 +1,6 @@
+// Helpers, not `#[test]` fns: clippy's `allow-unwrap-in-tests` does not reach them.
+#![allow(clippy::unwrap_used)]
+
 mod common;
 
 use common::{TestHost, api, guest, manifest, query, temp_dir};

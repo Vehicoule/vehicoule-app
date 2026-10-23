@@ -41,7 +41,7 @@ impl RateLimiter {
     pub async fn acquire(&self, deadline: Instant) -> Result<(), ()> {
         loop {
             let wait_until = {
-                let mut log = self.log.lock().unwrap();
+                let mut log = self.log.lock().expect("rate log poisoned: a thread panicked while holding it");
                 let now = Instant::now();
                 while log.front().is_some_and(|&t| now.duration_since(t) >= self.window) {
                     log.pop_front();

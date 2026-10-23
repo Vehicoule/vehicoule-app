@@ -422,11 +422,11 @@ async fn fetch_uncached(
     let mut redirects = 0;
     loop {
         policy.check(allow, &url).map_err(HttpError::Denied)?;
-        budget.lock().unwrap().reserve_request(body.as_ref().map_or(0, Vec::len))?;
+        budget.lock().expect("http budget poisoned: a thread panicked while holding it").reserve_request(body.as_ref().map_or(0, Vec::len))?;
         if let Some((rate_limiter, deadline)) = rate_limiter
             && rate_limiter.acquire(deadline).await.is_err()
         {
-            budget.lock().unwrap().hit = true;
+            budget.lock().expect("http budget poisoned: a thread panicked while holding it").hit = true;
             return Err(HttpError::BudgetExceeded);
         }
         let hop = send(policy, method, &url, &headers, body.clone()).await?;
@@ -518,7 +518,7 @@ async fn read(hop: Hop, url: Url, max: usize, budget: &Mutex<HttpBudget>) -> Res
             while let Some(chunk) = resp.chunk().await.map_err(net_error)? {
                 // Charged before the size check: the chunk that trips `TooLarge` was still
                 // received over the wire and must count, even though it's then discarded.
-                budget.lock().unwrap().add_response_bytes(chunk.len())?;
+                budget.lock().expect("http budget poisoned: a thread panicked while holding it").add_response_bytes(chunk.len())?;
                 if body.len() + chunk.len() > max {
                     return Err(HttpError::TooLarge);
                 }
@@ -530,7 +530,7 @@ async fn read(hop: Hop, url: Url, max: usize, budget: &Mutex<HttpBudget>) -> Res
         Body::Recorded(body) if body.len() > max => return Err(HttpError::TooLarge),
         #[cfg(any(test, feature = "test-util"))]
         Body::Recorded(body) => {
-            budget.lock().unwrap().add_response_bytes(body.len())?;
+            budget.lock().expect("http budget poisoned: a thread panicked while holding it").add_response_bytes(body.len())?;
             body
         }
     };
