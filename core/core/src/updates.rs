@@ -148,12 +148,22 @@ async fn check_at(
 /// first frame, then by `App`'s timer; a newer version is also sent as a `Notice`. `force`
 /// (the manual check in settings) skips the 24 h wait, and offline is an error.
 pub(crate) async fn check(force: bool) -> Result<Option<UpdateInfo>, CoreError> {
-    due_check(UPDATES_URL, app().is_online(), force).await
+    let when = if force { When::Now } else { When::Due };
+    due_check(UPDATES_URL, app().is_online(), when).await
 }
 
-async fn due_check(url: &str, online: bool, force: bool) -> Result<Option<UpdateInfo>, CoreError> {
+/// Whether a check waits out the 24 h since the last one.
+#[derive(Clone, Copy, PartialEq)]
+enum When {
+    /// At most once per 24 h; offline, nothing happens.
+    Due,
+    /// The manual check: right away, and offline is an error.
+    Now,
+}
+
+async fn due_check(url: &str, online: bool, when: When) -> Result<Option<UpdateInfo>, CoreError> {
     if !online {
-        return if force {
+        return if when == When::Now {
             Err(CoreError::Offline)
         } else {
             Ok(None)
@@ -163,7 +173,7 @@ async fn due_check(url: &str, online: bool, force: bool) -> Result<Option<Update
     let last = app.db.read(|c| settings::device_get(c, CHECKED_AT)).await?;
     let last = last.and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
     let now = crate::plugins::now_ms();
-    if !force && (now - last).abs() < CHECK_EVERY_MS {
+    if when == When::Due && (now - last).abs() < CHECK_EVERY_MS {
         return Ok(None);
     }
     let info = check_at(url, &app.cfg.app_version, app.cfg.platform).await?;
@@ -459,10 +469,10 @@ mod tests {
 
         // Offline: nothing is asked.
         stamp(0).await.unwrap();
-        assert_eq!(due_check(&url, false, false).await, Ok(None));
+        assert_eq!(due_check(&url, false, When::Due).await, Ok(None));
         // Checked an hour ago: nothing is asked.
         stamp(now - 3_600_000).await.unwrap();
-        assert_eq!(due_check(&url, true, false).await, Ok(None));
+        assert_eq!(due_check(&url, true, When::Due).await, Ok(None));
         assert_eq!(calls().await, 0);
 
         // A failed check stores nothing, so the next one asks again.
@@ -473,14 +483,14 @@ mod tests {
             .up_to_n_times(1)
             .mount(&server)
             .await;
-        assert_eq!(due_check(&url, true, false).await, Err(CoreError::Network));
+        assert_eq!(due_check(&url, true, When::Due).await, Err(CoreError::Network));
         assert_eq!(stored().await, day_ago);
 
         Mock::given(method("GET"))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture("https://dl.test")))
             .mount(&server)
             .await;
-        let info = due_check(&url, true, false).await.unwrap().unwrap();
+        let info = due_check(&url, true, When::Due).await.unwrap().unwrap();
         assert_eq!(info.version, "0.2.0");
         assert!(stored().await >= now);
         // The notice carries everything the update sheet shows.
@@ -490,16 +500,16 @@ mod tests {
         );
         assert_eq!(calls().await, 2);
         // And not again for a day.
-        assert_eq!(due_check(&url, true, false).await, Ok(None));
+        assert_eq!(due_check(&url, true, When::Due).await, Ok(None));
         assert_eq!(calls().await, 2);
 
         // The manual check (settings) asks anyway, and records when.
         stamp(now).await.unwrap();
-        assert_eq!(due_check(&url, true, true).await, Ok(Some(info.clone())));
+        assert_eq!(due_check(&url, true, When::Now).await, Ok(Some(info.clone())));
         assert_eq!(calls().await, 3);
         assert!(stored().await > now);
         assert_eq!(notices.recv().await.unwrap(), Notice::UpdateAvailable(info));
         // Offline, it says so.
-        assert_eq!(due_check(&url, false, true).await, Err(CoreError::Offline));
+        assert_eq!(due_check(&url, false, When::Now).await, Err(CoreError::Offline));
     }
 }

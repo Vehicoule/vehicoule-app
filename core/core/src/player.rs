@@ -28,7 +28,7 @@ use crate::library::downloads::{self, DownloadState};
 use crate::library::refs::{self, ExtRef};
 use crate::library::{ItemId, Kind, Page, plays, queue as saved, settings};
 use crate::logs;
-use crate::queue::{EntryId, PlayContext, QueueState, Repeat};
+use crate::queue::{EntryId, PlayContext, QueueState, Repeat, RepeatOne};
 use crate::router;
 
 /// Ahead of the end of the current track, the next one is resolved and handed to the player.
@@ -338,7 +338,7 @@ async fn call_resolve(
     let (track, refs) = track_and_refs(item).await?;
     let quality = match quality {
         Some(q) => q,
-        None => match setting("quality", false).await.as_deref() {
+        None => match setting("quality", Scope::Device).await.as_deref() {
             Some("low") => Quality::Low,
             Some("high") => Quality::High,
             _ => Quality::Normal,
@@ -388,13 +388,22 @@ async fn source_for(item: ItemId) -> Result<Resolution, CoreError> {
     resolve(item, &[]).await
 }
 
+/// Where a setting lives.
+#[derive(Clone, Copy)]
+enum Scope {
+    /// This device only.
+    Device,
+    /// Synced across the user's devices.
+    Shared,
+}
+
 /// `quality`, `normalize_volume` on this device; `radio` shared. A read error counts as unset.
-async fn setting(key: &'static str, shared: bool) -> Option<String> {
+async fn setting(key: &'static str, scope: Scope) -> Option<String> {
     let v = app()
         .db
-        .read(move |c| match shared {
-            true => settings::shared_get(c, key),
-            false => settings::device_get(c, key),
+        .read(move |c| match scope {
+            Scope::Shared => settings::shared_get(c, key),
+            Scope::Device => settings::device_get(c, key),
         })
         .await;
     v.unwrap_or_else(|e| {
@@ -404,13 +413,13 @@ async fn setting(key: &'static str, shared: bool) -> Option<String> {
 }
 
 /// On unless set to `false`.
-async fn enabled(key: &'static str, shared: bool) -> bool {
-    setting(key, shared).await.as_deref() != Some("false")
+async fn enabled(key: &'static str, scope: Scope) -> bool {
+    setting(key, scope).await.as_deref() != Some("false")
 }
 
 async fn gain_for(res: &Resolution) -> f32 {
     match res.loudness_db.filter(|l| l.is_finite()) {
-        Some(l) if enabled("normalize_volume", false).await => gain_db(l),
+        Some(l) if enabled("normalize_volume", Scope::Device).await => gain_db(l),
         _ => 0.0,
     }
 }
@@ -470,10 +479,11 @@ fn entry_id(s: &str) -> Result<EntryId, CoreError> {
 }
 
 /// What plays after the current entry, in order: `Repeat::All` wraps around (ending on the
-/// current one); with `honor_one`, `Repeat::One` repeats the current one. Its head is `next()`.
-fn following(q: &QueueState, honor_one: bool) -> Vec<EntryId> {
+/// current one); with `RepeatOne::Honor`, `Repeat::One` repeats the current one. Its head is
+/// `next()`.
+fn following(q: &QueueState, one: RepeatOne) -> Vec<EntryId> {
     let n = q.order.len();
-    let positions: Vec<usize> = if honor_one && q.repeat == Repeat::One && q.index < n {
+    let positions: Vec<usize> = if one == RepeatOne::Honor && q.repeat == Repeat::One && q.index < n {
         vec![q.index]
     } else {
         let mut v: Vec<usize> = (q.index + 1..n).collect();
@@ -685,7 +695,7 @@ impl Player {
                 let _ = r.send(());
             }
             Msg::SkipNext(r) => {
-                let entries = self.following_or_radio(false).await;
+                let entries = self.following_or_radio(RepeatOne::Ignore).await;
                 let _ = self.start(entries, 0, true).await;
                 let _ = r.send(());
             }
@@ -774,7 +784,7 @@ impl Player {
         self.candidates
             .retain(|item, _| q.entries.iter().any(|e| e.item == item.to_string()));
         let mut entries: Vec<EntryId> = self.current_entry().into_iter().collect();
-        entries.extend(following(&self.q, false));
+        entries.extend(following(&self.q, RepeatOne::Ignore));
         self.start(entries, 0, true).await
     }
 
@@ -917,9 +927,9 @@ impl Player {
     }
 
     /// `following`, extended by a radio when it is empty (radio on, online).
-    async fn following_or_radio(&mut self, honor_one: bool) -> Vec<EntryId> {
-        let next = following(&self.q, honor_one);
-        if !next.is_empty() || !app().is_online() || !enabled("radio", true).await {
+    async fn following_or_radio(&mut self, one: RepeatOne) -> Vec<EntryId> {
+        let next = following(&self.q, one);
+        if !next.is_empty() || !app().is_online() || !enabled("radio", Scope::Shared).await {
             return next;
         }
         let Some(seed) = self.q.current().and_then(|e| parse_id(&e.item).ok()) else {
@@ -928,7 +938,7 @@ impl Player {
         match radio(seed).await {
             Ok(items) => {
                 self.q.append_radio(items);
-                following(&self.q, honor_one)
+                following(&self.q, one)
             }
             Err(e) => {
                 logs::push("warn", "player", &format!("radio: {e:?}"));
@@ -944,7 +954,7 @@ impl Player {
         self.preloaded = true;
         self.next = None;
         let held = self.held;
-        let mut entries = self.following_or_radio(true).await;
+        let mut entries = self.following_or_radio(RepeatOne::Honor).await;
         entries.retain(|e| !self.given_up.contains(e));
         self.preload_for = self.q.next().map(|e| e.id);
         match self.first_playable(entries).await {
@@ -1168,7 +1178,7 @@ impl Player {
         if self.next.is_some() {
             return; // The player goes on with it.
         }
-        let entries = self.following_or_radio(true).await;
+        let entries = self.following_or_radio(RepeatOne::Honor).await;
         let _ = self.start(entries, 0, true).await;
     }
 
@@ -1214,7 +1224,7 @@ impl Player {
             let _ = app().events.notices.send(Notice::Error(reason));
             return;
         }
-        let entries = self.following_or_radio(false).await;
+        let entries = self.following_or_radio(RepeatOne::Ignore).await;
         let _ = self.start(entries, 0, true).await;
     }
 
@@ -1335,7 +1345,7 @@ impl Player {
                 }
                 self.failed_in_row = 0;
                 let mut entries = vec![id];
-                entries.extend(following(&self.q, false));
+                entries.extend(following(&self.q, RepeatOne::Ignore));
                 let _ = self.start(entries, 0, true).await;
                 return Ok(());
             }
@@ -1347,7 +1357,7 @@ impl Player {
             // now (only if something was playing), else stop.
             let autoplay = self.playing;
             let mut entries: Vec<EntryId> = now.into_iter().collect();
-            entries.extend(following(&self.q, false));
+            entries.extend(following(&self.q, RepeatOne::Ignore));
             let _ = self.start(entries, 0, autoplay).await;
             return Ok(());
         }
@@ -1438,7 +1448,7 @@ impl Player {
         let (position, current) = (q.position_ms, q.current().map(|e| e.id));
         self.q = q;
         let mut entries: Vec<EntryId> = current.into_iter().collect();
-        entries.extend(following(&self.q, false));
+        entries.extend(following(&self.q, RepeatOne::Ignore));
         let _ = self.start(entries, position, true).await;
         if self.current.is_some() && self.current_entry() == current {
             self.resume = current; // its `TrackStarted` keeps the position

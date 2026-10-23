@@ -23,6 +23,15 @@ pub struct QueueEntry {
     pub from_radio: bool,
 }
 
+/// How a step to the next entry treats `Repeat::One`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum RepeatOne {
+    /// End of track: the current entry plays again.
+    Honor,
+    /// Next button: as with `Repeat::Off`.
+    Ignore,
+}
+
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub enum Repeat {
     Off,
@@ -85,17 +94,17 @@ impl QueueState {
 
     /// What `advance` will play: a pure function of the state.
     pub fn next(&self) -> Option<&QueueEntry> {
-        self.next_pos(true).map(|p| &self.entries[self.order[p]])
+        self.next_pos(RepeatOne::Honor).map(|p| &self.entries[self.order[p]])
     }
 
     /// End of track. At the end with `Repeat::Off`, returns `None` and the last entry stays current.
     pub fn advance(&mut self) -> Option<&QueueEntry> {
-        self.go(self.next_pos(true))
+        self.go(self.next_pos(RepeatOne::Honor))
     }
 
     /// Next button: `Repeat::One` behaves like `Repeat::Off`.
     pub fn skip_next(&mut self) -> Option<&QueueEntry> {
-        self.go(self.next_pos(false))
+        self.go(self.next_pos(RepeatOne::Ignore))
     }
 
     /// More than 3 s played, or first entry: restarts the current one. Nothing current: the
@@ -232,9 +241,9 @@ impl QueueState {
         rest.iter().map(|&i| &self.entries[i]).collect()
     }
 
-    fn next_pos(&self, honor_one: bool) -> Option<usize> {
+    fn next_pos(&self, one: RepeatOne) -> Option<usize> {
         let n = self.order.len();
-        if honor_one && self.repeat == Repeat::One && self.index < n {
+        if one == RepeatOne::Honor && self.repeat == Repeat::One && self.index < n {
             Some(self.index)
         } else if self.index + 1 < n {
             Some(self.index + 1)
