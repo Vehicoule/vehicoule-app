@@ -10,8 +10,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use super::catalog::index;
 use super::items::{canonical, fts_rowid, invalid};
-use super::plays::collection_order;
-use super::{CollectionSort, ItemId, Kind, Page, Tx, is_valid_key, key_between};
+use super::{CollectionSort, ItemId, Kind, Page, Tx, collection_order, is_valid_key, key_between};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EntryId(pub uuid::Uuid);
@@ -228,11 +227,11 @@ pub fn playlist_of(c: &Connection, entry: EntryId) -> rusqlite::Result<Option<It
 
 /// User playlists not deleted, in `sort` order (`Recent`: newest first).
 pub fn list(c: &Connection, sort: CollectionSort) -> rusqlite::Result<Vec<ItemId>> {
+    let (with, order) = collection_order(sort, "max(pl.created_at)");
     let mut st = c.prepare(&format!(
-        "SELECT r.id FROM playlists pl JOIN items i ON i.id = pl.item_id
+        "{with} SELECT r.id FROM playlists pl JOIN items i ON i.id = pl.item_id
          JOIN items r ON r.id = COALESCE(i.merged_into, i.id)
-         WHERE pl.deleted_at IS NULL GROUP BY r.id ORDER BY {}",
-        collection_order(sort, "max(pl.created_at)")
+         WHERE pl.deleted_at IS NULL GROUP BY r.id ORDER BY {order}"
     ))?;
     st.query_map([], |r| r.get(0))?.collect()
 }
@@ -625,7 +624,7 @@ mod tests {
                 Ok((x, y, t))
             })
             .unwrap();
-        play_at(&db, t, now_ms(), 1_000, None);
+        play_at(&db, t, now_ms(), 60_000, None);
         let sorted = |sort| db.read_blocking(move |c| list(c, sort)).unwrap();
         assert_eq!(sorted(CollectionSort::Recent), vec![y, x]);
         assert_eq!(sorted(CollectionSort::Played), vec![x, y]);

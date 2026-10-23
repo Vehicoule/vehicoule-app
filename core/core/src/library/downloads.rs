@@ -1,8 +1,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::items::{canonical, invalid};
-use super::plays::track_order;
-use super::{ItemId, Page, TrackSort, Tx};
+use super::{ItemId, Page, TrackSort, Tx, track_order};
 
 /// Stored as lowercase text; the catalogue's `downloaded` flag reads `'done'`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,17 +105,18 @@ pub fn get(c: &Connection, item: ItemId) -> rusqlite::Result<Option<DownloadRow>
         .next())
 }
 
-/// The row `get` returns for each root (done first, then in progress, then failed; oldest
-/// first within each), kept when its state is `state`. The filter applies after picking, so a
+/// The row `get` returns for each live root (done first, then in progress, then failed;
+/// oldest first within each), kept when its state is `state`. Deleted items are left out. The filter applies after picking, so a
 /// listed row is always the one `update`/`remove` act on.
 // ponytail: reads every download row; filter in SQL with a window function if lists get long
 pub fn list(c: &Connection, state: Option<DownloadState>) -> rusqlite::Result<Vec<DownloadRow>> {
-    let mut all = rows(c, "", [])?;
+    let mut all = rows(c, "WHERE r.deleted_at IS NULL", [])?;
     all.retain(|r| state.is_none_or(|s| r.state == s));
     Ok(all)
 }
 
-/// Downloaded tracks (a done row in their merge group, as `list(Done)`) in `sort` order;
+/// Downloaded live tracks (a done row in their merge group: the set `list(Done)` gives) in
+/// `sort` order;
 /// `Added` is when the download was queued.
 pub fn done(c: &Connection, sort: TrackSort, page: Page) -> rusqlite::Result<Vec<ItemId>> {
     let mut st = c.prepare(&format!(
@@ -183,7 +183,8 @@ fn rows(
     let mut st = c.prepare(&format!(
         "SELECT COALESCE(i.merged_into, i.id), d.state, d.path, d.quality, d.mime, d.loudness_db,
            d.bytes_total, d.bytes_done, d.error
-         FROM downloads d JOIN items i ON i.id = d.item_id {filter} ORDER BY {RANK}"
+         FROM downloads d JOIN items i ON i.id = d.item_id
+         JOIN items r ON r.id = COALESCE(i.merged_into, i.id) {filter} ORDER BY {RANK}"
     ))?;
     let all = st.query_map(p, |r| {
         Ok(DownloadRow {
@@ -395,5 +396,40 @@ mod tests {
         assert_eq!(sorted(TrackSort::Artist, 0), vec![e, b]);
         assert_eq!(sorted(TrackSort::Added, 1), vec![b]);
         assert!(!sorted(TrackSort::Title, 0).contains(&queued));
+    }
+
+    #[test]
+    fn deleted_items_are_listed_nowhere() {
+        use crate::library::{Page, TrackSort};
+        let db = Db::open_in_memory().unwrap();
+        let (gone, kept) = db
+            .write_blocking(|tx| {
+                let gone = catalog::upsert_track(tx, "deezer", &track_data("1", None))?;
+                let kept = catalog::upsert_track(tx, "deezer", &track_data("2", None))?;
+                finish(tx, gone, "/1")?;
+                finish(tx, kept, "/2")?;
+                tx.tx
+                    .execute("UPDATE items SET deleted_at = 1 WHERE id = ?1", [gone])?;
+                Ok((gone, kept))
+            })
+            .unwrap();
+        let (all, listed, sorted) = db
+            .read_blocking(|c| {
+                let page = Page {
+                    offset: 0,
+                    limit: 10,
+                };
+                Ok((
+                    list(c, None)?,
+                    list(c, Some(DownloadState::Done))?,
+                    done(c, TrackSort::Added, page)?,
+                ))
+            })
+            .unwrap();
+        let items = |rows: Vec<DownloadRow>| rows.into_iter().map(|r| r.item).collect::<Vec<_>>();
+        assert_eq!(items(all), vec![kept]);
+        assert_eq!(items(listed), vec![kept]);
+        assert_eq!(sorted, vec![kept]);
+        let _ = gone;
     }
 }

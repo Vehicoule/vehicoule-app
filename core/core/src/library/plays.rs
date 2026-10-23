@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use rusqlite::{Connection, params};
 
 use super::items::canonical;
-use super::{CollectionSort, ItemId, Kind, Page, TrackSort, Tx};
+use super::{ItemId, Kind, Page, Tx};
 
 /// A play counts in tops and "not played since" from 30 s.
 pub const COUNTED_MS: i64 = 30_000;
@@ -172,41 +172,6 @@ pub fn played_or_liked(c: &Connection) -> rusqlite::Result<HashSet<ItemId>> {
          WHERE l.deleted_at IS NULL",
     )?;
     st.query_map([], |r| r.get(0))?.collect()
-}
-
-/// Track ids of the collection `r` (root), whatever its kind: album, artist, provider or
-/// user playlist.
-const MEMBERS: &str = "SELECT track_id FROM music_album_tracks WHERE album_id = r.id
-     UNION SELECT item_id FROM music_tracks WHERE album_id = r.id
-     UNION SELECT track_id FROM music_track_artists WHERE artist_id = r.id
-     UNION SELECT track_id FROM music_playlist_tracks WHERE playlist_id = r.id
-     UNION SELECT item_id FROM playlist_items WHERE playlist_id = r.id AND deleted_at IS NULL";
-
-/// `ORDER BY` for collections whose root is `r`; `recent` is the date liked or created.
-// ponytail: Played is a correlated subquery per row; keep a last_played column if lists get slow
-pub(crate) fn collection_order(sort: CollectionSort, recent: &str) -> String {
-    match sort {
-        CollectionSort::Recent => format!("{recent} DESC, r.id DESC"),
-        CollectionSort::Played => format!(
-            "(SELECT max(p.started_at) FROM plays p JOIN items pi ON pi.id = p.item_id
-              WHERE p.deleted_at IS NULL AND COALESCE(pi.merged_into, pi.id) IN
-                (SELECT COALESCE(t.merged_into, t.id) FROM items t WHERE t.id IN ({MEMBERS})))
-             DESC, {recent} DESC, r.id DESC"
-        ),
-        CollectionSort::Title => "fold(r.title), r.id".into(),
-    }
-}
-
-/// `ORDER BY` for tracks whose root is `r`; `added` is the date liked or downloaded.
-pub(crate) fn track_order(sort: TrackSort, added: &str) -> String {
-    match sort {
-        TrackSort::Added => format!("{added} DESC, r.id DESC"),
-        TrackSort::Title => "fold(r.title), r.id".into(),
-        TrackSort::Artist => "fold(COALESCE((SELECT ar.title FROM music_track_artists ta
-             JOIN items a ON a.id = ta.artist_id JOIN items ar ON ar.id = COALESCE(a.merged_into, a.id)
-             WHERE ta.track_id = r.id ORDER BY ta.position LIMIT 1), '')), fold(r.title), r.id"
-            .into(),
-    }
 }
 
 #[cfg(test)]
@@ -442,6 +407,141 @@ pub(crate) mod tests {
         let set = db.read_blocking(played_or_liked).unwrap();
         assert!(set.contains(&p) && set.contains(&l));
         assert!(!set.contains(&gone) && !set.contains(&none));
+    }
+
+    fn merge(db: &Db, a: ItemId, b: ItemId) {
+        db.write_blocking(move |tx| crate::library::items::merge(tx, a, b))
+            .unwrap();
+    }
+
+    fn like(db: &Db, t: ItemId) {
+        db.write_blocking(move |tx| crate::library::likes::set(tx, t, true))
+            .unwrap();
+    }
+
+    /// Plays and likes stay on the id they were made on; the merge happens after them.
+    #[test]
+    fn top_items_follow_merged_tracks_and_artists() {
+        let db = Db::open_in_memory().unwrap();
+        let (a, b, c, d) = db
+            .write_blocking(|tx| {
+                Ok((
+                    song(tx, "a", "A", "X", None)?,
+                    song(tx, "b", "A", "X", None)?,
+                    song(tx, "c", "C", "Y", None)?,
+                    song(tx, "d", "D", "X bis", None)?,
+                ))
+            })
+            .unwrap();
+        let (x, y, x_bis) = (artist_of(&db, a), artist_of(&db, c), artist_of(&db, d));
+        let now = now_ms();
+        play_at(&db, b, now - 3 * DAY, 60_000, None);
+        play_at(&db, b, now - 3 * DAY, 60_000, None);
+        play_at(&db, c, now - DAY, 60_000, None);
+        play_at(&db, d, now - 2 * DAY, 60_000, None);
+        merge(&db, a, b);
+        merge(&db, x, x_bis);
+        let (tracks, artists) = db
+            .read_blocking(move |cn| {
+                Ok((
+                    top_items(cn, Kind::Track, 0, 10)?,
+                    top_items(cn, Kind::Artist, 0, 10)?,
+                ))
+            })
+            .unwrap();
+        // b's plays count for its root a; d's artist "X bis" counts as x.
+        assert_eq!(tracks, vec![a, c, d]);
+        assert_eq!(artists, vec![x, y]);
+    }
+
+    #[test]
+    fn liked_not_played_since_follows_merges() {
+        let db = Db::open_in_memory().unwrap();
+        let t = db
+            .write_blocking(|tx| {
+                (0..5)
+                    .map(|i| song(tx, &i.to_string(), "T", "A", None))
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .unwrap();
+        let now = now_ms();
+        // Liked as 0, played as its twin 1; liked as 3, played as its root 2.
+        like(&db, t[0]);
+        play_at(&db, t[1], now - DAY, 60_000, None);
+        like(&db, t[3]);
+        play_at(&db, t[2], now - DAY, 60_000, None);
+        like(&db, t[4]);
+        merge(&db, t[0], t[1]);
+        merge(&db, t[2], t[3]);
+        let got = db
+            .read_blocking(move |c| liked_not_played_since(c, now - 60 * DAY, 10))
+            .unwrap();
+        assert_eq!(got, vec![t[4]]);
+    }
+
+    #[test]
+    fn played_or_liked_follows_merges() {
+        let db = Db::open_in_memory().unwrap();
+        let t = db
+            .write_blocking(|tx| {
+                (0..4)
+                    .map(|i| song(tx, &i.to_string(), "T", "A", None))
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .unwrap();
+        play_at(&db, t[1], now_ms(), 1_000, None);
+        like(&db, t[3]);
+        merge(&db, t[0], t[1]);
+        merge(&db, t[2], t[3]);
+        let set = db.read_blocking(played_or_liked).unwrap();
+        assert_eq!(set, HashSet::from([t[0], t[2]]));
+    }
+
+    /// `n` tracks played once each at `at`, the later ones more recently.
+    fn played_tracks(db: &Db, prefix: &str, n: usize, at: i64) -> Vec<ItemId> {
+        let prefix = prefix.to_string();
+        let ids = db
+            .write_blocking(move |tx| {
+                (0..n)
+                    .map(|i| song(tx, &format!("{prefix}{i}"), "T", "A", None))
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .unwrap();
+        for (i, &t) in ids.iter().enumerate() {
+            play_at(db, t, at + i as i64, 60_000, None);
+        }
+        ids
+    }
+
+    #[test]
+    fn top_50_without_backfill_when_the_window_is_full() {
+        let db = Db::open_in_memory().unwrap();
+        let now = now_ms();
+        let recent = played_tracks(&db, "r", 50, now - DAY);
+        // Played more, but too long ago.
+        let old = played_tracks(&db, "o", 1, now - 100 * DAY)[0];
+        play_at(&db, old, now - 100 * DAY, 60_000, None);
+        let top = db.read_blocking(move |c| top_tracks(c, now)).unwrap();
+        assert_eq!(top.len(), 50);
+        assert!(!top.contains(&old));
+        assert_eq!(top[0], recent[49], "latest play first among equals");
+    }
+
+    #[test]
+    fn top_50_is_cut_to_50() {
+        let db = Db::open_in_memory().unwrap();
+        let now = now_ms();
+        let recent = played_tracks(&db, "r", 30, now - DAY);
+        let old = played_tracks(&db, "o", 30, now - 100 * DAY);
+        let top = db.read_blocking(move |c| top_tracks(c, now)).unwrap();
+        assert_eq!(top.len(), 50);
+        let want: Vec<ItemId> = recent
+            .iter()
+            .rev()
+            .chain(old.iter().rev().take(20))
+            .copied()
+            .collect();
+        assert_eq!(top, want);
     }
 
     #[test]

@@ -2,8 +2,7 @@ use rusqlite::{Connection, params};
 
 use super::catalog::in_group;
 use super::items::canonical;
-use super::plays::{collection_order, track_order};
-use super::{CollectionSort, ItemId, Kind, Page, TrackSort, Tx};
+use super::{CollectionSort, ItemId, Kind, Page, TrackSort, Tx, collection_order, track_order};
 
 /// Likes the item's root, reviving a logically deleted like; unliking sets `deleted_at` on
 /// every live like of the root's group (likes made before a merge stay on the merged item).
@@ -39,12 +38,7 @@ pub fn is_liked(c: &Connection, item: ItemId) -> rusqlite::Result<bool> {
 
 /// Distinct roots of `kind`, most recently liked first.
 pub fn list(c: &Connection, kind: Kind, page: Page) -> rusqlite::Result<Vec<ItemId>> {
-    query(
-        c,
-        kind,
-        &collection_order(CollectionSort::Recent, LIKED_AT),
-        page,
-    )
+    list_collections(c, kind, CollectionSort::Recent, page)
 }
 
 /// Liked albums, artists or playlists in `sort` order.
@@ -54,19 +48,26 @@ pub fn list_collections(
     sort: CollectionSort,
     page: Page,
 ) -> rusqlite::Result<Vec<ItemId>> {
-    query(c, kind, &collection_order(sort, LIKED_AT), page)
+    let (with, order) = collection_order(sort, LIKED_AT);
+    query(c, kind, &with, &order, page)
 }
 
 /// Liked tracks in `sort` order.
 pub fn list_tracks(c: &Connection, sort: TrackSort, page: Page) -> rusqlite::Result<Vec<ItemId>> {
-    query(c, Kind::Track, &track_order(sort, LIKED_AT), page)
+    query(c, Kind::Track, "", &track_order(sort, LIKED_AT), page)
 }
 
 const LIKED_AT: &str = "max(l.liked_at)";
 
-fn query(c: &Connection, kind: Kind, order: &str, page: Page) -> rusqlite::Result<Vec<ItemId>> {
+fn query(
+    c: &Connection,
+    kind: Kind,
+    with: &str,
+    order: &str,
+    page: Page,
+) -> rusqlite::Result<Vec<ItemId>> {
     let mut st = c.prepare(&format!(
-        "SELECT r.id FROM likes l JOIN items i ON i.id = l.item_id
+        "{with} SELECT r.id FROM likes l JOIN items i ON i.id = l.item_id
          JOIN items r ON r.id = COALESCE(i.merged_into, i.id)
          WHERE l.deleted_at IS NULL AND r.kind = ?1 AND r.deleted_at IS NULL
          GROUP BY r.id ORDER BY {order} LIMIT ?2 OFFSET ?3"
@@ -83,7 +84,7 @@ mod tests {
     use crate::library::Db;
     use crate::library::catalog::{self, tests::track_data};
     use crate::library::plays::tests::{DAY, now_ms, play_at, song};
-    use crate::library::{CollectionSort, TrackSort};
+    use crate::library::{CollectionSort, TrackSort, items};
 
     fn page() -> Page {
         Page {
@@ -211,8 +212,10 @@ mod tests {
         let (bravo, alpha, charlie) = (album_of(&db, b), album_of(&db, a), album_of(&db, c));
         like_in_order(&db, vec![bravo, alpha, charlie]);
         let now = now_ms();
-        play_at(&db, c, now - 2 * DAY, 1_000, None);
-        play_at(&db, b, now - DAY, 1_000, None);
+        play_at(&db, c, now - 2 * DAY, 60_000, None);
+        play_at(&db, b, now - DAY, 60_000, None);
+        // A skip is not a play.
+        play_at(&db, a, now, 29_999, None);
         let sorted = |sort| {
             db.read_blocking(move |cn| list_collections(cn, Kind::Album, sort, page()))
                 .unwrap()
@@ -303,5 +306,100 @@ mod tests {
                 .unwrap();
             assert_eq!(pages(a, b), 4, "{sort:?}");
         }
+    }
+
+    #[test]
+    fn played_sort_follows_merged_plays() {
+        let db = Db::open_in_memory().unwrap();
+        let (a, b, c) = db
+            .write_blocking(|tx| {
+                Ok((
+                    song(tx, "a", "A", "X", Some("Xa"))?,
+                    song(tx, "b", "A", "X", None)?,
+                    song(tx, "c", "C", "X", Some("Yc"))?,
+                ))
+            })
+            .unwrap();
+        let (xa, yc) = (album_of(&db, a), album_of(&db, c));
+        like_in_order(&db, vec![xa, yc]);
+        let now = now_ms();
+        // Xa's track a was played as its twin b, after Yc's track.
+        play_at(&db, b, now - DAY, 60_000, None);
+        play_at(&db, c, now - 2 * DAY, 60_000, None);
+        db.write_blocking(move |tx| items::merge(tx, a, b)).unwrap();
+        let got = db
+            .read_blocking(|cn| list_collections(cn, Kind::Album, CollectionSort::Played, page()))
+            .unwrap();
+        assert_eq!(got, vec![xa, yc]);
+    }
+
+    /// 100 liked albums of 50 tracks, 50 artists, one play per track: a page sorted by latest
+    /// play stays fast (it took ~10 s with the per-row subquery).
+    #[test]
+    fn played_sort_is_fast_on_a_big_catalogue() {
+        let db = Db::open_in_memory().unwrap();
+        let albums = db
+            .write_blocking(|tx| {
+                let c = &tx.tx;
+                let (stamp, dev) = (tx.stamp.updated_at, tx.stamp.device_id.as_bytes().as_slice());
+                let mut item = c.prepare(
+                    "INSERT INTO items (id, kind, title, updated_at, device_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+                )?;
+                let mut new = |kind: &str, title: String| -> rusqlite::Result<ItemId> {
+                    let id = ItemId::new();
+                    item.execute(params![id, kind, title, stamp, dev])?;
+                    Ok(id)
+                };
+                let albums = (0..100)
+                    .map(|i| new("album", format!("Album {i}")))
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                let artists = (0..50)
+                    .map(|i| new("artist", format!("Artist {i}")))
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                for (i, &a) in albums.iter().enumerate() {
+                    c.execute("INSERT INTO music_albums (item_id) VALUES (?1)", [a])?;
+                    c.execute(
+                        "INSERT INTO likes (item_id, liked_at, updated_at, device_id) VALUES (?1, ?2, ?3, ?4)",
+                        params![a, i as i64, stamp, dev],
+                    )?;
+                }
+                for i in 0..5000 {
+                    let t = new("track", format!("Track {i}"))?;
+                    c.execute(
+                        "INSERT INTO music_tracks (item_id, album_id) VALUES (?1, ?2)",
+                        params![t, albums[i % 100]],
+                    )?;
+                    c.execute(
+                        "INSERT INTO music_track_artists (track_id, artist_id, position) VALUES (?1, ?2, 0)",
+                        params![t, artists[i % 50]],
+                    )?;
+                    c.execute(
+                        "INSERT INTO plays (id, item_id, started_at, listened_ms, source, updated_at, device_id)
+                         VALUES (?1, ?2, ?3, 60000, 'test', ?4, ?5)",
+                        params![uuid::Uuid::now_v7().as_bytes().as_slice(), t, 1_000 + i as i64, stamp, dev],
+                    )?;
+                }
+                Ok(albums)
+            })
+            .unwrap();
+        let started = std::time::Instant::now();
+        let got = db
+            .read_blocking(|c| {
+                list_collections(
+                    c,
+                    Kind::Album,
+                    CollectionSort::Played,
+                    Page {
+                        offset: 0,
+                        limit: 50,
+                    },
+                )
+            })
+            .unwrap();
+        let took = started.elapsed();
+        // The latest play of album k is track 4900 + k.
+        let want: Vec<ItemId> = albums.iter().rev().take(50).copied().collect();
+        assert_eq!(got, want);
+        assert!(took.as_millis() < 500, "a sorted page took {took:?}");
     }
 }
