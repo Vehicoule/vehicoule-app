@@ -2,14 +2,17 @@
 //! and `scrub` rebuilds every event from an allowlist: never a title, artist, search, URL,
 //! playlist content or account id. Logs export for bug reports.
 
+use std::borrow::Cow;
 use std::io::Write;
 use std::panic::PanicHookInfo;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
 use plugin_host::{CallError, CallReport, Capability};
+use sentry::integrations::debug_images::DebugImagesIntegration;
 use sentry::protocol::{
-    Context, DeviceContext, Event, Exception, Frame, Level, Mechanism, OsContext, Stacktrace, Unit,
+    Context, DebugImage, DebugMeta, DeviceContext, Event, Exception, Frame, Level, Mechanism,
+    Metric, OsContext, Stacktrace, Unit,
 };
 use sentry::types::Dsn;
 use sentry::{ClientOptions, Hub, Scope, TransportFactory};
@@ -70,6 +73,9 @@ fn options(dsn: Dsn, transport: Arc<dyn TransportFactory>) -> ClientOptions {
     o.max_breadcrumbs = 0;
     o.send_default_pii = false;
     o.before_send = Some(Arc::new(scrub));
+    o.before_send_metric = Some(Arc::new(scrub_metric));
+    // Loaded images (ids and addresses), so stripped release stacks can be symbolicated.
+    o.integrations = vec![Arc::new(DebugImagesIntegration::default())];
     o.transport = Some(transport);
     o
 }
@@ -191,7 +197,8 @@ pub(crate) fn on_call(r: &CallReport) {
         Ok(()) if r.capability == Capability::Resolve => {
             perf(PerfMetric::ResolveMs, r.wall_ms, plugin);
         }
-        Ok(()) | Err(CallError::NotFound | CallError::Unsupported) => {}
+        // The router's normal path, and the network's ordinary failures: not bugs.
+        Ok(()) | Err(CallError::NotFound | CallError::Unsupported | CallError::Network(_)) => {}
         Err(e) => report_error(
             &CoreError::from_call(e.clone(), r.capability),
             plugin,
@@ -200,21 +207,48 @@ pub(crate) fn on_call(r: &CallReport) {
     }
 }
 
-/// Called by the panic hook.
+/// Called by the panic hook. The panic's message never leaves (std's own messages quote
+/// user strings in backticks, and any `{}` value would be raw): its value is the panic's
+/// location, `<file name>:<line>`.
 pub(crate) fn report_panic(info: &PanicHookInfo<'_>) {
     if enabled() {
-        let event =
+        let mut event =
             sentry::integrations::panic::PanicIntegration::new().event_from_panic_info(info);
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}", basename(l.file()), l.line()));
+        for x in event.exception.values.iter_mut() {
+            x.value = location.clone();
+        }
         HUB.capture_event(event);
     }
 }
 
+/// No directories: they can hold the user's name (`/Users/<name>/`, the cargo registry).
+fn basename(path: &str) -> String {
+    path.rsplit(['/', '\\']).next().unwrap_or_default().into()
+}
+
+/// `<file name>.rs:<line>`, as `report_panic` sets it: the only exception value kept.
+fn is_location(v: &str) -> bool {
+    v.split_once(':').is_some_and(|(file, line)| {
+        file.ends_with(".rs")
+            && file
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+            && !line.is_empty()
+            && line.chars().all(|c| c.is_ascii_digit())
+    })
+}
+
 /// `before_send`: a new event with only the error type, allowed tags (plugin id and version,
-/// capability, app version, OS, device model), OS and device model contexts, and stack
-/// frames. Exception messages go through `logs::redact`; request, user, breadcrumbs, extra,
-/// frame variables and source lines are dropped.
+/// capability, app version, OS, device model), OS and device model contexts, stack frames
+/// and debug images (file names without directories). No message and no exception value
+/// (but `report_panic`'s location); request, user, breadcrumbs, extra, frame variables and
+/// source lines are dropped.
 pub(crate) fn scrub(event: Event<'static>) -> Option<Event<'static>> {
     let r = |s: Option<String>| s.map(|s| redact(&s));
+    let base = |s: Option<String>| s.map(|s| basename(&s));
     let frames = |s: Stacktrace| Stacktrace {
         frames: s
             .frames
@@ -223,9 +257,8 @@ pub(crate) fn scrub(event: Event<'static>) -> Option<Event<'static>> {
                 function: r(f.function),
                 symbol: r(f.symbol),
                 module: r(f.module),
-                package: r(f.package),
-                filename: r(f.filename),
-                abs_path: r(f.abs_path),
+                package: base(f.package),
+                filename: base(f.filename),
                 lineno: f.lineno,
                 colno: f.colno,
                 in_app: f.in_app,
@@ -245,7 +278,7 @@ pub(crate) fn scrub(event: Event<'static>) -> Option<Event<'static>> {
         .into_iter()
         .map(|x| Exception {
             ty: redact(&x.ty),
-            value: r(x.value),
+            value: x.value.filter(|v| is_location(v)),
             stacktrace: x.stacktrace.map(frames),
             mechanism: x.mechanism.map(|m| Mechanism {
                 ty: m.ty,
@@ -295,13 +328,42 @@ pub(crate) fn scrub(event: Event<'static>) -> Option<Event<'static>> {
         dist: event.dist,
         environment: event.environment,
         sdk: event.sdk,
-        message: r(event.message),
         exception: exception.into(),
+        debug_meta: Cow::Owned(DebugMeta {
+            images: event
+                .debug_meta
+                .into_owned()
+                .images
+                .into_iter()
+                .filter_map(|i| match i {
+                    DebugImage::Symbolic(mut i) => {
+                        i.name = basename(&i.name);
+                        i.debug_file = base(i.debug_file);
+                        Some(i.into())
+                    }
+                    DebugImage::Apple(mut i) => {
+                        i.name = basename(&i.name);
+                        Some(i.into())
+                    }
+                    _ => None,
+                })
+                .collect(),
+            ..Default::default()
+        }),
         stacktrace: event.stacktrace.map(frames),
         contexts,
         tags,
         ..Default::default()
     })
+}
+
+/// `before_send_metric`: only the attributes we set (`os`, `plugin`, `plugin_version`) and
+/// sentry's own (`sentry.release`, `sentry.environment`, `sentry.sdk.*`).
+fn scrub_metric(mut m: Metric) -> Option<Metric> {
+    m.attributes.retain(|k, _| {
+        matches!(&**k, "os" | "plugin" | "plugin_version") || k.starts_with("sentry.")
+    });
+    Some(m)
 }
 
 /// `logs::recent()` as text, one line each, oldest first (already masked).
@@ -316,7 +378,9 @@ pub(crate) fn export_logs(dest: &str) -> Result<(), CoreError> {
 
 #[cfg(test)]
 mod tests {
-    use sentry::protocol::{Breadcrumb, Request, User};
+    use std::borrow::Cow;
+
+    use sentry::protocol::{Breadcrumb, DebugMeta, Request, SymbolicDebugImage, User};
     use sentry::test::TestTransport;
 
     use super::*;
@@ -354,6 +418,9 @@ mod tests {
                 stacktrace: Some(Stacktrace {
                     frames: vec![Frame {
                         function: Some("vehicoule_core::player::play".into()),
+                        filename: Some("core/src/player.rs".into()),
+                        abs_path: Some("/Users/someone/repo/core/src/player.rs".into()),
+                        lineno: Some(42),
                         context_line: Some(LEAK.into()),
                         vars: [("title".to_string(), "Halo".into())].into(),
                         ..Default::default()
@@ -376,18 +443,54 @@ mod tests {
                 ..Default::default()
             }]
             .into(),
+            debug_meta: Cow::Owned(DebugMeta {
+                images: vec![
+                    SymbolicDebugImage {
+                        name: "/Users/someone/x/libvehicoule_core.dylib".into(),
+                        arch: None,
+                        image_addr: Default::default(),
+                        image_size: 4096,
+                        image_vmaddr: Default::default(),
+                        id: Default::default(),
+                        code_id: None,
+                        debug_file: Some("/Users/someone/x/libvehicoule_core.dylib.dSYM".into()),
+                    }
+                    .into(),
+                ],
+                ..Default::default()
+            }),
             ..Default::default()
         };
         event.tags.insert("query".into(), "beyonce".into());
         event.tags.insert("error_kind".into(), "internal".into());
         event.extra.insert("title".into(), "Halo".into());
         let json = serde_json::to_string(&scrub(event).unwrap()).unwrap();
-        for leak in ["Halo", "beyonce", "x/y", "\"query\"", "\"title\""] {
+        for leak in [
+            "Halo",
+            "beyonce",
+            "x/y",
+            "\"query\"",
+            "\"title\"",
+            "someone",
+            "src/",
+        ] {
             assert!(!json.contains(leak), "{leak} in {json}");
         }
         assert!(json.contains("vehicoule_core::player::play"), "{json}");
+        assert!(json.contains(r#""filename":"player.rs""#), "{json}");
+        // `name` is the code file (sentry-types serializes it under that key).
+        assert!(
+            json.contains(r#""name":"libvehicoule_core.dylib""#),
+            "{json}"
+        );
+        assert!(
+            json.contains(r#""debug_file":"libvehicoule_core.dylib.dSYM""#),
+            "{json}"
+        );
         assert!(json.contains(r#""error_kind":"internal""#), "{json}");
-        assert!(json.contains(r#"play \"…\" <url>"#), "{json}");
+        for gone in ["\"message\"", "\"value\"", "\"abs_path\""] {
+            assert!(!json.contains(gone), "{gone} in {json}");
+        }
 
         // A real panic, through the hook, the client and `before_send`; scope data set by
         // anyone else on the hub never leaves either.
@@ -406,12 +509,41 @@ mod tests {
             ..Default::default()
         });
         let _ = std::panic::catch_unwind(|| panic!("play \"Halo\" https://x/y?q=beyonce"));
+        // std's own messages quote with backticks: `byte index 6 is not a char boundary; it
+        // is inside 'é' (bytes 5..7) of `Halo é``.
+        let title = std::hint::black_box(String::from("Halo é"));
+        let _ = std::panic::catch_unwind(|| title[..6].len());
         set_enabled(false);
-        let sent = sent_text(&t);
-        assert!(sent.contains(r#"play \"…\" <url>"#), "{sent}");
-        for leak in ["Halo", "beyonce", "x/y", "\"query\""] {
+        let events: Vec<Event> = t
+            .fetch_and_clear_envelopes()
+            .iter()
+            .filter_map(|e| e.event().cloned())
+            .filter(|e| e.exception.values.first().is_some_and(|x| x.ty == "panic"))
+            .collect();
+        assert_eq!(events.len(), 2, "{events:?}");
+        let sent = serde_json::to_string(&events).unwrap();
+        for leak in [
+            "Halo",
+            "beyonce",
+            "x/y",
+            "\"query\"",
+            "/Users/",
+            "src/",
+            ".cargo",
+        ] {
             assert!(!sent.contains(leak), "{leak} in {sent}");
         }
+        for e in &events {
+            // The panic's location, a file name and a line, is the only value.
+            let value = e.exception.values[0].value.clone().unwrap();
+            let (file, line) = value.split_once(':').unwrap();
+            assert!(file.ends_with(".rs") && !file.contains('/'), "{value}");
+            assert!(line.parse::<u32>().is_ok(), "{value}");
+        }
+        assert!(
+            !events[0].debug_meta.images.is_empty(),
+            "debug images attached"
+        );
     }
 
     #[test]
@@ -458,6 +590,10 @@ mod tests {
         on_call(&call(Capability::Resolve, Ok(())));
         on_call(&call(Capability::Search, Err(CallError::NotFound)));
         on_call(&call(
+            Capability::Search,
+            Err(CallError::Network("dns".into())),
+        ));
+        on_call(&call(
             Capability::Lyrics,
             Err(CallError::ProviderWall("login for \"Halo\"".into())),
         ));
@@ -467,7 +603,29 @@ mod tests {
         assert!(sent.contains("321"), "{sent}");
         assert!(sent.contains(r#""error_kind":"provider-wall""#), "{sent}");
         assert!(!sent.contains("not-found"), "{sent}");
+        assert!(!sent.contains(r#""error_kind":"network""#), "{sent}");
         assert!(!sent.contains("Halo"), "{sent}");
+    }
+
+    #[test]
+    fn metrics_keep_allowed_attributes_only() {
+        let _g = serial();
+        let t = TestTransport::new();
+        enable_for_test(&t);
+        HUB.capture_metric(
+            sentry::metrics::distribution("probe_metric", 1.0)
+                .attribute("os", "macos")
+                .attribute("query", "beyonce"),
+        );
+        set_enabled(false);
+        let sent = sent_text(&t);
+        assert!(sent.contains("probe_metric"), "{sent}");
+        assert!(sent.contains(r#""os""#), "{sent}");
+        assert!(sent.contains("sentry.release"), "{sent}");
+        assert!(
+            !sent.contains("beyonce") && !sent.contains("query"),
+            "{sent}"
+        );
     }
 
     #[test]

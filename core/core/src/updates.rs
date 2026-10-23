@@ -121,14 +121,12 @@ fn checked(resp: Response) -> Result<Response, CoreError> {
     }
 }
 
+async fn send(req: reqwest::RequestBuilder) -> Result<Response, CoreError> {
+    checked(req.send().await.map_err(|_| CoreError::Network)?)
+}
+
 async fn get(client: &Client, url: &str) -> Result<Response, CoreError> {
-    let resp = client
-        .get(url)
-        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|_| CoreError::Network)?;
-    checked(resp)
+    send(client.get(url)).await
 }
 
 pub(crate) async fn check_updates(
@@ -143,7 +141,9 @@ async fn check_at(
     current: &str,
     platform: Platform,
 ) -> Result<Option<UpdateInfo>, CoreError> {
-    let body = get(&client()?, url).await?.bytes().await;
+    let req = client()?.get(url);
+    let req = req.header(reqwest::header::ACCEPT, "application/vnd.github+json");
+    let body = send(req).await?.bytes().await;
     Ok(pick_release(
         &body.map_err(|_| CoreError::Network)?,
         current,
@@ -154,17 +154,21 @@ async fn check_at(
 /// At most once per 24 h (after a successful check), never offline. Called by Dart after the
 /// first frame, then by `App`'s timer; a newer version is also sent as a `Notice`.
 pub(crate) async fn check_if_due() -> Result<Option<UpdateInfo>, CoreError> {
-    let app = app();
-    if !app.is_online() {
+    due_check(UPDATES_URL, app().is_online()).await
+}
+
+async fn due_check(url: &str, online: bool) -> Result<Option<UpdateInfo>, CoreError> {
+    if !online {
         return Ok(None);
     }
+    let app = app();
     let last = app.db.read(|c| settings::device_get(c, CHECKED_AT)).await?;
     let last = last.and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
     let now = crate::plugins::now_ms();
     if (now - last).abs() < CHECK_EVERY_MS {
         return Ok(None);
     }
-    let info = check_updates(&app.cfg.app_version, app.cfg.platform).await?;
+    let info = check_at(url, &app.cfg.app_version, app.cfg.platform).await?;
     app.db
         .write(move |tx| settings::device_set(tx, CHECKED_AT, &now.to_string()))
         .await?;
@@ -179,6 +183,9 @@ pub(crate) async fn check_if_due() -> Result<Option<UpdateInfo>, CoreError> {
 /// Downloads the APK into `<cache_dir>/updates` (earlier ones removed) and returns its path
 /// once its sha256 matches; on any failure nothing is left behind.
 pub(crate) async fn download_update(info: &UpdateInfo) -> Result<String, CoreError> {
+    // Single flight: another call would empty the directory under this one's `.part`.
+    static ONE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _one = ONE.lock().await;
     let (Some(asset), Some(sha_url)) = (&info.asset_url, &info.sha256_url) else {
         return Err(CoreError::NotFound);
     };
@@ -335,6 +342,12 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(info.version, "0.2.0");
+        let reqs = server.received_requests().await.unwrap();
+        let api = reqs.iter().find(|r| r.url.path() == "/api").unwrap();
+        assert_eq!(
+            api.headers.get("accept").unwrap(),
+            "application/vnd.github+json"
+        );
         let missing = check_at(&format!("{base}/nothing"), "0.1.0", Platform::Android).await;
         assert_eq!(missing, Err(CoreError::NotFound));
     }
@@ -393,8 +406,95 @@ mod tests {
         assert_eq!(download_update(&mac).await, Err(CoreError::NotFound));
         let bad = UpdateInfo {
             version: "../../x".into(),
-            ..info
+            ..info.clone()
         };
         assert_eq!(download_update(&bad).await, Err(CoreError::NotFound));
+
+        // The GitHub `Accept` header is for the releases API only.
+        for r in server.received_requests().await.unwrap() {
+            assert_eq!(
+                r.headers.get("accept").map(|v| v.as_bytes()),
+                Some(&b"*/*"[..])
+            );
+        }
+
+        // Single flight: a second call cannot empty the directory under the first one's
+        // `.part`, then rename an unverified file. (Same test: they share the directory.)
+        server.reset().await;
+        Mock::given(method("GET"))
+            .and(wiremock::matchers::path(apk_path))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(apk.clone())
+                    .set_delay(std::time::Duration::from_millis(300)),
+            )
+            .mount(&server)
+            .await;
+        sha(format!("{good}  x\n")).mount(&server).await;
+        let (a, b) = tokio::join!(download_update(&info), download_update(&info));
+        assert_eq!(a.as_deref(), Ok(path.as_str()));
+        assert_eq!(b.as_deref(), Ok(path.as_str()));
+        assert_eq!(std::fs::read(&path).unwrap(), apk);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn check_if_due_runs_once_a_day() {
+        let app = crate::app::test_app();
+        let server = MockServer::start().await;
+        let url = format!("{}/releases", server.uri());
+        let stamp = |ms: i64| {
+            app.db
+                .write(move |tx| settings::device_set(tx, CHECKED_AT, &ms.to_string()))
+        };
+        let stored = || async {
+            app.db
+                .read(|c| settings::device_get(c, CHECKED_AT))
+                .await
+                .unwrap()
+                .unwrap()
+                .parse::<i64>()
+                .unwrap()
+        };
+        let calls = || async { server.received_requests().await.unwrap().len() };
+        let mut notices = app.events.notices.subscribe();
+        let now = crate::plugins::now_ms();
+
+        // Offline: nothing is asked.
+        stamp(0).await.unwrap();
+        assert_eq!(due_check(&url, false).await, Ok(None));
+        // Checked an hour ago: nothing is asked.
+        stamp(now - 3_600_000).await.unwrap();
+        assert_eq!(due_check(&url, true).await, Ok(None));
+        assert_eq!(calls().await, 0);
+
+        // A failed check stores nothing, so the next one asks again.
+        let day_ago = now - 25 * 3_600_000;
+        stamp(day_ago).await.unwrap();
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        assert_eq!(due_check(&url, true).await, Err(CoreError::Network));
+        assert_eq!(stored().await, day_ago);
+
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture("https://dl.test")))
+            .mount(&server)
+            .await;
+        let info = due_check(&url, true).await.unwrap().unwrap();
+        assert_eq!(info.version, "0.2.0");
+        assert!(stored().await >= now);
+        assert_eq!(
+            notices.recv().await.unwrap(),
+            Notice::UpdateAvailable {
+                version: "0.2.0".into()
+            }
+        );
+        assert_eq!(calls().await, 2);
+        // And not again for a day.
+        assert_eq!(due_check(&url, true).await, Ok(None));
+        assert_eq!(calls().await, 2);
     }
 }
