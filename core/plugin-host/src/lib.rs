@@ -64,7 +64,11 @@ impl Default for Limits {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostEvent {
-    Log { plugin: String, level: LogLevel, message: String },
+    Log {
+        plugin: String,
+        level: LogLevel,
+        message: String,
+    },
     Call(CallReport),
 }
 

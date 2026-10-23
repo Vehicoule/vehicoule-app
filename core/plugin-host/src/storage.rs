@@ -34,11 +34,18 @@ const KV_MAX_TOTAL: u64 = 1 << 20;
 /// `kv.set` with the per-key, per-value and per-plugin caps.
 // ponytail: check-then-set, two concurrent calls of one plugin can overshoot the total by one
 // value; a transactional `Storage::kv_set_capped` if that ever matters.
-pub(crate) fn kv_set(storage: &dyn Storage, plugin: &str, key: &str, value: &[u8]) -> Result<(), KvError> {
+pub(crate) fn kv_set(
+    storage: &dyn Storage,
+    plugin: &str,
+    key: &str,
+    value: &[u8],
+) -> Result<(), KvError> {
     if key.len() > KV_MAX_KEY || value.len() > KV_MAX_VALUE {
         return Err(KvError::TooLarge);
     }
-    let old = storage.kv_get(plugin, key).map_or(0, |v| key.len() + v.len()) as u64;
+    let old = storage
+        .kv_get(plugin, key)
+        .map_or(0, |v| key.len() + v.len()) as u64;
     let total = storage.kv_usage(plugin).saturating_sub(old) + (key.len() + value.len()) as u64;
     if total > KV_MAX_TOTAL {
         return Err(KvError::QuotaExceeded);
@@ -57,28 +64,51 @@ pub struct MemoryStorage {
 #[cfg(any(test, feature = "test-util"))]
 impl Storage for MemoryStorage {
     fn kv_get(&self, plugin: &str, key: &str) -> Option<Vec<u8>> {
-        self.kv.lock().expect("kv poisoned: a thread panicked while holding it").get(&(plugin.into(), key.into())).cloned()
+        self.kv
+            .lock()
+            .expect("kv poisoned: a thread panicked while holding it")
+            .get(&(plugin.into(), key.into()))
+            .cloned()
     }
 
     fn kv_set(&self, plugin: &str, key: &str, value: &[u8]) {
-        self.kv.lock().expect("kv poisoned: a thread panicked while holding it").insert((plugin.into(), key.into()), value.to_vec());
+        self.kv
+            .lock()
+            .expect("kv poisoned: a thread panicked while holding it")
+            .insert((plugin.into(), key.into()), value.to_vec());
     }
 
     fn kv_delete(&self, plugin: &str, key: &str) {
-        self.kv.lock().expect("kv poisoned: a thread panicked while holding it").remove(&(plugin.into(), key.into()));
+        self.kv
+            .lock()
+            .expect("kv poisoned: a thread panicked while holding it")
+            .remove(&(plugin.into(), key.into()));
     }
 
     fn kv_usage(&self, plugin: &str) -> u64 {
-        let kv = self.kv.lock().expect("kv poisoned: a thread panicked while holding it");
-        kv.iter().filter(|((p, _), _)| p == plugin).map(|((_, k), v)| (k.len() + v.len()) as u64).sum()
+        let kv = self
+            .kv
+            .lock()
+            .expect("kv poisoned: a thread panicked while holding it");
+        kv.iter()
+            .filter(|((p, _), _)| p == plugin)
+            .map(|((_, k), v)| (k.len() + v.len()) as u64)
+            .sum()
     }
 
     fn cache_get(&self, key: &[u8; 32]) -> Option<CachedResponse> {
-        self.cache.lock().expect("cache poisoned: a thread panicked while holding it").get(key).cloned()
+        self.cache
+            .lock()
+            .expect("cache poisoned: a thread panicked while holding it")
+            .get(key)
+            .cloned()
     }
 
     fn cache_put(&self, key: &[u8; 32], entry: &CachedResponse) {
-        self.cache.lock().expect("cache poisoned: a thread panicked while holding it").insert(*key, entry.clone());
+        self.cache
+            .lock()
+            .expect("cache poisoned: a thread panicked while holding it")
+            .insert(*key, entry.clone());
     }
 }
 

@@ -53,40 +53,65 @@ struct SigEntry {
 /// Parses and validates a signed feed: envelope shape, a signature from a trusted key over
 /// the exact payload bytes (`verify_strict`, rejects malleable/small-order signatures), no
 /// invalid or duplicate plugin ids, no absolute non-https URL, and sequence not older than `last_sequence`.
-pub fn verify_feed(bytes: &[u8], trusted: &[[u8; 32]], last_sequence: Option<u64>) -> Result<Feed, FeedError> {
-    let envelope: Envelope = serde_json::from_slice(bytes).map_err(|e| FeedError::Malformed(e.to_string()))?;
-    let payload = BASE64.decode(&envelope.payload).map_err(|e| FeedError::Malformed(e.to_string()))?;
+pub fn verify_feed(
+    bytes: &[u8],
+    trusted: &[[u8; 32]],
+    last_sequence: Option<u64>,
+) -> Result<Feed, FeedError> {
+    let envelope: Envelope =
+        serde_json::from_slice(bytes).map_err(|e| FeedError::Malformed(e.to_string()))?;
+    let payload = BASE64
+        .decode(&envelope.payload)
+        .map_err(|e| FeedError::Malformed(e.to_string()))?;
 
     let signed_by_trusted_key = envelope.signatures.iter().any(|entry| {
-        let Ok(key_bytes) = BASE64.decode(&entry.key) else { return false };
-        let Ok(key_bytes): Result<[u8; 32], _> = key_bytes.try_into() else { return false };
+        let Ok(key_bytes) = BASE64.decode(&entry.key) else {
+            return false;
+        };
+        let Ok(key_bytes): Result<[u8; 32], _> = key_bytes.try_into() else {
+            return false;
+        };
         if !trusted.contains(&key_bytes) {
             return false;
         }
-        let Ok(sig_bytes) = BASE64.decode(&entry.sig) else { return false };
-        let Ok(signature) = Signature::try_from(sig_bytes.as_slice()) else { return false };
-        let Ok(verifying_key) = VerifyingKey::from_bytes(&key_bytes) else { return false };
+        let Ok(sig_bytes) = BASE64.decode(&entry.sig) else {
+            return false;
+        };
+        let Ok(signature) = Signature::try_from(sig_bytes.as_slice()) else {
+            return false;
+        };
+        let Ok(verifying_key) = VerifyingKey::from_bytes(&key_bytes) else {
+            return false;
+        };
         verifying_key.verify_strict(&payload, &signature).is_ok()
     });
     if !signed_by_trusted_key {
         return Err(FeedError::BadSignature);
     }
 
-    let feed: Feed = serde_json::from_slice(&payload).map_err(|e| FeedError::Malformed(e.to_string()))?;
+    let feed: Feed =
+        serde_json::from_slice(&payload).map_err(|e| FeedError::Malformed(e.to_string()))?;
 
     let mut seen_ids = HashSet::new();
     for plugin in &feed.plugins {
         // The id names files on disk: the manifest's id rule also rules out path traversal.
         crate::manifest::validate_id(&plugin.id).map_err(FeedError::Malformed)?;
         if !seen_ids.insert(plugin.id.as_str()) {
-            return Err(FeedError::Malformed(format!("duplicate plugin id: {}", plugin.id)));
+            return Err(FeedError::Malformed(format!(
+                "duplicate plugin id: {}",
+                plugin.id
+            )));
         }
         for url in [&plugin.wasm_url, &plugin.manifest_url] {
             if has_disallowed_url_chars(url) {
-                return Err(FeedError::Malformed(format!("control/space/backslash in url: {url:?}")));
+                return Err(FeedError::Malformed(format!(
+                    "control/space/backslash in url: {url:?}"
+                )));
             }
             if is_absolute_non_https(url) {
-                return Err(FeedError::Malformed(format!("absolute non-https url: {url:?}")));
+                return Err(FeedError::Malformed(format!(
+                    "absolute non-https url: {url:?}"
+                )));
             }
         }
     }
@@ -94,7 +119,10 @@ pub fn verify_feed(bytes: &[u8], trusted: &[[u8; 32]], last_sequence: Option<u64
     if let Some(last) = last_sequence
         && feed.sequence < last
     {
-        return Err(FeedError::Rollback { seen: last, got: feed.sequence });
+        return Err(FeedError::Rollback {
+            seen: last,
+            got: feed.sequence,
+        });
     }
     Ok(feed)
 }
@@ -105,16 +133,24 @@ pub fn verify_feed(bytes: &[u8], trusted: &[[u8; 32]], last_sequence: Option<u64
 /// or `"ht\ttp://evil/x"` as having no valid `scheme:` prefix and wave it through as
 /// relative, while a browser/resolver would reach `http://evil/x`. Refuse outright instead.
 fn has_disallowed_url_chars(url: &str) -> bool {
-    url.bytes().any(|b| b.is_ascii_control() || b == b' ' || b == b'\\')
+    url.bytes()
+        .any(|b| b.is_ascii_control() || b == b' ' || b == b'\\')
 }
 
 /// True for an absolute URL (has a `scheme:` prefix per RFC 3986) whose scheme isn't https.
 /// A relative URL (no scheme) is not absolute, so this returns false for it.
 fn is_absolute_non_https(url: &str) -> bool {
-    let Some(colon) = url.find(':') else { return false };
+    let Some(colon) = url.find(':') else {
+        return false;
+    };
     let scheme = &url[..colon];
-    let is_scheme = scheme.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
-        && scheme.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.'));
+    let is_scheme = scheme
+        .as_bytes()
+        .first()
+        .is_some_and(u8::is_ascii_alphabetic)
+        && scheme
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.'));
     is_scheme && !scheme.eq_ignore_ascii_case("https")
 }
 
@@ -136,7 +172,12 @@ pub fn sign_feed(feed: &Feed, key: &SigningKey) -> Vec<u8> {
 /// First 16 bytes of the sha256 of the public key, hex, grouped in 4 characters: "ab12 cd34 …".
 pub fn fingerprint(public_key: &[u8; 32]) -> String {
     let digest = Sha256::digest(public_key);
-    to_hex(&digest[..16]).as_bytes().chunks(4).map(|c| std::str::from_utf8(c).expect("hex is ASCII")).collect::<Vec<_>>().join(" ")
+    to_hex(&digest[..16])
+        .as_bytes()
+        .chunks(4)
+        .map(|c| std::str::from_utf8(c).expect("hex is ASCII"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Case-insensitive sha256 check.
@@ -201,7 +242,10 @@ mod tests {
         let bytes = sign_feed(&sample_feed(1), &key);
         let tampered = tamper_payload(&bytes);
         let trusted = [key.verifying_key().to_bytes()];
-        assert_eq!(verify_feed(&tampered, &trusted, None), Err(FeedError::BadSignature));
+        assert_eq!(
+            verify_feed(&tampered, &trusted, None),
+            Err(FeedError::BadSignature)
+        );
     }
 
     #[test]
@@ -210,7 +254,10 @@ mod tests {
         let trusted_key = SigningKey::from_bytes(&[2u8; 32]);
         let bytes = sign_feed(&sample_feed(1), &signer);
         let trusted = [trusted_key.verifying_key().to_bytes()];
-        assert_eq!(verify_feed(&bytes, &trusted, None), Err(FeedError::BadSignature));
+        assert_eq!(
+            verify_feed(&bytes, &trusted, None),
+            Err(FeedError::BadSignature)
+        );
     }
 
     #[test]
@@ -219,7 +266,10 @@ mod tests {
         let trusted = [key.verifying_key().to_bytes()];
 
         let bytes6 = sign_feed(&sample_feed(6), &key);
-        assert_eq!(verify_feed(&bytes6, &trusted, Some(7)), Err(FeedError::Rollback { seen: 7, got: 6 }));
+        assert_eq!(
+            verify_feed(&bytes6, &trusted, Some(7)),
+            Err(FeedError::Rollback { seen: 7, got: 6 })
+        );
 
         let feed7 = sample_feed(7);
         let bytes7 = sign_feed(&feed7, &key);
@@ -230,7 +280,10 @@ mod tests {
     fn fingerprint_is_stable() {
         let key = SigningKey::from_bytes(&[7u8; 32]);
         let public_key = key.verifying_key().to_bytes();
-        assert_eq!(fingerprint(&public_key), "fe81 2c12 f3ab 4ce6 ac5d b69a c352 f906");
+        assert_eq!(
+            fingerprint(&public_key),
+            "fe81 2c12 f3ab 4ce6 ac5d b69a c352 f906"
+        );
     }
 
     #[test]
@@ -249,7 +302,10 @@ mod tests {
         feed.plugins.push(feed.plugins[0].clone());
         let bytes = sign_feed(&feed, &key);
         let trusted = [key.verifying_key().to_bytes()];
-        assert!(matches!(verify_feed(&bytes, &trusted, None), Err(FeedError::Malformed(_))));
+        assert!(matches!(
+            verify_feed(&bytes, &trusted, None),
+            Err(FeedError::Malformed(_))
+        ));
     }
 
     #[test]
@@ -261,7 +317,10 @@ mod tests {
             feed.plugins[0].id = bad_id.into();
             let bytes = sign_feed(&feed, &key);
             assert!(
-                matches!(verify_feed(&bytes, &trusted, None), Err(FeedError::Malformed(_))),
+                matches!(
+                    verify_feed(&bytes, &trusted, None),
+                    Err(FeedError::Malformed(_))
+                ),
                 "{bad_id:?} should be rejected"
             );
         }
@@ -274,7 +333,10 @@ mod tests {
         feed.plugins[0].wasm_url = "http://example.com/p.wasm".into();
         let bytes = sign_feed(&feed, &key);
         let trusted = [key.verifying_key().to_bytes()];
-        assert!(matches!(verify_feed(&bytes, &trusted, None), Err(FeedError::Malformed(_))));
+        assert!(matches!(
+            verify_feed(&bytes, &trusted, None),
+            Err(FeedError::Malformed(_))
+        ));
     }
 
     /// WHATWG URL resolvers strip ASCII control characters and tabs/newlines, and treat
@@ -295,7 +357,10 @@ mod tests {
             feed.plugins[0].wasm_url = bad_url.into();
             let bytes = sign_feed(&feed, &key);
             assert!(
-                matches!(verify_feed(&bytes, &trusted, None), Err(FeedError::Malformed(_))),
+                matches!(
+                    verify_feed(&bytes, &trusted, None),
+                    Err(FeedError::Malformed(_))
+                ),
                 "{bad_url:?} should be rejected"
             );
         }

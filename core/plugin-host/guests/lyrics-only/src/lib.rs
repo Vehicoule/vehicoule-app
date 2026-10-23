@@ -18,7 +18,10 @@ struct LyricsOnly;
 
 impl Guest for LyricsOnly {
     fn fetch(track: TrackQuery) -> Result<Lyrics, Error> {
-        Ok(Lyrics { plain: Some(track.title), synced: vec![] })
+        Ok(Lyrics {
+            plain: Some(track.title),
+            synced: vec![],
+        })
     }
 }
 

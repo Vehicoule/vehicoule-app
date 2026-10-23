@@ -94,7 +94,8 @@ impl QueueState {
 
     /// What `advance` will play: a pure function of the state.
     pub fn next(&self) -> Option<&QueueEntry> {
-        self.next_pos(RepeatOne::Honor).map(|p| &self.entries[self.order[p]])
+        self.next_pos(RepeatOne::Honor)
+            .map(|p| &self.entries[self.order[p]])
     }
 
     /// End of track. At the end with `Repeat::Off`, returns `None` and the last entry stays current.

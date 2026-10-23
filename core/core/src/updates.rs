@@ -483,7 +483,10 @@ mod tests {
             .up_to_n_times(1)
             .mount(&server)
             .await;
-        assert_eq!(due_check(&url, true, When::Due).await, Err(CoreError::Network));
+        assert_eq!(
+            due_check(&url, true, When::Due).await,
+            Err(CoreError::Network)
+        );
         assert_eq!(stored().await, day_ago);
 
         Mock::given(method("GET"))
@@ -505,11 +508,17 @@ mod tests {
 
         // The manual check (settings) asks anyway, and records when.
         stamp(now).await.unwrap();
-        assert_eq!(due_check(&url, true, When::Now).await, Ok(Some(info.clone())));
+        assert_eq!(
+            due_check(&url, true, When::Now).await,
+            Ok(Some(info.clone()))
+        );
         assert_eq!(calls().await, 3);
         assert!(stored().await > now);
         assert_eq!(notices.recv().await.unwrap(), Notice::UpdateAvailable(info));
         // Offline, it says so.
-        assert_eq!(due_check(&url, false, When::Now).await, Err(CoreError::Offline));
+        assert_eq!(
+            due_check(&url, false, When::Now).await,
+            Err(CoreError::Offline)
+        );
     }
 }

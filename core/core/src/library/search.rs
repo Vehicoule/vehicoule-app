@@ -447,7 +447,10 @@ mod tests {
         .unwrap();
         for q in ["a_b", "a%b", "a__b"] {
             let hits = db.read_blocking(|c| local(c, q, 10)).unwrap();
-            assert!(hits.iter().all(|h| h.score < 1.0), "local {q:?} matched as a pattern");
+            assert!(
+                hits.iter().all(|h| h.score < 1.0),
+                "local {q:?} matched as a pattern"
+            );
             let past = db.read_blocking(|c| history(c, q, 10)).unwrap();
             assert!(past.is_empty(), "history {q:?}: {past:?}");
         }

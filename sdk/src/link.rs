@@ -38,7 +38,10 @@ mod tests {
             split_url("HTTPS://WWW.Deezer.COM/FR/playlist/9?x=Y#Z"),
             Some(("www.deezer.com".to_string(), "FR/playlist/9?x=Y#Z"))
         );
-        assert_eq!(split_url("Http://music.apple.com"), Some(("music.apple.com".to_string(), "")));
+        assert_eq!(
+            split_url("Http://music.apple.com"),
+            Some(("music.apple.com".to_string(), ""))
+        );
         assert_eq!(split_url("https://h/"), Some(("h".to_string(), "")));
         for url in ["ftp://h/p", "h/p", "", "https:/h/p", "file:///etc"] {
             assert_eq!(split_url(url), None, "{url:?}");

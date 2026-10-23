@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use plugin_host::music::search::SearchRequest;
-use plugin_host::{CallReport, Host, HostConfig, HostEvent, Limits, MemoryStorage, NetPolicy, Plugin};
+use plugin_host::{
+    CallReport, Host, HostConfig, HostEvent, Limits, MemoryStorage, NetPolicy, Plugin,
+};
 
 /// Builds the test components once per test binary.
 pub fn guest(name: &str) -> Vec<u8> {
@@ -38,9 +40,15 @@ pub fn manifest(id: &str, contract: &str) -> Vec<u8> {
 }
 
 /// Like `manifest`, with an optional rate limit and a descriptive-User-Agent flag.
-pub fn manifest_ex(id: &str, rate_limit: Option<(u32, u32)>, descriptive_user_agent: bool) -> Vec<u8> {
+pub fn manifest_ex(
+    id: &str,
+    rate_limit: Option<(u32, u32)>,
+    descriptive_user_agent: bool,
+) -> Vec<u8> {
     let rl = rate_limit
-        .map(|(requests, per_seconds)| format!(r#","rate_limit":{{"requests":{requests},"per_seconds":{per_seconds}}}"#))
+        .map(|(requests, per_seconds)| {
+            format!(r#","rate_limit":{{"requests":{requests},"per_seconds":{per_seconds}}}"#)
+        })
         .unwrap_or_default();
     format!(
         r#"{{"id":"{id}","name":"{id}","version":"1.0.0","contract":"1.0","domains":["api.test"],"descriptive_user_agent":{descriptive_user_agent}{rl}}}"#
@@ -51,8 +59,11 @@ pub fn manifest_ex(id: &str, rate_limit: Option<(u32, u32)>, descriptive_user_ag
 /// A fresh, empty directory under the system temp dir.
 pub fn temp_dir() -> PathBuf {
     static N: AtomicU32 = AtomicU32::new(0);
-    let dir = std::env::temp_dir()
-        .join(format!("plugin-host-test-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+    let dir = std::env::temp_dir().join(format!(
+        "plugin-host-test-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -81,21 +92,45 @@ impl TestHost {
             net: NetPolicy::for_tests(),
         })
         .unwrap();
-        TestHost { host, events, cache_dir }
+        TestHost {
+            host,
+            events,
+            cache_dir,
+        }
     }
 
     pub fn load(&self, name: &str) -> Plugin {
-        self.host.load(&manifest(name.replace('_', "-").as_str(), "1.0"), &guest(name)).unwrap()
+        self.host
+            .load(
+                &manifest(name.replace('_', "-").as_str(), "1.0"),
+                &guest(name),
+            )
+            .unwrap()
     }
 
     pub fn reports(&self) -> Vec<CallReport> {
         let events = self.events.lock().unwrap();
-        events.iter().filter_map(|e| if let HostEvent::Call(r) = e { Some(r.clone()) } else { None }).collect()
+        events
+            .iter()
+            .filter_map(|e| {
+                if let HostEvent::Call(r) = e {
+                    Some(r.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
 pub fn query(q: &str) -> SearchRequest {
-    SearchRequest { query: q.into(), kinds: vec![], region: "FR".into(), limit: 1, cursor: None }
+    SearchRequest {
+        query: q.into(),
+        kinds: vec![],
+        region: "FR".into(),
+        limit: 1,
+        cursor: None,
+    }
 }
 
 /// `http://api.test:<port>`, the mock server's address under the test resolver.

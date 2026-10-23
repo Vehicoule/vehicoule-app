@@ -36,18 +36,23 @@ use exports::vehicoule::music::search::{self, SearchRequest, SearchResults};
 use exports::vehicoule::music::suggest;
 use vehicoule_sdk::kv;
 use vehicoule_sdk::types::{
-    Album, AlbumRef, Artist, ArtistRef, EntityKind, EntityRef, Error, Image, Playlist, Track, TrackQuery,
+    Album, AlbumRef, Artist, ArtistRef, EntityKind, EntityRef, Error, Image, Playlist, Track,
+    TrackQuery,
 };
 
 struct Fake;
 
 fn mode() -> String {
-    kv::get("mode").map(|v| String::from_utf8_lossy(&v).into_owned()).unwrap_or_default()
+    kv::get("mode")
+        .map(|v| String::from_utf8_lossy(&v).into_owned())
+        .unwrap_or_default()
 }
 
 /// Counts the call, then the plugin-wide failure, then `missing` in `key`.
 fn check(key: &str) -> Result<(), Error> {
-    let calls: u64 = kv::get("calls").and_then(|v| String::from_utf8(v).ok()?.parse().ok()).unwrap_or(0);
+    let calls: u64 = kv::get("calls")
+        .and_then(|v| String::from_utf8(v).ok()?.parse().ok())
+        .unwrap_or(0);
     let _ = kv::set("calls", (calls + 1).to_string().as_bytes());
     match mode().as_str() {
         "network" => return Err(Error::Network("down".into())),
@@ -55,24 +60,39 @@ fn check(key: &str) -> Result<(), Error> {
         "rate-limited" => return Err(Error::RateLimited),
         _ => {}
     }
-    if key.contains("missing") { Err(Error::NotFound) } else { Ok(()) }
+    if key.contains("missing") {
+        Err(Error::NotFound)
+    } else {
+        Ok(())
+    }
 }
 
 fn art(key: &str) -> Vec<Image> {
     [250, 1000]
-        .map(|w| Image { url: format!("https://fake.test/art/{key}-{w}.jpg"), width: Some(w), height: Some(w) })
+        .map(|w| Image {
+            url: format!("https://fake.test/art/{key}-{w}.jpg"),
+            width: Some(w),
+            height: Some(w),
+        })
         .to_vec()
 }
 
 fn artist(key: &str) -> Artist {
-    Artist { id: format!("ar-{key}"), name: format!("Artist {key}"), artwork: art(&format!("ar-{key}")) }
+    Artist {
+        id: format!("ar-{key}"),
+        name: format!("Artist {key}"),
+        artwork: art(&format!("ar-{key}")),
+    }
 }
 
 fn album(key: &str) -> Album {
     Album {
         id: format!("a-{key}"),
         title: format!("Album {key}"),
-        artists: vec![ArtistRef { id: Some(format!("ar-{key}")), name: format!("Artist {key}") }],
+        artists: vec![ArtistRef {
+            id: Some(format!("ar-{key}")),
+            name: format!("Artist {key}"),
+        }],
         year: Some(2008),
         track_count: Some(2),
         artwork: art(&format!("a-{key}")),
@@ -83,8 +103,14 @@ fn track(id: String, title: &str, key: &str) -> Track {
     Track {
         id,
         title: title.into(),
-        artists: vec![ArtistRef { id: Some(format!("ar-{key}")), name: format!("Artist {key}") }],
-        album: Some(AlbumRef { id: Some(format!("a-{key}")), title: format!("Album {key}") }),
+        artists: vec![ArtistRef {
+            id: Some(format!("ar-{key}")),
+            name: format!("Artist {key}"),
+        }],
+        album: Some(AlbumRef {
+            id: Some(format!("a-{key}")),
+            title: format!("Album {key}"),
+        }),
         duration_ms: Some(180_000),
         isrc: None,
         explicit: false,
@@ -93,14 +119,22 @@ fn track(id: String, title: &str, key: &str) -> Track {
 }
 
 fn tracks(prefix: &str, key: &str) -> Vec<Track> {
-    (1..=2).map(|i| track(format!("{prefix}-{i}"), &format!("{prefix} {i}"), key)).collect()
+    (1..=2)
+        .map(|i| track(format!("{prefix}-{i}"), &format!("{prefix} {i}"), key))
+        .collect()
 }
 
 impl search::Guest for Fake {
     fn search(req: SearchRequest) -> Result<SearchResults, Error> {
         check(&req.query)?;
         if mode() == "empty" {
-            return Ok(SearchResults { tracks: vec![], albums: vec![], artists: vec![], playlists: vec![], next: None });
+            return Ok(SearchResults {
+                tracks: vec![],
+                albums: vec![],
+                artists: vec![],
+                playlists: vec![],
+                next: None,
+            });
         }
         let key = req.query.trim().to_lowercase().replace(' ', "-");
         Ok(SearchResults {
@@ -128,36 +162,83 @@ impl suggest::Guest for Fake {
 }
 
 impl entity::Guest for Fake {
-    fn fetch(target: EntityRef, _region: String, cursor: Option<String>) -> Result<EntityPage, Error> {
+    fn fetch(
+        target: EntityRef,
+        _region: String,
+        cursor: Option<String>,
+    ) -> Result<EntityPage, Error> {
         check(&target.id)?;
         let id = target.id;
-        let key = id.split_once('-').map_or(id.as_str(), |(_, k)| k).to_string();
-        let page = |entity, tracks, albums, next| EntityPage { entity, tracks, albums, next };
+        let key = id
+            .split_once('-')
+            .map_or(id.as_str(), |(_, k)| k)
+            .to_string();
+        let page = |entity, tracks, albums, next| EntityPage {
+            entity,
+            tracks,
+            albums,
+            next,
+        };
         Ok(match target.kind {
-            EntityKind::Track => page(Entity::Track(track(id.clone(), &id, &key)), vec![], vec![], None),
-            EntityKind::Album => page(Entity::Album(Album { id: id.clone(), ..album(&key) }), tracks(&id, &key), vec![], None),
-            EntityKind::Artist => {
-                page(Entity::Artist(Artist { id: id.clone(), ..artist(&key) }), tracks(&id, &key), vec![album(&key)], None)
-            }
+            EntityKind::Track => page(
+                Entity::Track(track(id.clone(), &id, &key)),
+                vec![],
+                vec![],
+                None,
+            ),
+            EntityKind::Album => page(
+                Entity::Album(Album {
+                    id: id.clone(),
+                    ..album(&key)
+                }),
+                tracks(&id, &key),
+                vec![],
+                None,
+            ),
+            EntityKind::Artist => page(
+                Entity::Artist(Artist {
+                    id: id.clone(),
+                    ..artist(&key)
+                }),
+                tracks(&id, &key),
+                vec![album(&key)],
+                None,
+            ),
             EntityKind::Playlist => {
-                let n: u32 = cursor.as_deref().unwrap_or("0").parse().map_err(|_| Error::Internal("bad cursor".into()))?;
+                let n: u32 = cursor
+                    .as_deref()
+                    .unwrap_or("0")
+                    .parse()
+                    .map_err(|_| Error::Internal("bad cursor".into()))?;
                 let first = n == 0;
                 let playlist = Playlist {
                     id: id.clone(),
-                    title: if first { format!("Playlist {key}") } else { String::new() },
+                    title: if first {
+                        format!("Playlist {key}")
+                    } else {
+                        String::new()
+                    },
                     owner: first.then(|| "Owner".into()),
                     description: None,
                     track_count: None,
                     artwork: if first { art(&id) } else { vec![] },
                 };
-                page(Entity::Playlist(playlist), tracks(&format!("{id}-p{n}"), &key), vec![], Some((n + 1).to_string()))
+                page(
+                    Entity::Playlist(playlist),
+                    tracks(&format!("{id}-p{n}"), &key),
+                    vec![],
+                    Some((n + 1).to_string()),
+                )
             }
         })
     }
 
     fn parse_link(url: String) -> Result<Option<EntityRef>, Error> {
         check(&url)?;
-        let Some((kind, id)) = url.strip_prefix("https://fake.test/").and_then(|p| p.split_once('/')) else {
+        let Some((kind, id)) = url
+            .strip_prefix("https://fake.test/")
+            .and_then(|p| p.split_once('/'))
+        else {
             return Ok(None);
         };
         let kind = match kind {
@@ -167,7 +248,10 @@ impl entity::Guest for Fake {
             "playlist" => EntityKind::Playlist,
             _ => return Ok(None),
         };
-        Ok(Some(EntityRef { kind, id: id.into() }))
+        Ok(Some(EntityRef {
+            kind,
+            id: id.into(),
+        }))
     }
 }
 
@@ -199,15 +283,24 @@ impl resolve::Guest for Fake {
             .collect();
         let base = kv::get("stream").map(|v| String::from_utf8_lossy(&v).into_owned());
         let source = Source {
-            url: format!("{}/stream/{id}", base.as_deref().unwrap_or("https://fake.test")),
+            url: format!(
+                "{}/stream/{id}",
+                base.as_deref().unwrap_or("https://fake.test")
+            ),
             headers: vec![],
             expires_at_ms: None,
-            mime: kv::get("mime").map_or("audio/webm".into(), |v| String::from_utf8_lossy(&v).into_owned()),
+            mime: kv::get("mime").map_or("audio/webm".into(), |v| {
+                String::from_utf8_lossy(&v).into_owned()
+            }),
             bitrate: 128_000,
             content_length: None,
             loudness_db: Some(4.2),
         };
-        Ok(Resolved { id, source, candidates })
+        Ok(Resolved {
+            id,
+            source,
+            candidates,
+        })
     }
 }
 
@@ -215,7 +308,15 @@ impl radio::Guest for Fake {
     fn radio(seed: TrackQuery, _region: String, limit: u32) -> Result<Vec<Track>, Error> {
         check(&seed.title)?;
         let key = key_of(&seed);
-        Ok((1..=limit).map(|n| track(format!("radio-{key}-{n}"), &format!("radio {key} {n}"), &key)).collect())
+        Ok((1..=limit)
+            .map(|n| {
+                track(
+                    format!("radio-{key}-{n}"),
+                    &format!("radio {key} {n}"),
+                    &key,
+                )
+            })
+            .collect())
     }
 }
 
@@ -223,11 +324,23 @@ impl lyrics::Guest for Fake {
     fn fetch(track: TrackQuery) -> Result<Lyrics, Error> {
         check(&track.title)?;
         if track.title.contains("instrumental") {
-            return Ok(Lyrics { plain: None, synced: vec![] });
+            return Ok(Lyrics {
+                plain: None,
+                synced: vec![],
+            });
         }
         Ok(Lyrics {
             plain: Some(format!("words of {}", track.title)),
-            synced: vec![Line { start_ms: 0, text: "one".into() }, Line { start_ms: 1500, text: "two".into() }],
+            synced: vec![
+                Line {
+                    start_ms: 0,
+                    text: "one".into(),
+                },
+                Line {
+                    start_ms: 1500,
+                    text: "two".into(),
+                },
+            ],
         })
     }
 }
@@ -236,15 +349,36 @@ impl browse::Guest for Fake {
     fn categories(_region: String) -> Result<Vec<Category>, Error> {
         check("categories")?;
         Ok(vec![
-            Category { id: "chart:0".into(), title: "Top fake".into(), artwork: art("chart"), featured: true },
-            Category { id: "genre:1".into(), title: "Genre fake".into(), artwork: vec![], featured: false },
+            Category {
+                id: "chart:0".into(),
+                title: "Top fake".into(),
+                artwork: art("chart"),
+                featured: true,
+            },
+            Category {
+                id: "genre:1".into(),
+                title: "Genre fake".into(),
+                artwork: vec![],
+                featured: false,
+            },
         ])
     }
 
-    fn fetch_category(id: String, _region: String, cursor: Option<String>) -> Result<CategoryPage, Error> {
+    fn fetch_category(
+        id: String,
+        _region: String,
+        cursor: Option<String>,
+    ) -> Result<CategoryPage, Error> {
         check(&id)?;
-        let key = format!("{}-p{}", id.replace(':', "-"), cursor.as_deref().unwrap_or("0"));
-        let shelf = |title: &str, items| Shelf { title: title.into(), items };
+        let key = format!(
+            "{}-p{}",
+            id.replace(':', "-"),
+            cursor.as_deref().unwrap_or("0")
+        );
+        let shelf = |title: &str, items| Shelf {
+            title: title.into(),
+            items,
+        };
         let playlist = Playlist {
             id: format!("p-{key}"),
             title: format!("Playlist {key}"),
@@ -256,7 +390,13 @@ impl browse::Guest for Fake {
         Ok(CategoryPage {
             title: format!("Category {id}"),
             shelves: vec![
-                shelf("tracks", tracks(&format!("t-{key}"), &key).into_iter().map(Entity::Track).collect()),
+                shelf(
+                    "tracks",
+                    tracks(&format!("t-{key}"), &key)
+                        .into_iter()
+                        .map(Entity::Track)
+                        .collect(),
+                ),
                 shelf("albums", vec![Entity::Album(album(&key))]),
                 shelf("artists", vec![Entity::Artist(artist(&key))]),
                 shelf("playlists", vec![Entity::Playlist(playlist)]),
@@ -269,7 +409,11 @@ impl browse::Guest for Fake {
         check(&artist_id)?;
         let key = artist_id.strip_prefix("ar-").unwrap_or(&artist_id);
         let release = |n: u32, date: &str| Release {
-            album: Album { id: format!("rel-{key}-{n}"), title: format!("Release {key} {n}"), ..album(key) },
+            album: Album {
+                id: format!("rel-{key}-{n}"),
+                title: format!("Release {key} {n}"),
+                ..album(key)
+            },
             date: date.into(),
         };
         Ok(vec![release(1, "2026-10-20"), release(2, "2026-09-01")])

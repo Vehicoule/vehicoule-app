@@ -41,9 +41,15 @@ impl RateLimiter {
     pub async fn acquire(&self, deadline: Instant) -> Result<(), ()> {
         loop {
             let wait_until = {
-                let mut log = self.log.lock().expect("rate log poisoned: a thread panicked while holding it");
+                let mut log = self
+                    .log
+                    .lock()
+                    .expect("rate log poisoned: a thread panicked while holding it");
                 let now = Instant::now();
-                while log.front().is_some_and(|&t| now.duration_since(t) >= self.window) {
+                while log
+                    .front()
+                    .is_some_and(|&t| now.duration_since(t) >= self.window)
+                {
                     log.pop_front();
                 }
                 if log.len() < self.capacity {
@@ -51,7 +57,9 @@ impl RateLimiter {
                     None
                 } else {
                     // Empty only with a capacity of 0: no slot will ever free up.
-                    let Some(&oldest) = log.front() else { return Err(()) };
+                    let Some(&oldest) = log.front() else {
+                        return Err(());
+                    };
                     Some(oldest + self.window)
                 }
             };
@@ -76,41 +84,66 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn first_capacity_tokens_are_free() {
-        let rl = RateLimiter::new(RateLimit { requests: 3, per_seconds: 60 });
+        let rl = RateLimiter::new(RateLimit {
+            requests: 3,
+            per_seconds: 60,
+        });
         let deadline = Instant::now() + FAR;
         let start = Instant::now();
         for _ in 0..3 {
             rl.acquire(deadline).await.unwrap();
         }
-        assert!(start.elapsed() < Duration::from_millis(50), "{:?}", start.elapsed());
+        assert!(
+            start.elapsed() < Duration::from_millis(50),
+            "{:?}",
+            start.elapsed()
+        );
     }
 
     #[tokio::test(start_paused = true)]
     async fn fourth_token_waits_for_the_next_window() {
-        let rl = RateLimiter::new(RateLimit { requests: 1, per_seconds: 1 });
+        let rl = RateLimiter::new(RateLimit {
+            requests: 1,
+            per_seconds: 1,
+        });
         let deadline = Instant::now() + FAR;
         rl.acquire(deadline).await.unwrap();
         let start = Instant::now();
         rl.acquire(deadline).await.unwrap();
-        assert!(start.elapsed() >= Duration::from_millis(900), "{:?}", start.elapsed());
+        assert!(
+            start.elapsed() >= Duration::from_millis(900),
+            "{:?}",
+            start.elapsed()
+        );
     }
 
     #[tokio::test(start_paused = true)]
     async fn shared_clone_sees_the_same_bucket() {
-        let rl = RateLimiter::new(RateLimit { requests: 1, per_seconds: 60 });
+        let rl = RateLimiter::new(RateLimit {
+            requests: 1,
+            per_seconds: 60,
+        });
         let other = rl.clone();
         let now = Instant::now();
         rl.acquire(now + FAR).await.unwrap();
         // A separate bucket would have its own free slot and succeed immediately; the shared
         // one needs the 60 s window, which a deadline this close can't afford.
-        assert!(other.acquire(now + Duration::from_millis(500)).await.is_err());
+        assert!(
+            other
+                .acquire(now + Duration::from_millis(500))
+                .await
+                .is_err()
+        );
     }
 
     /// Sliding log, not a fixed window: no run of acquisitions may put more than `capacity`
     /// timestamps inside any trailing `window`-long span.
     #[tokio::test(start_paused = true)]
     async fn never_more_than_n_in_any_window() {
-        let rl = RateLimiter::new(RateLimit { requests: 3, per_seconds: 1 });
+        let rl = RateLimiter::new(RateLimit {
+            requests: 3,
+            per_seconds: 1,
+        });
         let deadline = Instant::now() + Duration::from_secs(120);
         let mut times = Vec::new();
         for _ in 0..10 {
@@ -118,8 +151,10 @@ mod tests {
             times.push(Instant::now());
         }
         for win_start in &times {
-            let in_window =
-                times.iter().filter(|t| **t >= *win_start && **t < *win_start + Duration::from_secs(1)).count();
+            let in_window = times
+                .iter()
+                .filter(|t| **t >= *win_start && **t < *win_start + Duration::from_secs(1))
+                .count();
             assert!(in_window <= 3, "{times:?}");
         }
     }
@@ -129,7 +164,10 @@ mod tests {
     /// 2N sends across its edge; the sliding log must still hold N in every 1 s span.
     #[tokio::test(start_paused = true)]
     async fn late_start_never_more_than_n_in_any_window() {
-        let rl = RateLimiter::new(RateLimit { requests: 3, per_seconds: 1 });
+        let rl = RateLimiter::new(RateLimit {
+            requests: 3,
+            per_seconds: 1,
+        });
         let start = Instant::now();
         let deadline = start + Duration::from_secs(120);
         rl.acquire(deadline).await.unwrap();
@@ -140,10 +178,18 @@ mod tests {
             times.push(Instant::now());
         }
         for win_start in &times {
-            let in_window =
-                times.iter().filter(|t| **t >= *win_start && **t < *win_start + Duration::from_secs(1)).count();
-            let ms: Vec<_> = times.iter().map(|t| t.duration_since(start).as_millis()).collect();
-            assert!(in_window <= 3, "{in_window} sends in one window, at ms {ms:?}");
+            let in_window = times
+                .iter()
+                .filter(|t| **t >= *win_start && **t < *win_start + Duration::from_secs(1))
+                .count();
+            let ms: Vec<_> = times
+                .iter()
+                .map(|t| t.duration_since(start).as_millis())
+                .collect();
+            assert!(
+                in_window <= 3,
+                "{in_window} sends in one window, at ms {ms:?}"
+            );
         }
     }
 
@@ -151,13 +197,19 @@ mod tests {
     /// and fails instead of panicking on its empty log.
     #[tokio::test(start_paused = true)]
     async fn zero_capacity_fails_instead_of_panicking() {
-        let rl = RateLimiter::new(RateLimit { requests: 0, per_seconds: 1 });
+        let rl = RateLimiter::new(RateLimit {
+            requests: 0,
+            per_seconds: 1,
+        });
         assert!(rl.acquire(Instant::now() + FAR).await.is_err());
     }
 
     #[tokio::test(start_paused = true)]
     async fn rate_wait_past_deadline_fails_fast() {
-        let rl = RateLimiter::new(RateLimit { requests: 1, per_seconds: 60 });
+        let rl = RateLimiter::new(RateLimit {
+            requests: 1,
+            per_seconds: 60,
+        });
         let now = Instant::now();
         rl.acquire(now + FAR).await.unwrap();
         // The next slot is 60 s away; a deadline only 500 ms out leaves no room for it.
@@ -168,11 +220,18 @@ mod tests {
     /// waits rather than failing fast.
     #[tokio::test(start_paused = true)]
     async fn rate_wait_within_deadline_still_waits() {
-        let rl = RateLimiter::new(RateLimit { requests: 1, per_seconds: 1 });
+        let rl = RateLimiter::new(RateLimit {
+            requests: 1,
+            per_seconds: 1,
+        });
         let now = Instant::now();
         rl.acquire(now + Duration::from_secs(60)).await.unwrap();
         let start = Instant::now();
         rl.acquire(now + Duration::from_secs(60)).await.unwrap();
-        assert!(start.elapsed() >= Duration::from_millis(900), "{:?}", start.elapsed());
+        assert!(
+            start.elapsed() >= Duration::from_millis(900),
+            "{:?}",
+            start.elapsed()
+        );
     }
 }

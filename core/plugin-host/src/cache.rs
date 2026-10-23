@@ -14,7 +14,9 @@ pub(crate) fn cache_key(plugin: &str, req: &Request) -> [u8; 32] {
     let mut headers: Vec<(String, &str)> = req
         .headers
         .iter()
-        .filter(|(k, _)| !k.eq_ignore_ascii_case("user-agent") && !k.eq_ignore_ascii_case("cache-control"))
+        .filter(|(k, _)| {
+            !k.eq_ignore_ascii_case("user-agent") && !k.eq_ignore_ascii_case("cache-control")
+        })
         .map(|(k, v)| (k.to_ascii_lowercase(), v.as_str()))
         .collect();
     headers.sort();
@@ -42,8 +44,10 @@ pub(crate) fn ttl_ms(headers: &[(String, String)], capability: Capability) -> Op
     if capability == Capability::Resolve {
         return None;
     }
-    let cache_control =
-        headers.iter().find(|(k, _)| k.eq_ignore_ascii_case("cache-control")).map_or("", |(_, v)| v.as_str());
+    let cache_control = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("cache-control"))
+        .map_or("", |(_, v)| v.as_str());
     let directives: Vec<(&str, Option<&str>)> = cache_control
         .split(',')
         .map(|d| match d.trim().split_once('=') {
@@ -51,13 +55,20 @@ pub(crate) fn ttl_ms(headers: &[(String, String)], capability: Capability) -> Op
             None => (d.trim(), None),
         })
         .collect();
-    if directives.iter().any(|(name, _)| name.eq_ignore_ascii_case("no-store")) {
+    if directives
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("no-store"))
+    {
         return None;
     }
     let seconds = directives
         .iter()
         .find(|(name, _)| name.eq_ignore_ascii_case("s-maxage"))
-        .or_else(|| directives.iter().find(|(name, _)| name.eq_ignore_ascii_case("max-age")))
+        .or_else(|| {
+            directives
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("max-age"))
+        })
         .and_then(|(_, v)| v.and_then(|v| v.parse::<u64>().ok()))
         .unwrap_or(0);
     Some(seconds.saturating_mul(1000).max(MIN_CATALOG_TTL_MS))
@@ -68,13 +79,28 @@ mod tests {
     use super::*;
 
     fn headers(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
     fn catalog_ttl_is_at_least_24h() {
-        assert_eq!(ttl_ms(&headers(&[("cache-control", "max-age=60")]), Capability::Search), Some(86_400_000));
-        assert_eq!(ttl_ms(&headers(&[("cache-control", "max-age=172800")]), Capability::Search), Some(172_800_000));
+        assert_eq!(
+            ttl_ms(
+                &headers(&[("cache-control", "max-age=60")]),
+                Capability::Search
+            ),
+            Some(86_400_000)
+        );
+        assert_eq!(
+            ttl_ms(
+                &headers(&[("cache-control", "max-age=172800")]),
+                Capability::Search
+            ),
+            Some(172_800_000)
+        );
         assert_eq!(ttl_ms(&headers(&[]), Capability::Suggest), Some(86_400_000));
         assert_eq!(
             ttl_ms(
@@ -93,14 +119,32 @@ mod tests {
 
     #[test]
     fn no_store_and_resolve_are_never_cached() {
-        assert_eq!(ttl_ms(&headers(&[("cache-control", "no-store")]), Capability::Search), None);
+        assert_eq!(
+            ttl_ms(
+                &headers(&[("cache-control", "no-store")]),
+                Capability::Search
+            ),
+            None
+        );
         assert_eq!(ttl_ms(&headers(&[]), Capability::Resolve), None);
-        assert_eq!(ttl_ms(&headers(&[("cache-control", "max-age=600")]), Capability::Resolve), None);
+        assert_eq!(
+            ttl_ms(
+                &headers(&[("cache-control", "max-age=600")]),
+                Capability::Resolve
+            ),
+            None
+        );
     }
 
     #[test]
     fn no_cache_is_ignored_for_the_catalog() {
-        assert_eq!(ttl_ms(&headers(&[("cache-control", "no-cache")]), Capability::Entity), Some(86_400_000));
+        assert_eq!(
+            ttl_ms(
+                &headers(&[("cache-control", "no-cache")]),
+                Capability::Entity
+            ),
+            Some(86_400_000)
+        );
     }
 
     #[test]
@@ -109,13 +153,19 @@ mod tests {
         let a = Request {
             method: Method::Get,
             url: "https://api.test/x".into(),
-            headers: vec![("User-Agent".into(), "a".into()), ("Accept".into(), "json".into())],
+            headers: vec![
+                ("User-Agent".into(), "a".into()),
+                ("Accept".into(), "json".into()),
+            ],
             body: None,
         };
         let b = Request {
             method: Method::Get,
             url: "https://api.test/x".into(),
-            headers: vec![("Accept".into(), "json".into()), ("User-Agent".into(), "b".into())],
+            headers: vec![
+                ("Accept".into(), "json".into()),
+                ("User-Agent".into(), "b".into()),
+            ],
             body: None,
         };
         assert_eq!(cache_key("p", &a), cache_key("p", &b));
@@ -124,8 +174,19 @@ mod tests {
     #[test]
     fn different_url_or_plugin_changes_the_key() {
         use contract::http::Method;
-        let req = |url: &str| Request { method: Method::Get, url: url.into(), headers: vec![], body: None };
-        assert_ne!(cache_key("p", &req("https://api.test/a")), cache_key("p", &req("https://api.test/b")));
-        assert_ne!(cache_key("p", &req("https://api.test/a")), cache_key("q", &req("https://api.test/a")));
+        let req = |url: &str| Request {
+            method: Method::Get,
+            url: url.into(),
+            headers: vec![],
+            body: None,
+        };
+        assert_ne!(
+            cache_key("p", &req("https://api.test/a")),
+            cache_key("p", &req("https://api.test/b"))
+        );
+        assert_ne!(
+            cache_key("p", &req("https://api.test/a")),
+            cache_key("q", &req("https://api.test/a"))
+        );
     }
 }

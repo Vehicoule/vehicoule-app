@@ -11,10 +11,10 @@ use reqwest::Url;
 use reqwest::header::{HeaderMap, LOCATION, USER_AGENT};
 use tokio::time::Instant;
 
+use crate::Capability;
 use crate::manifest::{Allowlist, ends_in_number};
 use crate::rate::RateLimiter;
 use crate::storage::{CachedResponse, Storage};
-use crate::Capability;
 
 const MAX_REDIRECTS: u32 = 5;
 
@@ -31,7 +31,13 @@ pub(crate) struct HttpBudget {
 
 impl HttpBudget {
     pub fn new(max_calls: u32, max_bytes: usize) -> Self {
-        HttpBudget { calls: 0, bytes: 0, hit: false, max_calls, max_bytes }
+        HttpBudget {
+            calls: 0,
+            bytes: 0,
+            hit: false,
+            max_calls,
+            max_bytes,
+        }
     }
 
     /// Reserves one call and `body_len` request bytes, charged together so a request refused
@@ -74,7 +80,13 @@ pub struct NetPolicy {
 impl Default for NetPolicy {
     /// https on the default port, public addresses only.
     fn default() -> Self {
-        NetPolicy::new(Resolver { lookup: Lookup::System, allow_loopback: false }, true)
+        NetPolicy::new(
+            Resolver {
+                lookup: Lookup::System,
+                allow_loopback: false,
+            },
+            true,
+        )
     }
 }
 
@@ -125,13 +137,25 @@ impl NetPolicy {
     /// `*.test` to 127.0.0.1 (loopback allowed in this policy only), anything else fails.
     #[cfg(any(test, feature = "test-util"))]
     pub fn for_tests() -> NetPolicy {
-        NetPolicy::new(Resolver { lookup: Lookup::Test, allow_loopback: true }, false)
+        NetPolicy::new(
+            Resolver {
+                lookup: Lookup::Test,
+                allow_loopback: true,
+            },
+            false,
+        )
     }
 
     /// Serves `dir/index.json` recordings, never the network; URL checks as strict as `default()`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn replay(dir: &std::path::Path) -> NetPolicy {
-        let mut policy = NetPolicy::new(Resolver { lookup: Lookup::Nothing, allow_loopback: false }, true);
+        let mut policy = NetPolicy::new(
+            Resolver {
+                lookup: Lookup::Nothing,
+                allow_loopback: false,
+            },
+            true,
+        );
         policy.replay = Some(Arc::new(crate::replay::Replay::load(dir)));
         policy
     }
@@ -195,7 +219,9 @@ fn is_public_v6(ip: Ipv6Addr) -> bool {
         return is_public_v4(Ipv4Addr::new(a, b, c, d));
     }
     // Global unicast 2000::/3, minus IETF assignments (incl. Teredo), documentation and 6to4.
-    (s[0] & 0xe000) == 0x2000 && s[0] != 0x2002 && !(s[0] == 0x2001 && (s[1] < 0x200 || s[1] == 0xdb8))
+    (s[0] & 0xe000) == 0x2000
+        && s[0] != 0x2002
+        && !(s[0] == 0x2001 && (s[1] < 0x200 || s[1] == 0xdb8))
 }
 
 #[derive(Clone, Copy)]
@@ -208,7 +234,9 @@ enum Lookup {
 }
 
 fn builder(resolver: Resolver) -> reqwest::ClientBuilder {
-    reqwest::Client::builder().no_proxy().dns_resolver(Arc::new(resolver))
+    reqwest::Client::builder()
+        .no_proxy()
+        .dns_resolver(Arc::new(resolver))
 }
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -216,10 +244,15 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 /// Connector predicate: `check` on every new connection's destination. reqwest hides that
 /// destination in a sealed type whose only accessor is `Debug` (`Unnameable(<uri>)`), so it is
 /// parsed from there; an unexpected shape refuses the connection.
-fn gate<R: std::fmt::Debug>(policy: NetPolicy, allow: Arc<Allowlist>) -> impl Fn(R) -> Result<R, BoxError> + Clone {
+fn gate<R: std::fmt::Debug>(
+    policy: NetPolicy,
+    allow: Arc<Allowlist>,
+) -> impl Fn(R) -> Result<R, BoxError> + Clone {
     move |dst| {
         let debug = format!("{dst:?}");
-        let uri = debug.split_once('(').and_then(|(_, rest)| rest.strip_suffix(')'));
+        let uri = debug
+            .split_once('(')
+            .and_then(|(_, rest)| rest.strip_suffix(')'));
         let url = uri
             .and_then(|u| Url::parse(u).ok())
             .ok_or_else(|| DeniedAddress(format!("unreadable destination {debug}")))?;
@@ -263,10 +296,14 @@ impl reqwest::dns::Resolve for Resolver {
                     return Err(format!("test resolver does not know {host}").into());
                 }
             };
-            let kept: Vec<_> =
-                addrs.into_iter().filter(|a| is_public(a.ip()) || (allow_loopback && a.ip().is_loopback())).collect();
+            let kept: Vec<_> = addrs
+                .into_iter()
+                .filter(|a| is_public(a.ip()) || (allow_loopback && a.ip().is_loopback()))
+                .collect();
             if kept.is_empty() {
-                return Err(Box::new(DeniedAddress(format!("{host} resolves to no public address"))) as _);
+                return Err(Box::new(DeniedAddress(format!(
+                    "{host} resolves to no public address"
+                ))) as _);
             }
             Ok(Box::new(kept.into_iter()) as reqwest::dns::Addrs)
         })
@@ -328,7 +365,9 @@ pub(crate) async fn fetch(
     });
     let key = cache.map(|c| crate::cache::cache_key(c.plugin, &req));
     let cached = match (cache, key) {
-        (Some(c), Some(key)) if !request_cache_control_has(&req, "no-cache") => c.storage.cache_get(&key),
+        (Some(c), Some(key)) if !request_cache_control_has(&req, "no-cache") => {
+            c.storage.cache_get(&key)
+        }
         _ => None,
     };
     // A failing recheck is treated as a miss: `fetch_uncached` below runs its own `policy.check`
@@ -339,7 +378,17 @@ pub(crate) async fn fetch(
         return Ok(cached_response(entry));
     }
 
-    match fetch_uncached(policy, allow, req, max_body, budget, rate_limiter, user_agent).await {
+    match fetch_uncached(
+        policy,
+        allow,
+        req,
+        max_body,
+        budget,
+        rate_limiter,
+        user_agent,
+    )
+    .await
+    {
         Ok(response) => {
             if let (Some(c), Some(key)) = (cache, key) {
                 store_if_cacheable(c, &key, &response);
@@ -355,27 +404,39 @@ pub(crate) async fn fetch(
 
 /// Whether the request's own `cache-control` carries `directive` (lowercase), case-insensitively.
 fn request_cache_control_has(req: &Request, directive: &str) -> bool {
-    req.headers
-        .iter()
-        .any(|(k, v)| k.eq_ignore_ascii_case("cache-control") && v.to_ascii_lowercase().contains(directive))
+    req.headers.iter().any(|(k, v)| {
+        k.eq_ignore_ascii_case("cache-control") && v.to_ascii_lowercase().contains(directive)
+    })
 }
 
 /// Both the original request URL and the entry's (final, post-redirect) URL must still check
 /// out under the current `allow`/`policy` before a cached entry is served.
-fn cache_hit_allowed(policy: &NetPolicy, allow: &Allowlist, req_url: &str, entry_url: &str) -> bool {
+fn cache_hit_allowed(
+    policy: &NetPolicy,
+    allow: &Allowlist,
+    req_url: &str,
+    entry_url: &str,
+) -> bool {
     let ok = |u: &str| Url::parse(u).is_ok_and(|url| policy.check(allow, &url).is_ok());
     ok(req_url) && ok(entry_url)
 }
 
 fn cached_response(entry: CachedResponse) -> Response {
-    Response { status: entry.status, url: entry.url, headers: entry.headers, body: entry.body }
+    Response {
+        status: entry.status,
+        url: entry.url,
+        headers: entry.headers,
+        body: entry.body,
+    }
 }
 
 fn store_if_cacheable(cache: CacheCtx<'_>, key: &[u8; 32], response: &Response) {
     if !(200..300).contains(&response.status) || response.body.len() > MAX_CACHED_BODY {
         return;
     }
-    let Some(ttl) = crate::cache::ttl_ms(&response.headers, cache.capability) else { return };
+    let Some(ttl) = crate::cache::ttl_ms(&response.headers, cache.capability) else {
+        return;
+    };
     let now = now_ms();
     cache.storage.cache_put(
         key,
@@ -392,7 +453,9 @@ fn store_if_cacheable(cache: CacheCtx<'_>, key: &[u8; 32], response: &Response) 
 }
 
 fn now_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 /// Sends `req` under `policy` and `allow`, following up to 5 redirects by hand. Every hop is
@@ -410,7 +473,8 @@ async fn fetch_uncached(
     rate_limiter: Option<(&RateLimiter, Instant)>,
     user_agent: Option<&str>,
 ) -> Result<Response, HttpError> {
-    let mut url = Url::parse(&req.url).map_err(|e| HttpError::Denied(format!("{}: {e}", req.url)))?;
+    let mut url =
+        Url::parse(&req.url).map_err(|e| HttpError::Denied(format!("{}: {e}", req.url)))?;
     let mut method = req.method;
     let mut headers = req.headers;
     strip_routing_headers(&mut headers);
@@ -422,16 +486,24 @@ async fn fetch_uncached(
     let mut redirects = 0;
     loop {
         policy.check(allow, &url).map_err(HttpError::Denied)?;
-        budget.lock().expect("http budget poisoned: a thread panicked while holding it").reserve_request(body.as_ref().map_or(0, Vec::len))?;
+        budget
+            .lock()
+            .expect("http budget poisoned: a thread panicked while holding it")
+            .reserve_request(body.as_ref().map_or(0, Vec::len))?;
         if let Some((rate_limiter, deadline)) = rate_limiter
             && rate_limiter.acquire(deadline).await.is_err()
         {
-            budget.lock().expect("http budget poisoned: a thread panicked while holding it").hit = true;
+            budget
+                .lock()
+                .expect("http budget poisoned: a thread panicked while holding it")
+                .hit = true;
             return Err(HttpError::BudgetExceeded);
         }
         let hop = send(policy, method, &url, &headers, body.clone()).await?;
         let redirect = matches!(hop.status, 301..=303 | 307 | 308);
-        let location = redirect.then(|| header(&hop.headers, LOCATION.as_str())).flatten();
+        let location = redirect
+            .then(|| header(&hop.headers, LOCATION.as_str()))
+            .flatten();
         let Some(location) = location else {
             return read(hop, url, max_body, budget).await;
         };
@@ -440,18 +512,23 @@ async fn fetch_uncached(
         }
         redirects += 1;
         // Never the location itself: a URL must not leave the host in an error.
-        let next = url.join(location).map_err(|e| HttpError::Network(format!("bad redirect: {e}")))?;
+        let next = url
+            .join(location)
+            .map_err(|e| HttpError::Network(format!("bad redirect: {e}")))?;
         if matches!(hop.status, 301..=303) && matches!(method, Method::Post) {
             method = Method::Get;
         }
         if matches!(hop.status, 301..=303) {
             body = None;
-            headers
-                .retain(|(k, _)| !k.eq_ignore_ascii_case("content-type") && !k.eq_ignore_ascii_case("content-length"));
+            headers.retain(|(k, _)| {
+                !k.eq_ignore_ascii_case("content-type") && !k.eq_ignore_ascii_case("content-length")
+            });
         }
         if next.origin() != url.origin() {
             headers.retain(|(k, _)| {
-                !["authorization", "cookie", "proxy-authorization"].iter().any(|h| k.eq_ignore_ascii_case(h))
+                !["authorization", "cookie", "proxy-authorization"]
+                    .iter()
+                    .any(|h| k.eq_ignore_ascii_case(h))
             });
         }
         url = next;
@@ -464,13 +541,18 @@ async fn fetch_uncached(
 pub(crate) fn strip_routing_headers(headers: &mut Vec<(String, String)>) {
     headers.retain(|(k, _)| {
         let k = k.to_ascii_lowercase();
-        !matches!(k.as_str(), "host" | "connection" | "transfer-encoding" | "te" | "upgrade" | "content-length")
-            && !k.starts_with("proxy-")
+        !matches!(
+            k.as_str(),
+            "host" | "connection" | "transfer-encoding" | "te" | "upgrade" | "content-length"
+        ) && !k.starts_with("proxy-")
     });
 }
 
 fn header<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
-    headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+    headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(name))
+        .map(|(_, v)| v.as_str())
 }
 
 async fn send(
@@ -497,18 +579,35 @@ async fn send(
         builder = builder.body(body);
     }
     let resp = builder.send().await.map_err(net_error)?;
-    Ok(Hop { status: resp.status().as_u16(), headers: pairs(resp.headers()), body: Body::Live(resp) })
+    Ok(Hop {
+        status: resp.status().as_u16(),
+        headers: pairs(resp.headers()),
+        body: Body::Live(resp),
+    })
 }
 
 fn pairs(headers: &HeaderMap) -> Vec<(String, String)> {
-    headers.iter().map(|(k, v)| (k.to_string(), String::from_utf8_lossy(v.as_bytes()).into_owned())).collect()
+    headers
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.to_string(),
+                String::from_utf8_lossy(v.as_bytes()).into_owned(),
+            )
+        })
+        .collect()
 }
 
 /// Reads the body as a stream and stops at `max` for this response. Every chunk received is
 /// also charged to the call's cumulative `budget` as it arrives — including the chunk that
 /// trips `TooLarge` or a mid-body network error — so a response that fails partway through
 /// still pays for what it actually transferred (no byte a plugin received goes uncounted).
-async fn read(hop: Hop, url: Url, max: usize, budget: &Mutex<HttpBudget>) -> Result<Response, HttpError> {
+async fn read(
+    hop: Hop,
+    url: Url,
+    max: usize,
+    budget: &Mutex<HttpBudget>,
+) -> Result<Response, HttpError> {
     let body = match hop.body {
         Body::Live(mut resp) => {
             if resp.content_length().is_some_and(|n| n > max as u64) {
@@ -518,7 +617,10 @@ async fn read(hop: Hop, url: Url, max: usize, budget: &Mutex<HttpBudget>) -> Res
             while let Some(chunk) = resp.chunk().await.map_err(net_error)? {
                 // Charged before the size check: the chunk that trips `TooLarge` was still
                 // received over the wire and must count, even though it's then discarded.
-                budget.lock().expect("http budget poisoned: a thread panicked while holding it").add_response_bytes(chunk.len())?;
+                budget
+                    .lock()
+                    .expect("http budget poisoned: a thread panicked while holding it")
+                    .add_response_bytes(chunk.len())?;
                 if body.len() + chunk.len() > max {
                     return Err(HttpError::TooLarge);
                 }
@@ -530,11 +632,19 @@ async fn read(hop: Hop, url: Url, max: usize, budget: &Mutex<HttpBudget>) -> Res
         Body::Recorded(body) if body.len() > max => return Err(HttpError::TooLarge),
         #[cfg(any(test, feature = "test-util"))]
         Body::Recorded(body) => {
-            budget.lock().expect("http budget poisoned: a thread panicked while holding it").add_response_bytes(body.len())?;
+            budget
+                .lock()
+                .expect("http budget poisoned: a thread panicked while holding it")
+                .add_response_bytes(body.len())?;
             body
         }
     };
-    Ok(Response { status: hop.status, url: url.into(), headers: hop.headers, body })
+    Ok(Response {
+        status: hop.status,
+        url: url.into(),
+        headers: hop.headers,
+        body,
+    })
 }
 
 fn net_error(e: reqwest::Error) -> HttpError {
@@ -546,7 +656,11 @@ fn net_error(e: reqwest::Error) -> HttpError {
         source = err.source();
     }
     // reqwest's `Display` names the URL, which must not leave the host.
-    if e.is_timeout() { HttpError::Timeout } else { HttpError::Network(e.without_url().to_string()) }
+    if e.is_timeout() {
+        HttpError::Timeout
+    } else {
+        HttpError::Network(e.without_url().to_string())
+    }
 }
 
 #[cfg(test)]
@@ -566,10 +680,19 @@ mod tests {
     }
 
     fn req(m: Method, url: &str) -> Request {
-        Request { method: m, url: url.into(), headers: vec![], body: None }
+        Request {
+            method: m,
+            url: url.into(),
+            headers: vec![],
+            body: None,
+        }
     }
 
-    async fn run(policy: &NetPolicy, allow: &Allowlist, req: Request) -> (Result<Response, HttpError>, u32) {
+    async fn run(
+        policy: &NetPolicy,
+        allow: &Allowlist,
+        req: Request,
+    ) -> (Result<Response, HttpError>, u32) {
         let budget = Mutex::new(HttpBudget::new(u32::MAX, usize::MAX));
         let r = fetch(policy, allow, req, 8 << 20, &budget, None, None, None).await;
         (r, budget.into_inner().unwrap().calls)
@@ -588,7 +711,10 @@ mod tests {
 
     async fn redirect(server: &MockServer, from: &str, status: u16, to: &str) {
         let resp = ResponseTemplate::new(status).insert_header("location", to);
-        Mock::given(path(from)).respond_with(resp).mount(server).await;
+        Mock::given(path(from))
+            .respond_with(resp)
+            .mount(server)
+            .await;
     }
 
     #[test]
@@ -619,10 +745,16 @@ mod tests {
             "64:ff9b::a00:1",
         ];
         for ip in refused {
-            assert!(!is_public(ip.parse::<IpAddr>().unwrap()), "{ip} should be refused");
+            assert!(
+                !is_public(ip.parse::<IpAddr>().unwrap()),
+                "{ip} should be refused"
+            );
         }
         for ip in ["1.1.1.1", "2606:4700::1111", "::ffff:1.1.1.1"] {
-            assert!(is_public(ip.parse::<IpAddr>().unwrap()), "{ip} should be public");
+            assert!(
+                is_public(ip.parse::<IpAddr>().unwrap()),
+                "{ip} should be public"
+            );
         }
     }
 
@@ -630,7 +762,12 @@ mod tests {
     async fn ip_literal_hosts_are_denied() {
         let list = allow(&["api.test"]);
         for policy in [NetPolicy::default(), NetPolicy::for_tests()] {
-            for url in ["https://127.0.0.1/", "https://[::1]/", "https://2130706433/", "https://0x7f.1/"] {
+            for url in [
+                "https://127.0.0.1/",
+                "https://[::1]/",
+                "https://2130706433/",
+                "https://0x7f.1/",
+            ] {
                 let (r, calls) = run(&policy, &list, req(Method::Get, url)).await;
                 assert!(denied(r).contains("literal IP"), "{url}");
                 assert_eq!(calls, 0);
@@ -656,8 +793,12 @@ mod tests {
 
     #[tokio::test]
     async fn domain_outside_manifest_is_denied() {
-        let (r, calls) =
-            run(&NetPolicy::for_tests(), &allow(&["api.test"]), req(Method::Get, "http://example.org/")).await;
+        let (r, calls) = run(
+            &NetPolicy::for_tests(),
+            &allow(&["api.test"]),
+            req(Method::Get, "http://example.org/"),
+        )
+        .await;
         assert_eq!(denied(r), "example.org not allowed");
         assert_eq!(calls, 0);
     }
@@ -665,27 +806,63 @@ mod tests {
     #[tokio::test]
     async fn dns_to_private_ip_is_denied() {
         // The test resolver maps rebind.test to 10.0.0.1; `for_tests` only lets loopback through.
-        let (r, calls) =
-            run(&NetPolicy::for_tests(), &allow(&["rebind.test"]), req(Method::Get, "http://rebind.test/")).await;
+        let (r, calls) = run(
+            &NetPolicy::for_tests(),
+            &allow(&["rebind.test"]),
+            req(Method::Get, "http://rebind.test/"),
+        )
+        .await;
         assert!(denied(r).contains("rebind.test"));
         assert_eq!(calls, 1);
         // System resolver: localhost answers loopback only, refused by the default policy.
-        let (r, _) = run(&NetPolicy::default(), &allow(&["localhost"]), req(Method::Get, "https://localhost/")).await;
+        let (r, _) = run(
+            &NetPolicy::default(),
+            &allow(&["localhost"]),
+            req(Method::Get, "https://localhost/"),
+        )
+        .await;
         assert_eq!(denied(r), "localhost resolves to no public address");
     }
 
     #[tokio::test]
     async fn redirect_to_foreign_domain_is_denied() {
         let server = MockServer::start().await;
-        redirect(&server, "/a", 302, &format!("{}/x", base(&server, "evil.test"))).await;
-        redirect(&server, "/b", 302, &format!("{}/x", base(&server, "127.0.0.1"))).await;
+        redirect(
+            &server,
+            "/a",
+            302,
+            &format!("{}/x", base(&server, "evil.test")),
+        )
+        .await;
+        redirect(
+            &server,
+            "/b",
+            302,
+            &format!("{}/x", base(&server, "127.0.0.1")),
+        )
+        .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
-        let (r, _) = run(&policy, &list, req(Method::Get, &format!("{}/a", base(&server, "api.test")))).await;
+        let (r, _) = run(
+            &policy,
+            &list,
+            req(Method::Get, &format!("{}/a", base(&server, "api.test"))),
+        )
+        .await;
         assert_eq!(denied(r), "evil.test not allowed");
-        let (r, _) = run(&policy, &list, req(Method::Get, &format!("{}/b", base(&server, "api.test")))).await;
+        let (r, _) = run(
+            &policy,
+            &list,
+            req(Method::Get, &format!("{}/b", base(&server, "api.test"))),
+        )
+        .await;
         assert!(denied(r).contains("literal IP"));
-        let paths: Vec<String> =
-            server.received_requests().await.unwrap().iter().map(|r| r.url.path().to_string()).collect();
+        let paths: Vec<String> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.url.path().to_string())
+            .collect();
         assert_eq!(paths, ["/a", "/b"]);
     }
 
@@ -696,7 +873,10 @@ mod tests {
         for n in 0..6 {
             redirect(&server, &format!("/{n}"), 302, &url(n + 1)).await;
         }
-        Mock::given(path("/6")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+        Mock::given(path("/6"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
 
         let (r, calls) = run(&policy, &list, req(Method::Get, &url(1))).await;
@@ -716,9 +896,16 @@ mod tests {
         let server = MockServer::start().await;
         redirect(&server, "/a", 302, "http://exa mple.test/secret-path?q=x").await;
         let url = format!("{}/a", base(&server, "api.test"));
-        let (r, _) = run(&NetPolicy::for_tests(), &allow(&["api.test"]), req(Method::Get, &url)).await;
+        let (r, _) = run(
+            &NetPolicy::for_tests(),
+            &allow(&["api.test"]),
+            req(Method::Get, &url),
+        )
+        .await;
         match r {
-            Err(HttpError::Network(m)) => assert_eq!(m, "bad redirect: invalid international domain name"),
+            Err(HttpError::Network(m)) => {
+                assert_eq!(m, "bad redirect: invalid international domain name")
+            }
             other => panic!("{:?}", other.map(|r| r.status)),
         }
     }
@@ -729,11 +916,20 @@ mod tests {
         let api = base(&server, "api.test");
         redirect(&server, "/see", 303, &format!("{api}/got")).await;
         redirect(&server, "/temp", 307, &format!("{api}/kept")).await;
-        Mock::given(path("/got")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
-        Mock::given(path("/kept")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+        Mock::given(path("/got"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        Mock::given(path("/kept"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         for p in ["/see", "/temp"] {
-            let post = Request { body: Some(b"payload".to_vec()), ..req(Method::Post, &format!("{api}{p}")) };
+            let post = Request {
+                body: Some(b"payload".to_vec()),
+                ..req(Method::Post, &format!("{api}{p}"))
+            };
             assert_eq!(run(&policy, &list, post).await.0.unwrap().status, 200);
         }
         let got = server.received_requests().await.unwrap();
@@ -747,20 +943,52 @@ mod tests {
     #[tokio::test]
     async fn credentials_dropped_on_cross_host_redirect() {
         let server = MockServer::start().await;
-        redirect(&server, "/same", 302, &format!("{}/cross", base(&server, "api.test"))).await;
-        redirect(&server, "/cross", 302, &format!("{}/end", base(&server, "cdn.test"))).await;
-        Mock::given(path("/end")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+        redirect(
+            &server,
+            "/same",
+            302,
+            &format!("{}/cross", base(&server, "api.test")),
+        )
+        .await;
+        redirect(
+            &server,
+            "/cross",
+            302,
+            &format!("{}/end", base(&server, "cdn.test")),
+        )
+        .await;
+        Mock::given(path("/end"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
         let headers = vec![
             ("Authorization".into(), "Bearer t".into()),
             ("Cookie".into(), "s=1".into()),
             ("X-Keep".into(), "1".into()),
         ];
-        let r = Request { headers, ..req(Method::Get, &format!("{}/same", base(&server, "api.test"))) };
-        let (r, _) = run(&NetPolicy::for_tests(), &allow(&["api.test", "cdn.test"]), r).await;
+        let r = Request {
+            headers,
+            ..req(Method::Get, &format!("{}/same", base(&server, "api.test")))
+        };
+        let (r, _) = run(
+            &NetPolicy::for_tests(),
+            &allow(&["api.test", "cdn.test"]),
+            r,
+        )
+        .await;
         assert_eq!(r.unwrap().status, 200);
         let got = server.received_requests().await.unwrap();
-        let has = |p: &str, h: &str| got.iter().find(|r| r.url.path() == p).unwrap().headers.contains_key(h);
-        assert!(has("/cross", "authorization") && has("/cross", "cookie"), "same host keeps credentials");
+        let has = |p: &str, h: &str| {
+            got.iter()
+                .find(|r| r.url.path() == p)
+                .unwrap()
+                .headers
+                .contains_key(h)
+        };
+        assert!(
+            has("/cross", "authorization") && has("/cross", "cookie"),
+            "same host keeps credentials"
+        );
         assert!(!has("/end", "authorization") && !has("/end", "cookie"));
         assert!(has("/end", "x-keep"));
     }
@@ -768,18 +996,43 @@ mod tests {
     #[tokio::test]
     async fn plugin_host_header_is_ignored() {
         let server = MockServer::start().await;
-        Mock::given(path("/")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
-        let headers = ["Host", "Connection", "Transfer-Encoding", "TE", "Upgrade", "Proxy-Foo"]
-            .map(|k| (k.to_string(), "exfil.example".to_string()))
-            .to_vec();
-        let r = Request { headers, ..req(Method::Get, &format!("{}/", base(&server, "api.test"))) };
+        Mock::given(path("/"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let headers = [
+            "Host",
+            "Connection",
+            "Transfer-Encoding",
+            "TE",
+            "Upgrade",
+            "Proxy-Foo",
+        ]
+        .map(|k| (k.to_string(), "exfil.example".to_string()))
+        .to_vec();
+        let r = Request {
+            headers,
+            ..req(Method::Get, &format!("{}/", base(&server, "api.test")))
+        };
         let (r, _) = run(&NetPolicy::for_tests(), &allow(&["api.test"]), r).await;
         assert_eq!(r.unwrap().status, 200);
         let got = server.received_requests().await.unwrap();
         let h = &got[0].headers;
-        assert_eq!(h.get("host").unwrap(), &format!("api.test:{}", server.address().port()));
-        for k in ["connection", "transfer-encoding", "te", "upgrade", "proxy-foo"] {
-            assert!(h.get(k).is_none_or(|v| v != "exfil.example"), "{k} forwarded");
+        assert_eq!(
+            h.get("host").unwrap(),
+            &format!("api.test:{}", server.address().port())
+        );
+        for k in [
+            "connection",
+            "transfer-encoding",
+            "te",
+            "upgrade",
+            "proxy-foo",
+        ] {
+            assert!(
+                h.get(k).is_none_or(|v| v != "exfil.example"),
+                "{k} forwarded"
+            );
         }
     }
 
@@ -788,8 +1041,17 @@ mod tests {
         let server = MockServer::start().await;
         let api = base(&server, "api.test");
         redirect(&server, "/a", 301, "/b?x=1").await;
-        Mock::given(method("GET")).and(path("/b")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
-        let (r, _) = run(&NetPolicy::for_tests(), &allow(&["api.test"]), req(Method::Get, &format!("{api}/a"))).await;
+        Mock::given(method("GET"))
+            .and(path("/b"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let (r, _) = run(
+            &NetPolicy::for_tests(),
+            &allow(&["api.test"]),
+            req(Method::Get, &format!("{api}/a")),
+        )
+        .await;
         assert_eq!(r.unwrap().url, format!("{api}/b?x=1"));
     }
 
@@ -803,48 +1065,93 @@ mod tests {
         std::fs::write(dir.join("deezer_search.json"), br#"{"data":[]}"#).unwrap();
         let (policy, list) = (NetPolicy::replay(&dir), allow(&["api.deezer.com"]));
 
-        let (r, calls) = run(&policy, &list, req(Method::Get, "https://api.deezer.com/search?q=x")).await;
+        let (r, calls) = run(
+            &policy,
+            &list,
+            req(Method::Get, "https://api.deezer.com/search?q=x"),
+        )
+        .await;
         let r = r.unwrap();
         assert_eq!((r.status, r.body.as_slice()), (200, &br#"{"data":[]}"#[..]));
-        assert_eq!(r.headers, [("content-type".to_string(), "application/json".to_string())]);
+        assert_eq!(
+            r.headers,
+            [("content-type".to_string(), "application/json".to_string())]
+        );
         assert_eq!(calls, 1);
 
-        let (r, _) = run(&policy, &list, req(Method::Get, "https://api.deezer.com/search?q=y")).await;
+        let (r, _) = run(
+            &policy,
+            &list,
+            req(Method::Get, "https://api.deezer.com/search?q=y"),
+        )
+        .await;
         match r {
             Err(HttpError::Network(m)) => {
                 assert_eq!(m, "no recording for GET https://api.deezer.com/search?q=y")
             }
             other => panic!("{:?}", other.map(|r| r.status)),
         }
-        let (r, _) = run(&policy, &list, req(Method::Get, "https://evil.com/search?q=x")).await;
+        let (r, _) = run(
+            &policy,
+            &list,
+            req(Method::Get, "https://evil.com/search?q=x"),
+        )
+        .await;
         assert_eq!(denied(r), "evil.com not allowed");
-        let (r, _) = run(&policy, &list, req(Method::Get, "http://api.deezer.com/search?q=x")).await;
+        let (r, _) = run(
+            &policy,
+            &list,
+            req(Method::Get, "http://api.deezer.com/search?q=x"),
+        )
+        .await;
         assert_eq!(denied(r), "scheme not allowed: http");
-        let (r, _) = run(&policy, &list, req(Method::Get, "https://api.deezer.com:8443/search?q=x")).await;
+        let (r, _) = run(
+            &policy,
+            &list,
+            req(Method::Get, "https://api.deezer.com:8443/search?q=x"),
+        )
+        .await;
         assert_eq!(denied(r), "port not allowed: 8443");
     }
 
     #[tokio::test]
     async fn request_body_is_charged_only_when_sent() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let budget = Mutex::new(HttpBudget::new(10, 5));
         let url = base(&server, "api.test");
-        let big = Request { body: Some(vec![b'x'; 6]), ..req(Method::Post, &url) };
+        let big = Request {
+            body: Some(vec![b'x'; 6]),
+            ..req(Method::Post, &url)
+        };
         match fetch(&policy, &list, big, 8 << 20, &budget, None, None, None).await {
             Err(HttpError::BudgetExceeded) => {}
             other => panic!("{:?}", other.map(|r| r.status)),
         }
         {
             let b = budget.lock().unwrap();
-            assert_eq!((b.calls, b.bytes), (0, 0), "a request refused for its body size spends no call and no bytes");
+            assert_eq!(
+                (b.calls, b.bytes),
+                (0, 0),
+                "a request refused for its body size spends no call and no bytes"
+            );
         }
-        let small = Request { body: Some(vec![b'x'; 5]), ..req(Method::Post, &url) };
+        let small = Request {
+            body: Some(vec![b'x'; 5]),
+            ..req(Method::Post, &url)
+        };
         let r = fetch(&policy, &list, small, 8 << 20, &budget, None, None, None).await;
         assert_eq!(r.unwrap().status, 200);
         assert_eq!(budget.lock().unwrap().calls, 1);
-        assert_eq!(server.received_requests().await.unwrap().len(), 1, "only the fitting request was ever sent");
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            1,
+            "only the fitting request was ever sent"
+        );
     }
 
     #[tokio::test]
@@ -855,15 +1162,25 @@ mod tests {
         redirect(&server, "/a", 307, &format!("{api}/b")).await;
         redirect(&server, "/b", 307, &format!("{api}/c")).await;
         let body = vec![b'y'; 100];
-        Mock::given(path("/c")).respond_with(ResponseTemplate::new(200).set_body_bytes(body)).mount(&server).await;
+        Mock::given(path("/c"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body))
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let budget = Mutex::new(HttpBudget::new(10, 1 << 20));
-        let post = Request { body: Some(vec![b'x'; 10]), ..req(Method::Post, &format!("{api}/a")) };
+        let post = Request {
+            body: Some(vec![b'x'; 10]),
+            ..req(Method::Post, &format!("{api}/a"))
+        };
         let r = fetch(&policy, &list, post, 8 << 20, &budget, None, None, None).await;
         assert_eq!(r.unwrap().status, 200);
         let b = budget.lock().unwrap();
         assert_eq!(b.calls, 3, "one call per hop, redirects included");
-        assert_eq!(b.bytes, 10 * 3 + 100, "the resent 10-byte body is charged on every hop, the response once");
+        assert_eq!(
+            b.bytes,
+            10 * 3 + 100,
+            "the resent 10-byte body is charged on every hop, the response once"
+        );
     }
 
     /// Writes `n` 1 MiB chunked-encoding frames on `sock`, stopping early if the peer has
@@ -872,7 +1189,11 @@ mod tests {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let mut buf = [0u8; 4096];
         let _ = sock.read(&mut buf).await;
-        if sock.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n").await.is_err() {
+        if sock
+            .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+            .await
+            .is_err()
+        {
             return;
         }
         let chunk = vec![b'x'; 1 << 20];
@@ -903,12 +1224,26 @@ mod tests {
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let budget = Mutex::new(HttpBudget::new(10, 1 << 30));
         let url = format!("http://api.test:{port}/");
-        match fetch(&policy, &list, req(Method::Get, &url), 8 << 20, &budget, None, None, None).await {
+        match fetch(
+            &policy,
+            &list,
+            req(Method::Get, &url),
+            8 << 20,
+            &budget,
+            None,
+            None,
+            None,
+        )
+        .await
+        {
             Err(HttpError::TooLarge) => {}
             other => panic!("{:?}", other.map(|r| r.status)),
         }
         let charged = budget.lock().unwrap().bytes;
-        assert!(charged >= 8 << 20, "{charged}: the ~9 MiB streamed before TooLarge must still be charged");
+        assert!(
+            charged >= 8 << 20,
+            "{charged}: the ~9 MiB streamed before TooLarge must still be charged"
+        );
         let _ = server.await;
     }
 
@@ -925,14 +1260,34 @@ mod tests {
             write_chunks(&mut sock, 16).await;
         });
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
-        let budget = Mutex::new(HttpBudget { calls: 2, bytes: 15 << 20, hit: false, max_calls: 24, max_bytes: 16 << 20 });
+        let budget = Mutex::new(HttpBudget {
+            calls: 2,
+            bytes: 15 << 20,
+            hit: false,
+            max_calls: 24,
+            max_bytes: 16 << 20,
+        });
         let url = format!("http://api.test:{port}/");
-        match fetch(&policy, &list, req(Method::Get, &url), 8 << 20, &budget, None, None, None).await {
+        match fetch(
+            &policy,
+            &list,
+            req(Method::Get, &url),
+            8 << 20,
+            &budget,
+            None,
+            None,
+            None,
+        )
+        .await
+        {
             Err(HttpError::BudgetExceeded) => {}
             other => panic!("{:?}", other.map(|r| r.status)),
         }
         let bytes = budget.lock().unwrap().bytes;
-        assert!(bytes < (16 << 20) + (2 << 20), "{bytes}: should stop within about one chunk past the 16 MiB cap");
+        assert!(
+            bytes < (16 << 20) + (2 << 20),
+            "{bytes}: should stop within about one chunk past the 16 MiB cap"
+        );
         let _ = server.await;
     }
 
@@ -943,37 +1298,85 @@ mod tests {
         cache: CacheCtx<'_>,
     ) -> Result<Response, HttpError> {
         let budget = Mutex::new(HttpBudget::new(u32::MAX, usize::MAX));
-        fetch(policy, allow, req, 8 << 20, &budget, None, None, Some(cache)).await
+        fetch(
+            policy,
+            allow,
+            req,
+            8 << 20,
+            &budget,
+            None,
+            None,
+            Some(cache),
+        )
+        .await
     }
 
     #[tokio::test]
     async fn get_is_served_from_cache() {
         let server = MockServer::start().await;
         let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=60");
-        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        Mock::given(method("GET"))
+            .respond_with(resp)
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let storage = MemoryStorage::default();
-        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let cache = CacheCtx {
+            storage: &storage,
+            plugin: "p",
+            capability: Capability::Search,
+        };
         let url = format!("{}/x", base(&server, "api.test"));
 
-        assert_eq!(run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap().status, 200);
-        assert_eq!(run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap().status, 200);
-        assert_eq!(server.received_requests().await.unwrap().len(), 1, "the second GET must be served from cache");
+        assert_eq!(
+            run_cached(&policy, &list, req(Method::Get, &url), cache)
+                .await
+                .unwrap()
+                .status,
+            200
+        );
+        assert_eq!(
+            run_cached(&policy, &list, req(Method::Get, &url), cache)
+                .await
+                .unwrap()
+                .status,
+            200
+        );
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            1,
+            "the second GET must be served from cache"
+        );
     }
 
     #[tokio::test]
     async fn resolve_never_hits_cache() {
         let server = MockServer::start().await;
         let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=60");
-        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        Mock::given(method("GET"))
+            .respond_with(resp)
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let storage = MemoryStorage::default();
-        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Resolve };
+        let cache = CacheCtx {
+            storage: &storage,
+            plugin: "p",
+            capability: Capability::Resolve,
+        };
         let url = format!("{}/x", base(&server, "api.test"));
 
-        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
-        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
-        assert_eq!(server.received_requests().await.unwrap().len(), 2, "resolve always goes to the network");
+        run_cached(&policy, &list, req(Method::Get, &url), cache)
+            .await
+            .unwrap();
+        run_cached(&policy, &list, req(Method::Get, &url), cache)
+            .await
+            .unwrap();
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            2,
+            "resolve always goes to the network"
+        );
     }
 
     /// A body or a request `cache-control: no-store` skips the cache both ways: a warm entry is
@@ -983,15 +1386,32 @@ mod tests {
     async fn request_body_or_no_cache_bypasses_the_cache() {
         let server = MockServer::start().await;
         let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=60");
-        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        Mock::given(method("GET"))
+            .respond_with(resp)
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let url = format!("{}/x", base(&server, "api.test"));
-        let with_body = Request { body: Some(b"q".to_vec()), ..req(Method::Get, &url) };
-        let cc = |v: &str| Request { headers: vec![("Cache-Control".into(), v.into())], ..req(Method::Get, &url) };
+        let with_body = Request {
+            body: Some(b"q".to_vec()),
+            ..req(Method::Get, &url)
+        };
+        let cc = |v: &str| Request {
+            headers: vec![("Cache-Control".into(), v.into())],
+            ..req(Method::Get, &url)
+        };
 
-        for (bypass, stored) in [(with_body, 299), (cc("no-cache"), 200), (cc("max-age=0, No-Store"), 299)] {
+        for (bypass, stored) in [
+            (with_body, 299),
+            (cc("no-cache"), 200),
+            (cc("max-age=0, No-Store"), 299),
+        ] {
             let storage = MemoryStorage::default();
-            let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+            let cache = CacheCtx {
+                storage: &storage,
+                plugin: "p",
+                capability: Capability::Search,
+            };
             // Lookup skipped: an entry under this exact key is not served.
             let key = crate::cache::cache_key("p", &bypass);
             storage.cache_put(
@@ -1006,7 +1426,13 @@ mod tests {
                     expires_at_ms: u64::MAX,
                 },
             );
-            assert_eq!(run_cached(&policy, &list, bypass, cache).await.unwrap().status, 200);
+            assert_eq!(
+                run_cached(&policy, &list, bypass, cache)
+                    .await
+                    .unwrap()
+                    .status,
+                200
+            );
             // Store skipped (299 kept) for a body or `no-store`; done (200) for `no-cache`.
             assert_eq!(storage.cache_get(&key).unwrap().status, stored);
         }
@@ -1018,19 +1444,59 @@ mod tests {
     #[tokio::test]
     async fn no_cache_request_refreshes_the_entry() {
         let server = MockServer::start().await;
-        let resp = |body: &str| ResponseTemplate::new(200).insert_header("cache-control", "max-age=60").set_body_string(body);
-        Mock::given(method("GET")).respond_with(resp("error")).up_to_n_times(1).mount(&server).await;
-        Mock::given(method("GET")).respond_with(resp("fresh")).mount(&server).await;
+        let resp = |body: &str| {
+            ResponseTemplate::new(200)
+                .insert_header("cache-control", "max-age=60")
+                .set_body_string(body)
+        };
+        Mock::given(method("GET"))
+            .respond_with(resp("error"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(resp("fresh"))
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let storage = MemoryStorage::default();
-        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let cache = CacheCtx {
+            storage: &storage,
+            plugin: "p",
+            capability: Capability::Search,
+        };
         let url = format!("{}/x", base(&server, "api.test"));
-        let no_cache = Request { headers: vec![("Cache-Control".into(), "no-cache".into())], ..req(Method::Get, &url) };
+        let no_cache = Request {
+            headers: vec![("Cache-Control".into(), "no-cache".into())],
+            ..req(Method::Get, &url)
+        };
 
-        assert_eq!(run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap().body, b"error");
-        assert_eq!(run_cached(&policy, &list, no_cache, cache).await.unwrap().body, b"fresh");
-        assert_eq!(run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap().body, b"fresh");
-        assert_eq!(server.received_requests().await.unwrap().len(), 2, "the last GET must be served from cache");
+        assert_eq!(
+            run_cached(&policy, &list, req(Method::Get, &url), cache)
+                .await
+                .unwrap()
+                .body,
+            b"error"
+        );
+        assert_eq!(
+            run_cached(&policy, &list, no_cache, cache)
+                .await
+                .unwrap()
+                .body,
+            b"fresh"
+        );
+        assert_eq!(
+            run_cached(&policy, &list, req(Method::Get, &url), cache)
+                .await
+                .unwrap()
+                .body,
+            b"fresh"
+        );
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            2,
+            "the last GET must be served from cache"
+        );
     }
 
     /// An expired entry, seeded directly through `Storage` (24h is the catalogue's own minimum
@@ -1061,8 +1527,14 @@ mod tests {
             },
         );
 
-        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
-        let resp = run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
+        let cache = CacheCtx {
+            storage: &storage,
+            plugin: "p",
+            capability: Capability::Search,
+        };
+        let resp = run_cached(&policy, &list, req(Method::Get, &url), cache)
+            .await
+            .unwrap();
         assert_eq!(resp.body, b"stale-ok");
     }
 
@@ -1070,16 +1542,33 @@ mod tests {
     async fn fresh_responses_above_2mib_are_not_cached() {
         let server = MockServer::start().await;
         let body = vec![b'x'; (2 << 20) + 1];
-        let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=60").set_body_bytes(body);
-        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        let resp = ResponseTemplate::new(200)
+            .insert_header("cache-control", "max-age=60")
+            .set_body_bytes(body);
+        Mock::given(method("GET"))
+            .respond_with(resp)
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let storage = MemoryStorage::default();
-        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let cache = CacheCtx {
+            storage: &storage,
+            plugin: "p",
+            capability: Capability::Search,
+        };
         let url = format!("{}/x", base(&server, "api.test"));
 
-        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
-        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
-        assert_eq!(server.received_requests().await.unwrap().len(), 2, "too large to cache: every GET hits the network");
+        run_cached(&policy, &list, req(Method::Get, &url), cache)
+            .await
+            .unwrap();
+        run_cached(&policy, &list, req(Method::Get, &url), cache)
+            .await
+            .unwrap();
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            2,
+            "too large to cache: every GET hits the network"
+        );
     }
 
     /// A fresh entry stored while the plugin's allowlist included the domain must not be served
@@ -1104,9 +1593,17 @@ mod tests {
         );
         let policy = NetPolicy::for_tests();
         let narrowed = allow(&["other.test"]); // no longer includes evil.test
-        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let cache = CacheCtx {
+            storage: &storage,
+            plugin: "p",
+            capability: Capability::Search,
+        };
         let r = run_cached(&policy, &narrowed, req(Method::Get, url), cache).await;
-        assert!(matches!(r, Err(HttpError::Denied(_))), "{:?}", r.map(|r| r.status));
+        assert!(
+            matches!(r, Err(HttpError::Denied(_))),
+            "{:?}",
+            r.map(|r| r.status)
+        );
     }
 
     /// Same as above but through the stale-on-error path: an expired entry whose domain the
@@ -1136,9 +1633,17 @@ mod tests {
         );
         let policy = NetPolicy::for_tests();
         let narrowed = allow(&["other.test"]); // no longer includes api.test
-        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let cache = CacheCtx {
+            storage: &storage,
+            plugin: "p",
+            capability: Capability::Search,
+        };
         let r = run_cached(&policy, &narrowed, req(Method::Get, &url), cache).await;
-        assert!(matches!(r, Err(HttpError::Denied(_))), "{:?}", r.map(|r| r.status));
+        assert!(
+            matches!(r, Err(HttpError::Denied(_))),
+            "{:?}",
+            r.map(|r| r.status)
+        );
     }
 
     /// `cache.rs`'s own unit test covers `ttl_ms` directly; this covers the same overflow
@@ -1146,14 +1651,24 @@ mod tests {
     #[tokio::test]
     async fn huge_max_age_does_not_overflow() {
         let server = MockServer::start().await;
-        let resp = ResponseTemplate::new(200).insert_header("cache-control", "max-age=99999999999999999");
-        Mock::given(method("GET")).respond_with(resp).mount(&server).await;
+        let resp =
+            ResponseTemplate::new(200).insert_header("cache-control", "max-age=99999999999999999");
+        Mock::given(method("GET"))
+            .respond_with(resp)
+            .mount(&server)
+            .await;
         let (policy, list) = (NetPolicy::for_tests(), allow(&["api.test"]));
         let storage = MemoryStorage::default();
-        let cache = CacheCtx { storage: &storage, plugin: "p", capability: Capability::Search };
+        let cache = CacheCtx {
+            storage: &storage,
+            plugin: "p",
+            capability: Capability::Search,
+        };
         let url = format!("{}/x", base(&server, "api.test"));
 
-        run_cached(&policy, &list, req(Method::Get, &url), cache).await.unwrap();
+        run_cached(&policy, &list, req(Method::Get, &url), cache)
+            .await
+            .unwrap();
         let key = crate::cache::cache_key("p", &req(Method::Get, &url));
         let entry = storage.cache_get(&key).unwrap();
         assert_eq!(entry.expires_at_ms, u64::MAX);

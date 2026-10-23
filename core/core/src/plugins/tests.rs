@@ -552,8 +552,16 @@ fn plugin_errors_map_to_core_errors() {
     use crate::library::DbError;
 
     let cases = [
-        (PluginError::Fetch(CoreError::Network), CoreError::Network, "Network"),
-        (PluginError::Fetch(CoreError::NotFound), CoreError::NotFound, "NotFound"),
+        (
+            PluginError::Fetch(CoreError::Network),
+            CoreError::Network,
+            "Network",
+        ),
+        (
+            PluginError::Fetch(CoreError::NotFound),
+            CoreError::NotFound,
+            "NotFound",
+        ),
         (
             PluginError::Feed(FeedError::Rollback { seen: 3, got: 2 }),
             CoreError::InvalidFeed,

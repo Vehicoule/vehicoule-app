@@ -20,7 +20,9 @@ use crate::manifest::{Allowlist, Manifest, parse_manifest, validate_contract};
 use crate::net::{HttpBudget, NetPolicy};
 use crate::rate::RateLimiter;
 use crate::storage::{self, Storage};
-use crate::{Budget, CallError, CallReport, Capability, HostConfig, HostEvent, LoadError, LogLevel};
+use crate::{
+    Budget, CallError, CallReport, Capability, HostConfig, HostEvent, LoadError, LogLevel,
+};
 
 const EPOCH_TICK: Duration = Duration::from_millis(100);
 
@@ -101,7 +103,11 @@ const LOG_MAX_MESSAGE: usize = 2 << 10;
 
 impl CallLog {
     fn new(plugin: String, events: Arc<dyn Fn(HostEvent) + Send + Sync>) -> Self {
-        CallLog { plugin, events, remaining: AtomicU32::new(LOG_CAP_EVENTS) }
+        CallLog {
+            plugin,
+            events,
+            remaining: AtomicU32::new(LOG_CAP_EVENTS),
+        }
     }
 
     /// `true` once the 200-event cap has been spent: `LogStream` uses this to stop buffering
@@ -111,10 +117,18 @@ impl CallLog {
     }
 
     fn emit(&self, level: LogLevel, message: &str) {
-        if self.remaining.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |r| r.checked_sub(1)).is_err() {
+        if self
+            .remaining
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |r| r.checked_sub(1))
+            .is_err()
+        {
             return;
         }
-        (self.events)(HostEvent::Log { plugin: self.plugin.clone(), level, message: truncate_utf8(message).into() });
+        (self.events)(HostEvent::Log {
+            plugin: self.plugin.clone(),
+            level,
+            message: truncate_utf8(message).into(),
+        });
     }
 }
 
@@ -140,7 +154,9 @@ fn valid_utf8_prefix(buf: &[u8]) -> &str {
         Ok(s) => s,
         // `valid_up_to()` is exactly the length of the valid prefix `from_utf8` found, so this
         // always succeeds; a rare error path, not worth an `unsafe` skip of the recheck.
-        Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).expect("valid_up_to ends a valid prefix"),
+        Err(e) => {
+            std::str::from_utf8(&buf[..e.valid_up_to()]).expect("valid_up_to ends a valid prefix")
+        }
     }
 }
 
@@ -162,14 +178,21 @@ struct LogStream {
 
 impl LogStream {
     fn new(log: Arc<CallLog>, level: LogLevel) -> Self {
-        LogStream { log, level, partial: Arc::new(Mutex::new(Vec::new())) }
+        LogStream {
+            log,
+            level,
+            partial: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
     fn feed(&self, bytes: &[u8]) {
         if self.log.exhausted() {
             return;
         }
-        let mut partial = self.partial.lock().expect("log line poisoned: a thread panicked while holding it");
+        let mut partial = self
+            .partial
+            .lock()
+            .expect("log line poisoned: a thread panicked while holding it");
         for &b in bytes {
             if b == b'\n' {
                 if partial.last() == Some(&b'\r') {
@@ -189,7 +212,10 @@ impl LogStream {
 
     /// Flushes a trailing partial line (no final `\n`) once the call's instance has run.
     fn flush_partial(&self) {
-        let mut partial = self.partial.lock().expect("log line poisoned: a thread panicked while holding it");
+        let mut partial = self
+            .partial
+            .lock()
+            .expect("log line poisoned: a thread panicked while holding it");
         if !partial.is_empty() {
             self.log.emit(self.level, valid_utf8_prefix(&partial));
             partial.clear();
@@ -259,12 +285,22 @@ impl MemoryBudget {
             .tables(64)
             .memories(16)
             .build();
-        MemoryBudget { memory_limit, memory_total: 0, memory_denied: false, inner }
+        MemoryBudget {
+            memory_limit,
+            memory_total: 0,
+            memory_denied: false,
+            inner,
+        }
     }
 }
 
 impl ResourceLimiter for MemoryBudget {
-    fn memory_growing(&mut self, current: usize, desired: usize, _maximum: Option<usize>) -> wasmtime::Result<bool> {
+    fn memory_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        _maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
         let total = self.memory_total + desired.saturating_sub(current);
         if total > self.memory_limit {
             self.memory_denied = true;
@@ -274,7 +310,12 @@ impl ResourceLimiter for MemoryBudget {
         Ok(true)
     }
 
-    fn table_growing(&mut self, current: usize, desired: usize, maximum: Option<usize>) -> wasmtime::Result<bool> {
+    fn table_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
         self.inner.table_growing(current, desired, maximum)
     }
 
@@ -293,7 +334,10 @@ impl ResourceLimiter for MemoryBudget {
 
 impl WasiView for State {
     fn ctx(&mut self) -> WasiCtxView<'_> {
-        WasiCtxView { ctx: &mut self.wasi, table: &mut self.table }
+        WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
+        }
     }
 }
 
@@ -313,7 +357,9 @@ impl kv::Host for State {
 
 impl clock::Host for State {
     async fn now_ms(&mut self) -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64)
     }
 }
 
@@ -358,7 +404,12 @@ impl Host {
         contract::Plugin::add_to_linker::<_, HasSelf<State>>(&mut linker, |s| s)?;
 
         std::fs::create_dir_all(&cfg.cache_dir)?;
-        Ok(Host { engine, engine_hash, linker, cfg })
+        Ok(Host {
+            engine,
+            engine_hash,
+            linker,
+            cfg,
+        })
     }
 
     pub fn is_pulley(&self) -> bool {
@@ -367,24 +418,45 @@ impl Host {
 
     /// Validates the manifest, then compiles on this device (or reuses this device's cache).
     pub fn load(&self, manifest_json: &[u8], wasm: &[u8]) -> Result<Plugin, LoadError> {
-        let raw: Manifest = serde_json::from_slice(manifest_json).map_err(|e| LoadError::Manifest(e.to_string()))?;
+        let raw: Manifest = serde_json::from_slice(manifest_json)
+            .map_err(|e| LoadError::Manifest(e.to_string()))?;
         validate_contract(&raw.contract).map_err(LoadError::Contract)?;
         let manifest = parse_manifest(manifest_json).map_err(LoadError::Manifest)?;
         let allowlist = Arc::new(Allowlist::new(&manifest.domains).map_err(LoadError::Manifest)?);
-        let component = self.compile(wasm).map_err(|e| LoadError::Compile(format!("{e:#}")))?;
-        let pre = self.linker.instantiate_pre(&component).map_err(|e| LoadError::Contract(format!("{e:#}")))?;
+        let component = self
+            .compile(wasm)
+            .map_err(|e| LoadError::Compile(format!("{e:#}")))?;
+        let pre = self
+            .linker
+            .instantiate_pre(&component)
+            .map_err(|e| LoadError::Contract(format!("{e:#}")))?;
         let capabilities = [
             (Capability::Search, search::GuestIndices::new(&pre).is_ok()),
-            (Capability::Suggest, suggest::GuestIndices::new(&pre).is_ok()),
+            (
+                Capability::Suggest,
+                suggest::GuestIndices::new(&pre).is_ok(),
+            ),
             (Capability::Entity, entity::GuestIndices::new(&pre).is_ok()),
-            (Capability::Resolve, resolve::GuestIndices::new(&pre).is_ok()),
+            (
+                Capability::Resolve,
+                resolve::GuestIndices::new(&pre).is_ok(),
+            ),
             (Capability::Lyrics, lyrics::GuestIndices::new(&pre).is_ok()),
             (Capability::Radio, radio::GuestIndices::new(&pre).is_ok()),
             (Capability::Browse, browse::GuestIndices::new(&pre).is_ok()),
         ];
-        let capabilities = capabilities.into_iter().filter_map(|(c, ok)| ok.then_some(c)).collect();
+        let capabilities = capabilities
+            .into_iter()
+            .filter_map(|(c, ok)| ok.then_some(c))
+            .collect();
         let rate_limiter = manifest.rate_limit.map(RateLimiter::new);
-        Ok(Plugin(Arc::new(Loaded { manifest, allowlist, pre, capabilities, rate_limiter })))
+        Ok(Plugin(Arc::new(Loaded {
+            manifest,
+            allowlist,
+            pre,
+            capabilities,
+            rate_limiter,
+        })))
     }
 
     /// `cache_dir/<sha256(wasm)>-<engine hash>.cwasm`, else compile and write it.
@@ -442,10 +514,12 @@ impl Host {
             .stdout(stdout.clone())
             .stderr(stderr.clone())
             .build();
-        let user_agent = p
-            .manifest()
-            .descriptive_user_agent
-            .then(|| format!("Vehicoule/{} (+https://vehicoule.app)", self.cfg.app_version));
+        let user_agent = p.manifest().descriptive_user_agent.then(|| {
+            format!(
+                "Vehicoule/{} (+https://vehicoule.app)",
+                self.cfg.app_version
+            )
+        });
         // Epochs only interrupt running wasm; a guest blocked in a host call (WASI poll, slow
         // HTTP) is cut by this wall-clock timeout instead. Computed up front so a rate-limit
         // wait inside the call can tell whether it would run past it.
@@ -460,7 +534,10 @@ impl Host {
             net: self.cfg.net.clone(),
             allowlist: p.0.allowlist.clone(),
             max_response_bytes: limits.max_response_bytes,
-            http_budget: Mutex::new(HttpBudget::new(limits.max_http_calls, limits.max_http_bytes)),
+            http_budget: Mutex::new(HttpBudget::new(
+                limits.max_http_calls,
+                limits.max_http_bytes,
+            )),
             rate_limiter: p.0.rate_limiter.clone(),
             user_agent,
             deadline,
@@ -486,11 +563,20 @@ impl Host {
                 // A guest that caught `budget-exceeded` itself and returned `Ok` took the
                 // branch above and keeps that `Ok`; only an `Err` reaching here while the
                 // budget was hit is turned into the typed `BudgetExceeded(Http)`.
-                Ok(Ok(Err(_))) if store.data().http_budget.lock().expect("http budget poisoned: a thread panicked while holding it").hit => {
+                Ok(Ok(Err(_)))
+                    if store
+                        .data()
+                        .http_budget
+                        .lock()
+                        .expect("http budget poisoned: a thread panicked while holding it")
+                        .hit =>
+                {
                     Err(CallError::BudgetExceeded(Budget::Http))
                 }
                 Ok(Ok(Err(e))) => Err(e.into()),
-                Ok(Err(_)) if store.data().memory.memory_denied => Err(CallError::BudgetExceeded(Budget::Memory)),
+                Ok(Err(_)) if store.data().memory.memory_denied => {
+                    Err(CallError::BudgetExceeded(Budget::Memory))
+                }
                 Ok(Err(e)) => Err(match e.downcast_ref::<Trap>() {
                     Some(Trap::OutOfFuel) => CallError::BudgetExceeded(Budget::Fuel),
                     Some(Trap::Interrupt) => CallError::BudgetExceeded(Budget::Time),
@@ -507,8 +593,15 @@ impl Host {
         let report = CallReport {
             plugin: p.id().into(),
             capability,
-            fuel_used: limits.fuel.saturating_sub(store.get_fuel().unwrap_or(limits.fuel)),
-            http_calls: store.data().http_budget.lock().expect("http budget poisoned: a thread panicked while holding it").calls,
+            fuel_used: limits
+                .fuel
+                .saturating_sub(store.get_fuel().unwrap_or(limits.fuel)),
+            http_calls: store
+                .data()
+                .http_budget
+                .lock()
+                .expect("http budget poisoned: a thread panicked while holding it")
+                .calls,
             wall_ms: start.elapsed().as_millis() as u64,
             outcome: outcome.as_ref().map(|_| ()).map_err(Clone::clone),
         };
@@ -521,7 +614,11 @@ impl Host {
 /// (the rename cannot reach disk ahead of the data it points at).
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     static N: AtomicU64 = AtomicU64::new(0);
-    let tmp: PathBuf = path.with_extension(format!("{}.{}.tmp", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+    let tmp: PathBuf = path.with_extension(format!(
+        "{}.{}.tmp",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
     let write = || {
         let mut file = std::fs::File::create(&tmp)?;
         std::io::Write::write_all(&mut file, bytes)?;
@@ -542,7 +639,10 @@ mod tests {
     fn memory_budget_is_shared_by_all_memories() {
         let mut b = MemoryBudget::new(64 << 20);
         assert!(b.memory_growing(0, 40 << 20, None).unwrap());
-        assert!(!b.memory_growing(0, 40 << 20, None).unwrap(), "second memory pushed the total past 64 MiB");
+        assert!(
+            !b.memory_growing(0, 40 << 20, None).unwrap(),
+            "second memory pushed the total past 64 MiB"
+        );
         assert!(b.memory_denied);
         assert!(b.memory_growing(0, 20 << 20, None).unwrap());
     }

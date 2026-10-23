@@ -8,7 +8,11 @@ const MAX_BATCH: usize = 8;
 
 impl Host for State {
     async fn send(&mut self, req: Request) -> Result<Response, HttpError> {
-        let cache = CacheCtx { storage: &*self.storage, plugin: &self.plugin, capability: self.capability };
+        let cache = CacheCtx {
+            storage: &*self.storage,
+            plugin: &self.plugin,
+            capability: self.capability,
+        };
         fetch(
             &self.net,
             &self.allowlist,
@@ -32,8 +36,23 @@ impl Host for State {
         let (net, allow, max_body) = (&self.net, &self.allowlist, self.max_response_bytes);
         let (budget, ua) = (&self.http_budget, self.user_agent.as_deref());
         let rate_limiter = self.rate_limiter.as_ref().map(|rl| (rl, self.deadline));
-        let cache = CacheCtx { storage: &*self.storage, plugin: &self.plugin, capability: self.capability };
-        join_all(reqs.into_iter().map(|req| fetch(net, allow, req, max_body, budget, rate_limiter, ua, Some(cache))))
-            .await
+        let cache = CacheCtx {
+            storage: &*self.storage,
+            plugin: &self.plugin,
+            capability: self.capability,
+        };
+        join_all(reqs.into_iter().map(|req| {
+            fetch(
+                net,
+                allow,
+                req,
+                max_body,
+                budget,
+                rate_limiter,
+                ua,
+                Some(cache),
+            )
+        }))
+        .await
     }
 }

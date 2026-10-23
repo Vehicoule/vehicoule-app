@@ -29,7 +29,8 @@ impl Replay {
         let entries = entries
             .into_iter()
             .map(|e| {
-                let body = std::fs::read(dir.join(&e.body_file)).unwrap_or_else(|err| panic!("{}: {err}", e.body_file));
+                let body = std::fs::read(dir.join(&e.body_file))
+                    .unwrap_or_else(|err| panic!("{}: {err}", e.body_file));
                 (e, body)
             })
             .collect();
@@ -42,6 +43,10 @@ impl Replay {
             .iter()
             .find(|(e, _)| e.method.eq_ignore_ascii_case(method) && e.url == url)
             .ok_or_else(|| HttpError::Network(format!("no recording for {method} {url}")))?;
-        Ok(Hop { status: e.status, headers: e.headers.clone(), body: Body::Recorded(body.clone()) })
+        Ok(Hop {
+            status: e.status,
+            headers: e.headers.clone(),
+            body: Body::Recorded(body.clone()),
+        })
     }
 }

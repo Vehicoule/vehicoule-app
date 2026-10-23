@@ -38,12 +38,16 @@ pub fn parse_manifest(json: &[u8]) -> Result<Manifest, String> {
     if let Some(rl) = manifest.rate_limit
         && (rl.requests == 0 || rl.per_seconds == 0)
     {
-        return Err(format!("rate_limit requests and per_seconds must both be nonzero: {rl:?}"));
+        return Err(format!(
+            "rate_limit requests and per_seconds must both be nonzero: {rl:?}"
+        ));
     }
     if let Some(rl) = manifest.rate_limit
         && rl.requests > MAX_RATE_REQUESTS
     {
-        return Err(format!("rate_limit requests must be at most {MAX_RATE_REQUESTS}: {rl:?}"));
+        return Err(format!(
+            "rate_limit requests must be at most {MAX_RATE_REQUESTS}: {rl:?}"
+        ));
     }
     Ok(manifest)
 }
@@ -52,15 +56,27 @@ pub(crate) fn validate_id(id: &str) -> Result<(), String> {
     let bytes = id.as_bytes();
     let ok = (2..=40).contains(&bytes.len())
         && matches!(bytes[0], b'a'..=b'z' | b'0'..=b'9')
-        && bytes.iter().all(|&b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'-'));
-    if ok { Ok(()) } else { Err(format!("invalid plugin id: {id:?}")) }
+        && bytes
+            .iter()
+            .all(|&b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'-'));
+    if ok {
+        Ok(())
+    } else {
+        Err(format!("invalid plugin id: {id:?}"))
+    }
 }
 
 /// Major 1, minor 0 or 1: a 1.0 plugin loads under the 1.1 contract (1.1 only adds `browse`).
 pub(crate) fn validate_contract(contract: &str) -> Result<(), String> {
-    let (major, minor) = contract.split_once('.').ok_or_else(|| format!("invalid contract: {contract:?}"))?;
-    let major: u32 = major.parse().map_err(|_| format!("invalid contract: {contract:?}"))?;
-    let minor: u32 = minor.parse().map_err(|_| format!("invalid contract: {contract:?}"))?;
+    let (major, minor) = contract
+        .split_once('.')
+        .ok_or_else(|| format!("invalid contract: {contract:?}"))?;
+    let major: u32 = major
+        .parse()
+        .map_err(|_| format!("invalid contract: {contract:?}"))?;
+    let minor: u32 = minor
+        .parse()
+        .map_err(|_| format!("invalid contract: {contract:?}"))?;
     if major == 1 && minor <= 1 {
         Ok(())
     } else {
@@ -117,14 +133,19 @@ fn validate_host(host: &str) -> Result<(), String> {
         return Err(format!("domain must not be a literal IP: {host:?}"));
     }
     let valid = !host.is_empty()
-        && host
-            .split('.')
-            .all(|label| !label.is_empty() && label.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'-')));
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && label
+                    .bytes()
+                    .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'-'))
+        });
     if !valid {
         return Err(format!("invalid domain: {host:?}"));
     }
     if ends_in_number(host) {
-        return Err(format!("domain must not end in a number (disguised IP): {host:?}"));
+        return Err(format!(
+            "domain must not end in a number (disguised IP): {host:?}"
+        ));
     }
     Ok(())
 }
@@ -178,14 +199,20 @@ mod tests {
             "0x7f.0x0.0x0.0x1",
             "1.2.3.4",
         ] {
-            assert!(Allowlist::new(&[domain.into()]).is_err(), "{domain:?} should be rejected");
+            assert!(
+                Allowlist::new(&[domain.into()]).is_err(),
+                "{domain:?} should be rejected"
+            );
         }
     }
 
     #[test]
     fn hosts_that_merely_contain_digits_are_accepted() {
         for domain in ["123.example.com", "x0.example.com"] {
-            assert!(Allowlist::new(&[domain.into()]).is_ok(), "{domain:?} should be accepted");
+            assert!(
+                Allowlist::new(&[domain.into()]).is_ok(),
+                "{domain:?} should be accepted"
+            );
         }
     }
 

@@ -74,7 +74,9 @@ pub fn from_http_error(e: HttpError) -> Error {
 
 /// `application/x-www-form-urlencoded` query string.
 pub fn query(pairs: &[(&str, &str)]) -> String {
-    form_urlencoded::Serializer::new(String::new()).extend_pairs(pairs).finish()
+    form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(pairs)
+        .finish()
 }
 
 #[cfg(test)]
@@ -90,21 +92,45 @@ mod tests {
         assert!(status_error(200).is_none());
         assert!(status_error(204).is_none());
         assert_eq!(dbg(status_error(429)), dbg(Some(Error::RateLimited)));
-        assert_eq!(dbg(status_error(401)), dbg(Some(Error::ProviderWall("HTTP 401".into()))));
-        assert_eq!(dbg(status_error(403)), dbg(Some(Error::ProviderWall("HTTP 403".into()))));
+        assert_eq!(
+            dbg(status_error(401)),
+            dbg(Some(Error::ProviderWall("HTTP 401".into())))
+        );
+        assert_eq!(
+            dbg(status_error(403)),
+            dbg(Some(Error::ProviderWall("HTTP 403".into())))
+        );
         assert_eq!(dbg(status_error(404)), dbg(Some(Error::NotFound)));
-        assert_eq!(dbg(status_error(500)), dbg(Some(Error::Network("HTTP 500".into()))));
-        assert_eq!(dbg(status_error(503)), dbg(Some(Error::Network("HTTP 503".into()))));
+        assert_eq!(
+            dbg(status_error(500)),
+            dbg(Some(Error::Network("HTTP 500".into())))
+        );
+        assert_eq!(
+            dbg(status_error(503)),
+            dbg(Some(Error::Network("HTTP 503".into())))
+        );
     }
 
     #[test]
     fn http_error_maps_to_typed_errors() {
         let cases = [
-            (HttpError::Network("dns".into()), Error::Network("dns".into())),
+            (
+                HttpError::Network("dns".into()),
+                Error::Network("dns".into()),
+            ),
             (HttpError::Timeout, Error::Network("timeout".into())),
-            (HttpError::TooLarge, Error::Internal("response too large".into())),
-            (HttpError::Denied("evil.example".into()), Error::Internal("evil.example".into())),
-            (HttpError::BudgetExceeded, Error::Internal("http budget".into())),
+            (
+                HttpError::TooLarge,
+                Error::Internal("response too large".into()),
+            ),
+            (
+                HttpError::Denied("evil.example".into()),
+                Error::Internal("evil.example".into()),
+            ),
+            (
+                HttpError::BudgetExceeded,
+                Error::Internal("http budget".into()),
+            ),
         ];
         for (from, to) in cases {
             assert_eq!(dbg(from_http_error(from)), dbg(to));
@@ -141,7 +167,12 @@ mod tests {
     }
 
     fn response(status: u16, body: &[u8]) -> Result<Response, HttpError> {
-        Ok(Response { status, url: String::new(), headers: vec![], body: body.to_vec() })
+        Ok(Response {
+            status,
+            url: String::new(),
+            headers: vec![],
+            body: body.to_vec(),
+        })
     }
 
     #[test]
@@ -167,11 +198,17 @@ mod tests {
     fn batch_bodies_take_the_plugin_status_mapping() {
         // As iTunes does: its 403 is a rate limit.
         fn itunes(status: u16) -> Option<Error> {
-            if status == 403 { Some(Error::RateLimited) } else { status_error(status) }
+            if status == 403 {
+                Some(Error::RateLimited)
+            } else {
+                status_error(status)
+            }
         }
         let results = vec![response(403, b""), response(500, b"")];
-        let want: [Result<Vec<u8>, Error>; 2] =
-            [Err(Error::RateLimited), Err(Error::Network("HTTP 500".into()))];
+        let want: [Result<Vec<u8>, Error>; 2] = [
+            Err(Error::RateLimited),
+            Err(Error::Network("HTTP 500".into())),
+        ];
         assert_eq!(dbg(bodies(results, itunes)), dbg(want));
     }
 

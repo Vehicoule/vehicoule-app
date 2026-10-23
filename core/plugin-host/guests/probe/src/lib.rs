@@ -31,17 +31,27 @@ include!("../../found.rs");
 struct Probe;
 
 fn get(url: &str) -> Request {
-    Request { method: Method::Get, url: url.into(), headers: vec![], body: None }
+    Request {
+        method: Method::Get,
+        url: url.into(),
+        headers: vec![],
+        body: None,
+    }
 }
 
 fn count(n: &str) -> Result<usize, Error> {
-    n.parse().map_err(|_| Error::Internal(format!("bad count {n:?}")))
+    n.parse()
+        .map_err(|_| Error::Internal(format!("bad count {n:?}")))
 }
 
 impl search::Guest for Probe {
     fn search(req: SearchRequest) -> Result<SearchResults, Error> {
         let mut words = req.query.splitn(3, ' ');
-        let (cmd, a, b) = (words.next().unwrap_or(""), words.next().unwrap_or(""), words.next().unwrap_or(""));
+        let (cmd, a, b) = (
+            words.next().unwrap_or(""),
+            words.next().unwrap_or(""),
+            words.next().unwrap_or(""),
+        );
         let title = match cmd {
             "get" => {
                 let resp = host_http::send(&get(a)).map_err(from_http_error)?;
@@ -68,7 +78,10 @@ impl search::Guest for Probe {
                 format!("errs={errs}")
             }
             "ua" => {
-                let req = Request { headers: vec![("User-Agent".into(), b.into())], ..get(a) };
+                let req = Request {
+                    headers: vec![("User-Agent".into(), b.into())],
+                    ..get(a)
+                };
                 let resp = host_http::send(&req).map_err(from_http_error)?;
                 resp.status.to_string()
             }
@@ -77,7 +90,9 @@ impl search::Guest for Probe {
                 let mut out = found(String::new());
                 out.tracks = host_http::send_batch(&reqs)
                     .into_iter()
-                    .map(|r| track(r.map_or_else(|e| format!("{e:?}"), |resp| resp.status.to_string())))
+                    .map(|r| {
+                        track(r.map_or_else(|e| format!("{e:?}"), |resp| resp.status.to_string()))
+                    })
                     .collect();
                 return Ok(out);
             }
@@ -85,12 +100,17 @@ impl search::Guest for Probe {
                 let mut ok = 0usize;
                 for _ in 0..3 {
                     let reqs: Vec<Request> = (0..8).map(|_| get(a)).collect();
-                    ok += host_http::send_batch(&reqs).into_iter().filter(Result::is_ok).count();
+                    ok += host_http::send_batch(&reqs)
+                        .into_iter()
+                        .filter(Result::is_ok)
+                        .count();
                 }
                 let extra_ok = host_http::send(&get(a)).is_ok();
                 format!("ok={ok} extra_ok={extra_ok}")
             }
-            "kv-set" => kv::set(a, b.as_bytes()).map_or_else(|e| format!("{e:?}"), |()| "ok".into()),
+            "kv-set" => {
+                kv::set(a, b.as_bytes()).map_or_else(|e| format!("{e:?}"), |()| "ok".into())
+            }
             "kv-get" => String::from_utf8_lossy(&kv::get(a).ok_or(Error::NotFound)?).into_owned(),
             "print" => {
                 let text = format!("{a} {b}").trim_end().to_string();
@@ -134,7 +154,11 @@ impl search::Guest for Probe {
             }
             "art" => {
                 let mut out = found("art".into());
-                out.tracks[0].artwork = vec![Image { url: a.into(), width: None, height: None }];
+                out.tracks[0].artwork = vec![Image {
+                    url: a.into(),
+                    width: None,
+                    height: None,
+                }];
                 return Ok(out);
             }
             _ => return Err(Error::Internal(format!("unknown command {cmd:?}"))),
@@ -147,16 +171,25 @@ impl resolve::Guest for Probe {
     fn resolve(req: ResolveRequest) -> Result<Resolved, Error> {
         let source = Source {
             url: req.track.title,
-            headers: [("Host", "evil.test"), ("Connection", "close"), ("Proxy-Authorization", "x"), ("Referer", "r")]
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .into(),
+            headers: [
+                ("Host", "evil.test"),
+                ("Connection", "close"),
+                ("Proxy-Authorization", "x"),
+                ("Referer", "r"),
+            ]
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .into(),
             expires_at_ms: None,
             mime: "audio/mpeg".into(),
             bitrate: 128_000,
             content_length: None,
             loudness_db: None,
         };
-        Ok(Resolved { id: "probe".into(), source, candidates: vec![] })
+        Ok(Resolved {
+            id: "probe".into(),
+            source,
+            candidates: vec![],
+        })
     }
 }
 

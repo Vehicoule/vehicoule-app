@@ -36,11 +36,14 @@ fn keygen(secret_path: &str) {
 
     let mut file = open_new_secret_file(secret_path).unwrap_or_else(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
-            fail(format!("{secret_path:?} already exists, refusing to overwrite"));
+            fail(format!(
+                "{secret_path:?} already exists, refusing to overwrite"
+            ));
         }
         fail(format!("creating {secret_path:?}: {e}"));
     });
-    writeln!(file, "{}", to_hex(&secret)).unwrap_or_else(|e| fail(format!("writing {secret_path:?}: {e}")));
+    writeln!(file, "{}", to_hex(&secret))
+        .unwrap_or_else(|e| fail(format!("writing {secret_path:?}: {e}")));
 
     let key = SigningKey::from_bytes(&secret);
     let public_key = key.verifying_key().to_bytes();
@@ -61,13 +64,16 @@ fn open_new_secret_file(secret_path: &str) -> std::io::Result<std::fs::File> {
 }
 
 fn sign(payload_path: &str, secret_path: &str) {
-    let secret_hex =
-        std::fs::read_to_string(secret_path).unwrap_or_else(|e| fail(format!("reading {secret_path:?}: {e}")));
-    let secret = from_hex(secret_hex.trim()).unwrap_or_else(|e| fail(format!("{secret_path:?}: {e}")));
+    let secret_hex = std::fs::read_to_string(secret_path)
+        .unwrap_or_else(|e| fail(format!("reading {secret_path:?}: {e}")));
+    let secret =
+        from_hex(secret_hex.trim()).unwrap_or_else(|e| fail(format!("{secret_path:?}: {e}")));
     let key = SigningKey::from_bytes(&secret);
 
-    let payload_bytes = std::fs::read(payload_path).unwrap_or_else(|e| fail(format!("reading {payload_path:?}: {e}")));
-    let feed: Feed = serde_json::from_slice(&payload_bytes).unwrap_or_else(|e| fail(format!("{payload_path:?}: {e}")));
+    let payload_bytes = std::fs::read(payload_path)
+        .unwrap_or_else(|e| fail(format!("reading {payload_path:?}: {e}")));
+    let feed: Feed = serde_json::from_slice(&payload_bytes)
+        .unwrap_or_else(|e| fail(format!("{payload_path:?}: {e}")));
 
     let envelope = sign_feed(&feed, &key);
 
@@ -76,7 +82,9 @@ fn sign(payload_path: &str, secret_path: &str) {
         fail(format!("signed feed failed self-verification: {e:?}"));
     }
 
-    std::io::stdout().write_all(&envelope).unwrap_or_else(|e| fail(format!("writing stdout: {e}")));
+    std::io::stdout()
+        .write_all(&envelope)
+        .unwrap_or_else(|e| fail(format!("writing stdout: {e}")));
 }
 
 fn to_hex(bytes: &[u8]) -> String {

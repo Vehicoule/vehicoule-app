@@ -483,7 +483,8 @@ fn entry_id(s: &str) -> Result<EntryId, CoreError> {
 /// `next()`.
 fn following(q: &QueueState, one: RepeatOne) -> Vec<EntryId> {
     let n = q.order.len();
-    let positions: Vec<usize> = if one == RepeatOne::Honor && q.repeat == Repeat::One && q.index < n {
+    let positions: Vec<usize> = if one == RepeatOne::Honor && q.repeat == Repeat::One && q.index < n
+    {
         vec![q.index]
     } else {
         let mut v: Vec<usize> = (q.index + 1..n).collect();

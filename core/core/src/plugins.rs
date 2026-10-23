@@ -15,8 +15,8 @@ use reqwest::Url;
 use crate::app::AppConfig;
 use crate::error::CoreError;
 use crate::keys::{OFFICIAL_FEED_URL, OFFICIAL_KEYS};
-use crate::library::{Db, DbError};
 use crate::library::plugins::{self as rows, FeedRow, PluginRow};
+use crate::library::{Db, DbError};
 use crate::logs;
 use crate::router::cap_name;
 use crate::storage::DbStorage;
@@ -198,7 +198,9 @@ impl Plugins {
                 let wasm =
                     std::fs::read(&path).map_err(|e| PluginError::Internal(e.to_string()))?;
                 if !sha256_matches(&wasm, &sha) {
-                    return Err(PluginError::Invalid("installed wasm sha256 mismatch".into()));
+                    return Err(PluginError::Invalid(
+                        "installed wasm sha256 mismatch".into(),
+                    ));
                 }
                 host.load(&manifest, &wasm).map_err(PluginError::Load)
             })
@@ -244,8 +246,8 @@ impl Plugins {
         mut row: FeedRow,
         bytes: Vec<u8>,
     ) -> Result<Vec<String>, PluginError> {
-        let feed = verify_feed(&bytes, &row.public_keys, row.last_sequence)
-            .map_err(PluginError::Feed)?;
+        let feed =
+            verify_feed(&bytes, &row.public_keys, row.last_sequence).map_err(PluginError::Feed)?;
         let base = parse_url(&row.url).map_err(PluginError::Fetch)?;
         let official = row.official;
         row.name = sanitize(&feed.name);
@@ -351,7 +353,10 @@ impl Plugins {
         base: &Url,
         entry: &FeedEntry,
     ) -> Result<(Vec<u8>, Manifest, Vec<u8>), PluginError> {
-        let join = |u: &str| base.join(u).map_err(|e| PluginError::Invalid(e.to_string()));
+        let join = |u: &str| {
+            base.join(u)
+                .map_err(|e| PluginError::Invalid(e.to_string()))
+        };
         let manifest = self
             .get(&join(&entry.manifest_url)?, MAX_MANIFEST_BYTES)
             .await
@@ -362,7 +367,9 @@ impl Plugins {
         let parsed = parse_manifest(&manifest).map_err(PluginError::Invalid)?;
         if parsed.id != entry.id {
             let id = &parsed.id;
-            return Err(PluginError::Invalid(format!("manifest id {id:?} is not the feed's")));
+            return Err(PluginError::Invalid(format!(
+                "manifest id {id:?} is not the feed's"
+            )));
         }
         let wasm = self
             .get(&join(&entry.wasm_url)?, MAX_WASM_BYTES)
@@ -406,7 +413,8 @@ impl Plugins {
     ) -> Result<PluginPreview, PluginError> {
         let (manifest, parsed, wasm) = self.fetch_entry(base, entry).await?;
         let host = self.host.clone();
-        let plugin = blocking(move || host.load(&manifest, &wasm).map_err(PluginError::Load)).await?;
+        let plugin =
+            blocking(move || host.load(&manifest, &wasm).map_err(PluginError::Load)).await?;
         Ok(PluginPreview {
             id: entry.id.clone(),
             version: entry.version.clone(),
