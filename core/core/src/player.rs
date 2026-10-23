@@ -1106,6 +1106,14 @@ impl Player {
             Some(l) => l.res.plugin.clone().unwrap_or_else(|| "download".into()),
             None => "unknown".into(),
         };
+        // Shortcuts on the home feed: only a collection the queue was started from.
+        let context = self
+            .q
+            .context
+            .as_ref()
+            .filter(|c| matches!(c.kind.as_str(), "album" | "playlist" | "artist"))
+            .and_then(|c| c.id.as_deref())
+            .and_then(|id| parse_id(id).ok());
         let (previous, listened) = (self.play, self.listened_ms);
         let json = serde_json::to_string(&self.q).unwrap_or_default();
         let written = app()
@@ -1115,7 +1123,7 @@ impl Player {
                     plays::set_listened(tx, p, listened)?;
                 }
                 let play = match new_play {
-                    true => Some(plays::start(tx, item, &source)?),
+                    true => Some(plays::start(tx, item, &source, context)?),
                     false => None,
                 };
                 saved::save(tx, &json)?;

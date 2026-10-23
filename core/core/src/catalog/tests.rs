@@ -107,6 +107,10 @@ fn item(id: &str) -> ItemId {
     ItemId(uuid::Uuid::parse_str(id).unwrap())
 }
 
+fn texts(s: Vec<SuggestionView>) -> Vec<String> {
+    s.into_iter().map(|s| s.text).collect()
+}
+
 fn titles(tracks: &[TrackView]) -> Vec<&str> {
     tracks.iter().map(|t| t.title.as_str()).collect()
 }
@@ -186,14 +190,38 @@ async fn suggestions_start_with_local_history() {
     let (_lock, _) = setup().await;
     search("sugg halo").await.unwrap();
     assert_eq!(
-        suggest("Sugg").await.unwrap(),
+        texts(suggest("Sugg").await.unwrap()),
         ["sugg halo", "Sugg live", "Sugg remix"]
     );
     // A failing plugin never blocks the suggestions.
     for id in IDS {
         set_mode(id, "network").await;
     }
-    assert_eq!(suggest("sugg").await.unwrap(), ["sugg halo"]);
+    assert_eq!(texts(suggest("sugg").await.unwrap()), ["sugg halo"]);
+}
+
+#[tokio::test]
+async fn suggest_marks_history_entries() {
+    let (_lock, app) = setup().await;
+    app.db
+        .write(|tx| history::record_query(tx, "YOASOBI Live"))
+        .await
+        .unwrap();
+    // The plugin answers "yoasobi live" and "yoasobi remix": the first is folded into the
+    // history entry.
+    let got: Vec<_> = suggest("yoasobi")
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|s| (s.text, s.from_history))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("YOASOBI Live".to_string(), true),
+            ("yoasobi remix".to_string(), false)
+        ]
+    );
 }
 
 #[tokio::test]
@@ -343,7 +371,7 @@ async fn offline_search_is_refused_without_calls() {
         Err(CoreError::Offline)
     );
     // Local only: the history, and pages already cached.
-    assert_eq!(suggest("offline").await.unwrap(), ["offline seed"]);
+    assert_eq!(texts(suggest("offline").await.unwrap()), ["offline seed"]);
     assert!(entity(&album, None).await.unwrap().from_cache);
     assert_eq!(calls().await, before);
     app.set_online(true);

@@ -100,6 +100,14 @@ pub struct EntityView {
     pub from_cache: bool,
 }
 
+/// A search suggestion; the UI picks its icon from where it came from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuggestionView {
+    pub text: String,
+    /// A past search of the user, not a plugin's suggestion.
+    pub from_history: bool,
+}
+
 /// Results per kind and per search.
 const SEARCH_LIMIT: u32 = 20;
 const SUGGESTIONS: usize = 10;
@@ -241,11 +249,12 @@ pub(crate) async fn search(query: &str) -> Result<SearchView, CoreError> {
         .await?)
 }
 
-/// Local history first, then the routed `suggest` (online only); never fails.
-pub(crate) async fn suggest(prefix: &str) -> Result<Vec<String>, CoreError> {
+/// Local history first, then the routed `suggest` (online only), folded duplicates
+/// dropped; never fails.
+pub(crate) async fn suggest(prefix: &str) -> Result<Vec<SuggestionView>, CoreError> {
     let app = app();
     let p = prefix.to_string();
-    let mut out = app
+    let history = app
         .db
         .read(move |c| search::history(c, &p, SUGGESTIONS as u32))
         .await
@@ -253,6 +262,13 @@ pub(crate) async fn suggest(prefix: &str) -> Result<Vec<String>, CoreError> {
             logs::push("error", "suggest", &e.to_string());
             vec![]
         });
+    let mut out: Vec<SuggestionView> = history
+        .into_iter()
+        .map(|text| SuggestionView {
+            text,
+            from_history: true,
+        })
+        .collect();
     if app.is_online() && !prefix.trim().is_empty() {
         let found = router::first_ok(Capability::Suggest, |p| {
             let prefix = prefix.to_string();
@@ -266,9 +282,12 @@ pub(crate) async fn suggest(prefix: &str) -> Result<Vec<String>, CoreError> {
         .await;
         match found {
             Ok((_, more)) => {
-                for s in more {
-                    if !out.iter().any(|o| fold(o) == fold(&s)) {
-                        out.push(s);
+                for text in more {
+                    if !out.iter().any(|o| fold(&o.text) == fold(&text)) {
+                        out.push(SuggestionView {
+                            text,
+                            from_history: false,
+                        });
                     }
                 }
             }

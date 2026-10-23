@@ -111,8 +111,8 @@ mod tests {
             likes::set(tx, b, true)?;
             let pl = playlists::create(tx, "p", None)?;
             let entry = playlists::add(tx, pl, &[b], playlists::Place::End)?[0];
-            plays::start(tx, b, "test")?;
-            plays::start(tx, b, "test")?;
+            plays::start(tx, b, "test", None)?;
+            plays::start(tx, b, "test", None)?;
 
             assert_eq!(merge(tx, b, a)?, a);
 

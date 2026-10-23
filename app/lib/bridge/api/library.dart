@@ -8,6 +8,7 @@ import '../downloads.dart';
 import '../error.dart';
 import '../events.dart';
 import '../frb_generated.dart';
+import '../library.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
@@ -24,32 +25,53 @@ Future<void> setLiked({required String id, required bool liked}) =>
 Future<List<TrackView>> tracks({required List<String> ids}) =>
     RustLib.instance.api.crateApiLibraryTracks(ids: ids);
 
-/// Liked albums, artists or playlists, most recent first.
+/// Liked albums, artists or playlists in `sort` order.
 Future<List<CollectionView>> liked({
   required ItemKind kind,
+  required CollectionSort sort,
   required int offset,
   required int limit,
 }) => RustLib.instance.api.crateApiLibraryLiked(
   kind: kind,
+  sort: sort,
   offset: offset,
   limit: limit,
 );
 
 Future<List<TrackView>> likedTracks({
+  required TrackSort sort,
   required int offset,
   required int limit,
 }) => RustLib.instance.api.crateApiLibraryLikedTracks(
+  sort: sort,
   offset: offset,
   limit: limit,
 );
 
-/// Tracks by latest play.
-Future<List<TrackView>> history({required int offset, required int limit}) =>
-    RustLib.instance.api.crateApiLibraryHistory(offset: offset, limit: limit);
+/// Finished downloads in `sort` order (`downloads` gives the progress of all of them).
+Future<List<TrackView>> downloaded({
+  required TrackSort sort,
+  required int offset,
+  required int limit,
+}) => RustLib.instance.api.crateApiLibraryDownloaded(
+  sort: sort,
+  offset: offset,
+  limit: limit,
+);
 
-/// The user's playlists, newest first.
-Future<List<CollectionView>> playlists() =>
-    RustLib.instance.api.crateApiLibraryPlaylists();
+/// The 50 most played tracks (plays of 30 s or more) over 90 days, completed from all time.
+Future<List<TrackView>> topTracks() =>
+    RustLib.instance.api.crateApiLibraryTopTracks();
+
+/// Tracks by latest play, each with that play's start.
+Future<List<HistoryEntryView>> history({
+  required int offset,
+  required int limit,
+}) => RustLib.instance.api.crateApiLibraryHistory(offset: offset, limit: limit);
+
+/// The user's playlists in `sort` order.
+Future<List<CollectionView>> playlists({required CollectionSort sort}) =>
+    RustLib.instance.api.crateApiLibraryPlaylists(sort: sort);
 
 Future<String> createPlaylist({required String title}) =>
     RustLib.instance.api.crateApiLibraryCreatePlaylist(title: title);
@@ -103,6 +125,25 @@ Stream<LibraryChanged> libraryChanges() =>
 
 Stream<DownloadProgress> downloadProgress() =>
     RustLib.instance.api.crateApiLibraryDownloadProgress();
+
+/// A track of the history and when it was last played (unix ms), for grouping by day.
+class HistoryEntryView {
+  final PlatformInt64 playedAtMs;
+  final TrackView track;
+
+  const HistoryEntryView({required this.playedAtMs, required this.track});
+
+  @override
+  int get hashCode => playedAtMs.hashCode ^ track.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HistoryEntryView &&
+          runtimeType == other.runtimeType &&
+          playedAtMs == other.playedAtMs &&
+          track == other.track;
+}
 
 class HomeView {
   final List<TrackView> recent;

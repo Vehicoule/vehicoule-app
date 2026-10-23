@@ -193,6 +193,27 @@ class SearchView {
           source == other.source;
 }
 
+/// A search suggestion; the UI picks its icon from where it came from.
+class SuggestionView {
+  final String text;
+
+  /// A past search of the user, not a plugin's suggestion.
+  final bool fromHistory;
+
+  const SuggestionView({required this.text, required this.fromHistory});
+
+  @override
+  int get hashCode => text.hashCode ^ fromHistory.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SuggestionView &&
+          runtimeType == other.runtimeType &&
+          text == other.text &&
+          fromHistory == other.fromHistory;
+}
+
 class TrackView {
   final String id;
   final String title;

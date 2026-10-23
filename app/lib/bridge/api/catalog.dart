@@ -13,7 +13,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 Future<SearchView> search({required String query}) =>
     RustLib.instance.api.crateApiCatalogSearch(query: query);
 
-Future<List<String>> suggest({required String prefix}) =>
+/// Past searches first (`from_history`), then the plugin's.
+Future<List<SuggestionView>> suggest({required String prefix}) =>
     RustLib.instance.api.crateApiCatalogSuggest(prefix: prefix);
 
 /// `cursor`: the `next` of the previous page.

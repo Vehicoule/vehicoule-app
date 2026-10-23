@@ -514,6 +514,42 @@ async fn history_records_listened_time() {
 }
 
 #[tokio::test]
+async fn plays_carry_the_queue_context() {
+    let mut t = setup().await;
+    let r = catalog::search("context play").await.unwrap();
+    let (track, album) = (r.tracks[0].id.clone(), r.albums[0].id.clone());
+    let context = |kind: &str| {
+        Some(PlayContext {
+            kind: kind.into(),
+            id: Some(album.clone()),
+            title: "x".into(),
+        })
+    };
+    let item = parse_id(&track).unwrap();
+    let last = || async move {
+        test_app()
+            .db
+            .read(move |c| {
+                c.query_row(
+                    "SELECT context_id FROM plays WHERE item_id = ?1
+                     ORDER BY started_at DESC, id DESC LIMIT 1",
+                    [item],
+                    |r| r.get::<_, Option<ItemId>>(0),
+                )
+            })
+            .await
+            .unwrap()
+    };
+    for (kind, recorded) in [("album", true), ("search", false)] {
+        play(vec![track.clone()], 0, context(kind)).await.unwrap();
+        let (entry, ..) = played(now(&mut t.cmds));
+        started(&entry, 180_000).await;
+        let want = recorded.then(|| parse_id(&album).unwrap());
+        assert_eq!(last().await, want, "{kind}");
+    }
+}
+
+#[tokio::test]
 async fn restore_resumes_paused_at_saved_position() {
     let mut t = setup().await;
     let ids = vec![track("restore a").await, track("restore b").await];

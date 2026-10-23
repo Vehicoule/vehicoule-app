@@ -9,7 +9,10 @@ use rusqlite::{Connection, OptionalExtension, Transaction};
 use super::hlc::{Hlc, Stamp};
 
 /// Index i holds the migration to `user_version` i + 1.
-const MIGRATIONS: &[&str] = &[include_str!("../../migrations/0001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../../migrations/0001_init.sql"),
+    include_str!("../../migrations/0002_play_context.sql"),
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbError {
@@ -278,9 +281,9 @@ mod tests {
     #[test]
     fn migrations_apply_once() {
         let p = TempDb::new();
-        assert_eq!(user_version(&Db::open(&p.0).unwrap()), 1);
+        assert_eq!(user_version(&Db::open(&p.0).unwrap()), 2);
         let db = Db::open(&p.0).unwrap();
-        assert_eq!(user_version(&db), 1);
+        assert_eq!(user_version(&db), 2);
         let fts: i64 = db
             .read_blocking(|c| c.query_row("SELECT count(*) FROM library_fts", [], |r| r.get(0)))
             .unwrap();

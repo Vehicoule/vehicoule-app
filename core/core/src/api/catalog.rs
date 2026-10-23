@@ -1,6 +1,6 @@
 //! Search, pages, imports, artwork, lyrics: routed to plugins (online) or read from the cache.
 
-use crate::catalog::{self as core, EntityView, ImportResult, SearchView};
+use crate::catalog::{self as core, EntityView, ImportResult, SearchView, SuggestionView};
 use crate::error::CoreError;
 use crate::lyrics::LyricsView;
 
@@ -8,7 +8,8 @@ pub async fn search(query: String) -> Result<SearchView, CoreError> {
     core::search(&query).await
 }
 
-pub async fn suggest(prefix: String) -> Result<Vec<String>, CoreError> {
+/// Past searches first (`from_history`), then the plugin's.
+pub async fn suggest(prefix: String) -> Result<Vec<SuggestionView>, CoreError> {
     core::suggest(&prefix).await
 }
 

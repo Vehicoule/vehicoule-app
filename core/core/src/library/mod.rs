@@ -30,3 +30,20 @@ pub struct Page {
     pub offset: u32,
     pub limit: u32,
 }
+
+/// Liked or downloaded tracks: date added (newest first), or folded title / first artist A→Z.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackSort {
+    Added,
+    Title,
+    Artist,
+}
+
+/// Albums, artists, playlists: date liked or created (newest first), latest play of one of
+/// their tracks, or folded title A→Z. (`Title`, not `Name`: Dart enums already have `.name`.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CollectionSort {
+    Recent,
+    Played,
+    Title,
+}

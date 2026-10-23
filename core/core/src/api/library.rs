@@ -11,7 +11,9 @@ use crate::events::LibraryChanged;
 use crate::frb_generated::StreamSink;
 use crate::library::downloads::{self as rows, DownloadState};
 use crate::library::playlists::{self, EntryId, Place};
-use crate::library::{ItemId, Kind, Page, catalog, likes, plays, search};
+use crate::library::{
+    CollectionSort, ItemId, Kind, Page, TrackSort, catalog, likes, plays, search,
+};
 
 const HOME_ROWS: u32 = 20;
 const LOCAL_HITS: u32 = 50;
@@ -21,6 +23,12 @@ pub struct HomeView {
     pub liked: Vec<TrackView>,
     pub playlists: Vec<CollectionView>,
     pub downloads: Vec<TrackView>,
+}
+
+/// A track of the history and when it was last played (unix ms), for grouping by day.
+pub struct HistoryEntryView {
+    pub played_at_ms: i64,
+    pub track: TrackView,
 }
 
 pub struct PlaylistEntryView {
@@ -49,7 +57,7 @@ pub async fn home() -> Result<HomeView, CoreError> {
             let mut done = rows::list(c, Some(DownloadState::Done))?;
             done.truncate(HOME_ROWS as usize);
             let downloaded: Vec<ItemId> = done.iter().map(|r| r.item).collect();
-            let mut mine = playlists::list(c)?;
+            let mut mine = playlists::list(c, CollectionSort::Recent)?;
             mine.truncate(HOME_ROWS as usize);
             Ok(HomeView {
                 recent: track_views(c, &plays::recent_items(c, Kind::Track, page(0, HOME_ROWS))?)?,
@@ -94,9 +102,10 @@ pub async fn tracks(ids: Vec<String>) -> Result<Vec<TrackView>, CoreError> {
         .await?)
 }
 
-/// Liked albums, artists or playlists, most recent first.
+/// Liked albums, artists or playlists in `sort` order.
 pub async fn liked(
     kind: ItemKind,
+    sort: CollectionSort,
     offset: u32,
     limit: u32,
 ) -> Result<Vec<CollectionView>, CoreError> {
@@ -108,35 +117,71 @@ pub async fn liked(
     };
     Ok(app()
         .db
-        .read(move |c| collection_views(c, &likes::list(c, kind, page(offset, limit))?))
-        .await?)
-}
-
-pub async fn liked_tracks(offset: u32, limit: u32) -> Result<Vec<TrackView>, CoreError> {
-    Ok(app()
-        .db
-        .read(move |c| track_views(c, &likes::list(c, Kind::Track, page(offset, limit))?))
-        .await?)
-}
-
-/// Tracks by latest play.
-pub async fn history(offset: u32, limit: u32) -> Result<Vec<TrackView>, CoreError> {
-    Ok(app()
-        .db
         .read(move |c| {
-            track_views(
-                c,
-                &plays::recent_items(c, Kind::Track, page(offset, limit))?,
-            )
+            let ids = likes::list_collections(c, kind, sort, page(offset, limit))?;
+            collection_views(c, &ids)
         })
         .await?)
 }
 
-/// The user's playlists, newest first.
-pub async fn playlists() -> Result<Vec<CollectionView>, CoreError> {
+pub async fn liked_tracks(
+    sort: TrackSort,
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<TrackView>, CoreError> {
     Ok(app()
         .db
-        .read(|c| collection_views(c, &playlists::list(c)?))
+        .read(move |c| track_views(c, &likes::list_tracks(c, sort, page(offset, limit))?))
+        .await?)
+}
+
+/// Finished downloads in `sort` order (`downloads` gives the progress of all of them).
+pub async fn downloaded(
+    sort: TrackSort,
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<TrackView>, CoreError> {
+    Ok(app()
+        .db
+        .read(move |c| track_views(c, &rows::done(c, sort, page(offset, limit))?))
+        .await?)
+}
+
+/// The 50 most played tracks (plays of 30 s or more) over 90 days, completed from all time.
+pub async fn top_tracks() -> Result<Vec<TrackView>, CoreError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
+    Ok(app()
+        .db
+        .read(move |c| track_views(c, &plays::top_tracks(c, now)?))
+        .await?)
+}
+
+/// Tracks by latest play, each with that play's start.
+pub async fn history(offset: u32, limit: u32) -> Result<Vec<HistoryEntryView>, CoreError> {
+    Ok(app()
+        .db
+        .read(move |c| {
+            let mut out = Vec::new();
+            for (id, at) in plays::recent_with_time(c, Kind::Track, page(offset, limit))? {
+                if let Some(t) = catalog::track(c, id)? {
+                    out.push(HistoryEntryView {
+                        played_at_ms: at,
+                        track: track_view(t),
+                    });
+                }
+            }
+            Ok(out)
+        })
+        .await?)
+}
+
+/// The user's playlists in `sort` order.
+pub async fn playlists(sort: CollectionSort) -> Result<Vec<CollectionView>, CoreError> {
+    Ok(app()
+        .db
+        .read(move |c| collection_views(c, &playlists::list(c, sort)?))
         .await?)
 }
 
@@ -343,5 +388,30 @@ mod tests {
             got,
             [(new.as_str(), "merged old"), (old.as_str(), "merged old")]
         );
+    }
+
+    #[tokio::test]
+    async fn history_entries_carry_played_at() {
+        let (_lock, app) = catalog::tests::setup().await;
+        let id = catalog::search("history at").await.unwrap().tracks[0]
+            .id
+            .clone();
+        let item = parse_id(&id).unwrap();
+        let at = 1_700_000_000_000_i64;
+        app.db
+            .write(move |tx| {
+                let p = plays::start(tx, item, "test", None)?;
+                tx.tx.execute(
+                    "UPDATE plays SET started_at = ?2 WHERE id = ?1",
+                    rusqlite::params![p.as_bytes().as_slice(), at],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let all = history(0, 10_000).await.unwrap();
+        let mine = all.iter().find(|e| e.track.id == id).unwrap();
+        assert_eq!(mine.played_at_ms, at);
+        assert_eq!(mine.track.title, "history at");
     }
 }

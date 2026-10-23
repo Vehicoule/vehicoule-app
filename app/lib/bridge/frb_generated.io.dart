@@ -22,6 +22,7 @@ import 'downloads.dart';
 import 'error.dart';
 import 'events.dart';
 import 'frb_generated.dart';
+import 'library.dart';
 import 'logs.dart';
 import 'lyrics.dart';
 
@@ -147,6 +148,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CategoryView dco_decode_category_view(dynamic raw);
 
   @protected
+  CollectionSort dco_decode_collection_sort(dynamic raw);
+
+  @protected
   CollectionView dco_decode_collection_view(dynamic raw);
 
   @protected
@@ -169,6 +173,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   FeedView dco_decode_feed_view(dynamic raw);
+
+  @protected
+  HistoryEntryView dco_decode_history_entry_view(dynamic raw);
 
   @protected
   HomeView dco_decode_home_view(dynamic raw);
@@ -216,6 +223,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<FeedView> dco_decode_list_feed_view(dynamic raw);
 
   @protected
+  List<HistoryEntryView> dco_decode_list_history_entry_view(dynamic raw);
+
+  @protected
   List<LogLine> dco_decode_list_log_line(dynamic raw);
 
   @protected
@@ -238,6 +248,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
+
+  @protected
+  List<SuggestionView> dco_decode_list_suggestion_view(dynamic raw);
 
   @protected
   List<TrackView> dco_decode_list_track_view(dynamic raw);
@@ -340,6 +353,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Source dco_decode_source(dynamic raw);
+
+  @protected
+  SuggestionView dco_decode_suggestion_view(dynamic raw);
+
+  @protected
+  TrackSort dco_decode_track_sort(dynamic raw);
 
   @protected
   TrackView dco_decode_track_view(dynamic raw);
@@ -475,6 +494,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CategoryView sse_decode_category_view(SseDeserializer deserializer);
 
   @protected
+  CollectionSort sse_decode_collection_sort(SseDeserializer deserializer);
+
+  @protected
   CollectionView sse_decode_collection_view(SseDeserializer deserializer);
 
   @protected
@@ -499,6 +521,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   FeedView sse_decode_feed_view(SseDeserializer deserializer);
+
+  @protected
+  HistoryEntryView sse_decode_history_entry_view(SseDeserializer deserializer);
 
   @protected
   HomeView sse_decode_home_view(SseDeserializer deserializer);
@@ -556,6 +581,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<FeedView> sse_decode_list_feed_view(SseDeserializer deserializer);
 
   @protected
+  List<HistoryEntryView> sse_decode_list_history_entry_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<LogLine> sse_decode_list_log_line(SseDeserializer deserializer);
 
   @protected
@@ -584,6 +614,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<(String, String)> sse_decode_list_record_string_string(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<SuggestionView> sse_decode_list_suggestion_view(
     SseDeserializer deserializer,
   );
 
@@ -702,6 +737,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Source sse_decode_source(SseDeserializer deserializer);
+
+  @protected
+  SuggestionView sse_decode_suggestion_view(SseDeserializer deserializer);
+
+  @protected
+  TrackSort sse_decode_track_sort(SseDeserializer deserializer);
 
   @protected
   TrackView sse_decode_track_view(SseDeserializer deserializer);
@@ -875,6 +916,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_category_view(CategoryView self, SseSerializer serializer);
 
   @protected
+  void sse_encode_collection_sort(
+    CollectionSort self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_collection_view(
     CollectionView self,
     SseSerializer serializer,
@@ -906,6 +953,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_feed_view(FeedView self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_history_entry_view(
+    HistoryEntryView self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_home_view(HomeView self, SseSerializer serializer);
@@ -974,6 +1027,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_feed_view(List<FeedView> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_history_entry_view(
+    List<HistoryEntryView> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_log_line(List<LogLine> self, SseSerializer serializer);
 
   @protected
@@ -1015,6 +1074,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_record_string_string(
     List<(String, String)> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_suggestion_view(
+    List<SuggestionView> self,
     SseSerializer serializer,
   );
 
@@ -1146,6 +1211,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_source(Source self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_suggestion_view(
+    SuggestionView self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_track_sort(TrackSort self, SseSerializer serializer);
 
   @protected
   void sse_encode_track_view(TrackView self, SseSerializer serializer);

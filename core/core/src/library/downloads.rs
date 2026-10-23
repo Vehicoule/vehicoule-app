@@ -1,7 +1,8 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::items::{canonical, invalid};
-use super::{ItemId, Tx};
+use super::plays::track_order;
+use super::{ItemId, Page, TrackSort, Tx};
 
 /// Stored as lowercase text; the catalogue's `downloaded` flag reads `'done'`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +114,20 @@ pub fn list(c: &Connection, state: Option<DownloadState>) -> rusqlite::Result<Ve
     let mut all = rows(c, "", [])?;
     all.retain(|r| state.is_none_or(|s| r.state == s));
     Ok(all)
+}
+
+/// Downloaded tracks (a done row in their merge group, as `list(Done)`) in `sort` order;
+/// `Added` is when the download was queued.
+pub fn done(c: &Connection, sort: TrackSort, page: Page) -> rusqlite::Result<Vec<ItemId>> {
+    let mut st = c.prepare(&format!(
+        "SELECT r.id FROM downloads d JOIN items i ON i.id = d.item_id
+         JOIN items r ON r.id = COALESCE(i.merged_into, i.id)
+         WHERE d.state = 'done' AND r.deleted_at IS NULL
+         GROUP BY r.id ORDER BY {} LIMIT ?1 OFFSET ?2",
+        track_order(sort, "max(d.created_at)")
+    ))?;
+    st.query_map(params![page.limit, page.offset], |r| r.get(0))?
+        .collect()
 }
 
 /// Forgets the row `get` returns and hands back its file to delete. Merges don't rewrite
@@ -347,5 +362,38 @@ mod tests {
             Ok(())
         })
         .unwrap();
+    }
+
+    #[test]
+    fn done_tracks_are_sorted_and_paged() {
+        use crate::library::plays::tests::song;
+        use crate::library::{Page, TrackSort};
+        let db = Db::open_in_memory().unwrap();
+        let (b, e, queued) = db
+            .write_blocking(|tx| {
+                let t = (
+                    song(tx, "b", "Brel", "Zaz", None)?,
+                    song(tx, "e", "Été", "Abba", None)?,
+                    song(tx, "q", "Aaa", "Aaa", None)?,
+                );
+                finish(tx, t.0, "/b")?;
+                finish(tx, t.1, "/e")?;
+                enqueue(tx, t.2, "flac")?;
+                tx.tx.execute(
+                    "UPDATE downloads SET created_at = 1 WHERE item_id = ?1",
+                    [t.0],
+                )?;
+                Ok(t)
+            })
+            .unwrap();
+        let sorted = |sort, offset| {
+            db.read_blocking(move |c| done(c, sort, Page { offset, limit: 10 }))
+                .unwrap()
+        };
+        assert_eq!(sorted(TrackSort::Added, 0), vec![e, b]);
+        assert_eq!(sorted(TrackSort::Title, 0), vec![b, e]);
+        assert_eq!(sorted(TrackSort::Artist, 0), vec![e, b]);
+        assert_eq!(sorted(TrackSort::Added, 1), vec![b]);
+        assert!(!sorted(TrackSort::Title, 0).contains(&queued));
     }
 }

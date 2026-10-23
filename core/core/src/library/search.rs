@@ -224,7 +224,7 @@ mod tests {
                     catalog::upsert_track(tx, "deezer", &track("Zephyr Cached", "Artist", "1"))?;
                 let played =
                     catalog::upsert_track(tx, "deezer", &track("Zephyr Played", "Artist", "2"))?;
-                plays::start(tx, played, "test")?;
+                plays::start(tx, played, "test", None)?;
                 let downloaded = catalog::upsert_track(
                     tx,
                     "deezer",
@@ -293,7 +293,7 @@ mod tests {
                     match n {
                         0 => likes::set(tx, dup, true)?,
                         1 => {
-                            plays::start(tx, dup, "test")?;
+                            plays::start(tx, dup, "test", None)?;
                         }
                         _ => {
                             let mix = playlists::create(tx, "Mix", None)?;

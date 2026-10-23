@@ -10,7 +10,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use super::catalog::index;
 use super::items::{canonical, fts_rowid, invalid};
-use super::{ItemId, Kind, Page, Tx, is_valid_key, key_between};
+use super::plays::collection_order;
+use super::{CollectionSort, ItemId, Kind, Page, Tx, is_valid_key, key_between};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EntryId(pub uuid::Uuid);
@@ -225,12 +226,14 @@ pub fn playlist_of(c: &Connection, entry: EntryId) -> rusqlite::Result<Option<It
     .optional()
 }
 
-/// User playlists not deleted, newest first.
-pub fn list(c: &Connection) -> rusqlite::Result<Vec<ItemId>> {
-    let mut st = c.prepare(
-        "SELECT DISTINCT COALESCE(i.merged_into, i.id) AS root FROM playlists p
-         JOIN items i ON i.id = p.item_id WHERE p.deleted_at IS NULL ORDER BY root DESC",
-    )?;
+/// User playlists not deleted, in `sort` order (`Recent`: newest first).
+pub fn list(c: &Connection, sort: CollectionSort) -> rusqlite::Result<Vec<ItemId>> {
+    let mut st = c.prepare(&format!(
+        "SELECT r.id FROM playlists pl JOIN items i ON i.id = pl.item_id
+         JOIN items r ON r.id = COALESCE(i.merged_into, i.id)
+         WHERE pl.deleted_at IS NULL GROUP BY r.id ORDER BY {}",
+        collection_order(sort, "max(pl.created_at)")
+    ))?;
     st.query_map([], |r| r.get(0))?.collect()
 }
 
@@ -418,9 +421,12 @@ mod tests {
             let keep = create(tx, "Keep", None)?;
             let gone = create(tx, "Gone", Some("bye"))?;
             add(tx, gone, &[t[0]], Place::End)?;
-            assert_eq!(list(c)?, vec![gone, keep]);
+            assert_eq!(
+                list(c, crate::library::CollectionSort::Recent)?,
+                vec![gone, keep]
+            );
             delete(tx, gone)?;
-            assert_eq!(list(c)?, vec![keep]);
+            assert_eq!(list(c, crate::library::CollectionSort::Recent)?, vec![keep]);
             assert!(entries(c, gone, all())?.is_empty());
             assert!(add(tx, gone, &[t[0]], Place::End).is_err());
             assert!(rename(tx, gone, "Back").is_err());
@@ -564,7 +570,7 @@ mod tests {
                 likes::set(tx, t, true)?;
                 let pl = create(tx, "Mix", None)?;
                 let e = add(tx, pl, &[t], Place::End)?[0];
-                let play = plays::start(tx, t, "test")?;
+                let play = plays::start(tx, t, "test", None)?;
                 Ok((tx.stamp.updated_at, (t, pl, e, play)))
             })
             .unwrap();
@@ -598,5 +604,31 @@ mod tests {
             Ok(())
         })
         .unwrap();
+    }
+
+    #[test]
+    fn playlists_sort_recent_played_title() {
+        use crate::library::CollectionSort;
+        use crate::library::plays::tests::{now_ms, play_at};
+        let db = Db::open_in_memory().unwrap();
+        let (x, y, t) = db
+            .write_blocking(|tx| {
+                let x = create(tx, "zouk", None)?;
+                let y = create(tx, "Électro", None)?;
+                let t = tracks(tx, 1)?[0];
+                add(tx, x, &[t], Place::End)?;
+                // Same wall ms possible: make y the newer one.
+                tx.tx.execute(
+                    "UPDATE playlists SET created_at = created_at + 1000 WHERE item_id = ?1",
+                    [y],
+                )?;
+                Ok((x, y, t))
+            })
+            .unwrap();
+        play_at(&db, t, now_ms(), 1_000, None);
+        let sorted = |sort| db.read_blocking(move |c| list(c, sort)).unwrap();
+        assert_eq!(sorted(CollectionSort::Recent), vec![y, x]);
+        assert_eq!(sorted(CollectionSort::Played), vec![x, y]);
+        assert_eq!(sorted(CollectionSort::Title), vec![y, x]);
     }
 }
