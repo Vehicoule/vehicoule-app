@@ -5,8 +5,10 @@ use std::pin::pin;
 use std::task::{Context, Poll, Waker};
 
 mod http;
+mod link;
 
-pub use http::{from_http_error, get_json, query, status_error};
+pub use http::{from_http_error, get_json, json, query, send_batch_bodies, status_error};
+pub use link::{is_decimal_id, split_url};
 pub use {serde, serde_json, wit_bindgen};
 
 pub mod bindings {

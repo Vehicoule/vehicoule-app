@@ -2,7 +2,8 @@
 
 Aides côté plugin (guest) pour le contrat `vehicoule:music@1.1.0` : bindings des imports de
 l'hôte (`http`, `kv`, `clock`, `log`), types partagés (`types::Track`, `types::Error`…),
-JSON typé sur HTTP et traduction des statuts fournisseur en erreurs typées.
+JSON typé sur HTTP et traduction des statuts fournisseur en erreurs typées. Depuis
+`contract-v1.1.1` : `json`, `send_batch_bodies`, `is_decimal_id` et `split_url`.
 
 Le SDK dépend du **WIT** de `core/contract` (`wit/host/host.wit`, `wit/music/music.wit`),
 pas de la crate `contract`, qui tire Wasmtime.
@@ -11,7 +12,7 @@ pas de la crate `contract`, qui tire Wasmtime.
 
 ```toml
 [dependencies]
-vehicoule-sdk = { git = "file:///Users/btw/Documents/repo/Vehicoule", tag = "contract-v1.1.0" }
+vehicoule-sdk = { git = "file:///Users/btw/Documents/repo/Vehicoule", tag = "contract-v1.1.1" }
 wit-bindgen = "0.63"
 ```
 
