@@ -358,7 +358,7 @@ interface browse {
 
     /// Explore's idle view: featured cards first, then the browse grid.
     categories: func(region: string) -> result<list<category>, error>;
-    category: func(id: string, region: string, cursor: option<string>) -> result<category-page, error>;
+    fetch-category: func(id: string, region: string, cursor: option<string>) -> result<category-page, error>;
     /// An artist's releases, newest first (for "new from your artists").
     releases: func(artist-id: string, region: string) -> result<list<release>, error>;
 }

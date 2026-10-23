@@ -129,7 +129,7 @@ Prérequis : plans 1, 2, 4 et 6 terminés. Le plan 5 (Tasks 6 et 7) consomme ce 
           date: string,
       }
       categories: func(region: string) -> result<list<category>, error>;
-      category: func(id: string, region: string, cursor: option<string>) -> result<category-page, error>;
+      fetch-category: func(id: string, region: string, cursor: option<string>) -> result<category-page, error>;
       releases: func(artist-id: string, region: string) -> result<list<release>, error>;
   }
   ```
@@ -138,9 +138,9 @@ Prérequis : plans 1, 2, 4 et 6 terminés. Le plan 5 (Tasks 6 et 7) consomme ce 
 - [ ] **Step 1 : test qui échoue** : `music_wit_is_1_1_with_browse`. Il vérifie que
   `MUSIC_WIT` commence par `package vehicoule:music@1.1.0;`, contient `interface browse` et
   `export browse;`, et que `HOST_WIT` reste `@1.0.0`.
-- [ ] **Step 2 :** `cargo test -p vehicoule-contract` → FAIL.
+- [ ] **Step 2 :** `cargo test -p contract` → FAIL.
 - [ ] **Step 3 : implémenter.** Le reste du fichier ne change pas : additif seulement.
-- [ ] **Step 4 :** `cargo test -p vehicoule-contract`, puis `cargo build` du SDK pour
+- [ ] **Step 4 :** `cargo test -p contract`, puis `cargo build` du SDK pour
   `wasm32-wasip2` → PASS.
 - [ ] **Step 5 : commit**, `feat(contract): music 1.1 — interface browse`, puis
   `git tag contract-v1.1.0`.
@@ -214,11 +214,11 @@ Prérequis : plans 1, 2, 4 et 6 terminés. Le plan 5 (Tasks 6 et 7) consomme ce 
     Une catégorie de genre vaut `{ id: "genre:<id>", title: name, artwork: picture_xl /
     picture_medium, featured: false }`. Les titres des vedettes sont des noms propres du
     fournisseur, pas du texte d'interface.
-  - `category("chart:<g>" | "genre:<g>")` = `/chart/<g>` en quatre étagères dans cet ordre :
+  - `fetch-category("chart:<g>" | "genre:<g>")` = `/chart/<g>` en quatre étagères dans cet ordre :
     titres, albums, artistes, playlists. Les titres d'étagère valent `"tracks"`, `"albums"`,
     `"artists"` et `"playlists"`, des clés que Dart traduit. Les étagères vides sont omises.
     `next` = `None` (les classements Deezer tiennent en une page).
-  - `category("selection:0")` = une étagère `"albums"` tirée de `/editorial/0/selection`.
+  - `fetch-category("selection:0")` = une étagère `"albums"` tirée de `/editorial/0/selection`.
   - `releases(artist)` = `/artist/<id>/albums?limit=50`, triées par `release_date`
     décroissante. Les albums sans date sont omis.
   - `region` est ignoré : les classements Deezer suivent le pays de l'IP.
