@@ -440,7 +440,8 @@ async fn fetch_uncached(
             return Err(HttpError::Network("too many redirects".into()));
         }
         redirects += 1;
-        let next = url.join(location).map_err(|e| HttpError::Network(format!("bad redirect {location:?}: {e}")))?;
+        // Never the location itself: a URL must not leave the host in an error.
+        let next = url.join(location).map_err(|e| HttpError::Network(format!("bad redirect: {e}")))?;
         if matches!(hop.status, 301..=303) && matches!(method, Method::Post) {
             method = Method::Get;
         }
@@ -545,7 +546,8 @@ fn net_error(e: reqwest::Error) -> HttpError {
         }
         source = err.source();
     }
-    if e.is_timeout() { HttpError::Timeout } else { HttpError::Network(e.to_string()) }
+    // reqwest's `Display` names the URL, which must not leave the host.
+    if e.is_timeout() { HttpError::Timeout } else { HttpError::Network(e.without_url().to_string()) }
 }
 
 #[cfg(test)]
@@ -708,6 +710,18 @@ mod tests {
             other => panic!("{:?}", other.map(|r| r.status)),
         }
         assert_eq!(calls, 6);
+    }
+
+    #[tokio::test]
+    async fn bad_redirect_error_carries_no_url() {
+        let server = MockServer::start().await;
+        redirect(&server, "/a", 302, "http://exa mple.test/secret-path?q=x").await;
+        let url = format!("{}/a", base(&server, "api.test"));
+        let (r, _) = run(&NetPolicy::for_tests(), &allow(&["api.test"]), req(Method::Get, &url)).await;
+        match r {
+            Err(HttpError::Network(m)) => assert_eq!(m, "bad redirect: invalid international domain name"),
+            other => panic!("{:?}", other.map(|r| r.status)),
+        }
     }
 
     #[tokio::test]

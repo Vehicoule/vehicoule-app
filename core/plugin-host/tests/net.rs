@@ -16,6 +16,21 @@ async fn plugin_requests_go_through_the_allowlist() {
     assert_eq!(t.reports()[0].http_calls, 0);
 }
 
+/// reqwest's `Display` names the URL: none of it may reach the call's error or its report.
+#[tokio::test]
+async fn network_errors_carry_no_url() {
+    // A port nothing listens on: bound, then released.
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let t = TestHost::new(Limits::default());
+    let p = t.load("probe");
+    let r = t.host.search(&p, query(&format!("get http://api.test:{port}/secret-path?q=x"))).await;
+    let Err(CallError::Network(m)) = r else { panic!("expected Network, got {r:?}") };
+    for leak in ["api.test", "secret-path", "q=x", "http:", &port.to_string()] {
+        assert!(!m.contains(leak), "{leak:?} in {m:?}");
+    }
+    assert_eq!(t.reports()[0].outcome, Err(CallError::Network(m)));
+}
+
 #[tokio::test]
 async fn http_client_refuses_ip_literals() {
     let server = MockServer::start().await;
