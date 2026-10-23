@@ -418,6 +418,21 @@ testWidgets('first launch redirects to onboarding', ...);
 - [ ] **Step 3 : implémenter.**
 - [ ] **Step 4 : vérifier** → PASS.
 - [ ] **Step 5 : commit** : `feat(app): routes, coques mobile et desktop, mini-lecteur à gestes, thème suivant la lecture`.
+- [ ] **Step 6 : point de contrôle utilisateur du shell (bloquant).** Lancer l'app en debug
+  avec `FakeApi` (`--dart-define=VEHICOULE_FAKE=true`, branché par `RustLib.initMock` dans
+  `main.dart` seulement en `kDebugMode`) sur le téléphone Android de référence et sur macOS.
+  Écrans fictifs simples, sans contenu réel. Faire valider par l'utilisateur :
+  - la barre du bas, le ☰ et le rail modal ;
+  - le rail desktop replié et déplié ;
+  - la barre ancrée de 840 à 1000 dp, puis le panneau « en lecture » au-delà (fenêtre
+    redimensionnée en direct) ;
+  - le mini-lecteur : anneau, like, pause, et les 4 gestes avec l'Annuler ;
+  - l'ouverture du lecteur ;
+  - le thème qui suit la pochette, et « réduire les animations ».
+
+  Ses retours sont corrigés dans `design/` ou les coques, avec les tests verts, puis commités.
+  La tâche 6 ne commence qu'après son accord, consigné dans le ledger
+  (`Ruling (user): shell approved`).
 
 ### Task 6 : écrans d'écoute (accueil, Explorer, pages, lecteur, file, paroles)
 
