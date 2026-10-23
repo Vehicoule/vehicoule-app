@@ -459,3 +459,67 @@ async fn removed_feed_unloads_and_deletes_its_plugins() {
     let dir = std::path::Path::new(&env.cfg.data_dir).join("plugins");
     assert_eq!(std::fs::read_dir(dir).unwrap().count(), 0, "wasm deleted");
 }
+
+#[tokio::test]
+async fn remove_during_refresh_stays_removed() {
+    let env = Env::new();
+    let server = MockServer::start().await;
+    // A slow feed: the remove lands while the refresh waits for it.
+    Mock::given(path("/feed.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_bytes(feed(1, vec![good()]))
+                .set_delay(std::time::Duration::from_millis(300)),
+        )
+        .mount(&server)
+        .await;
+    mount(&server, feed(1, vec![good()])).await;
+    let url = format!("{}/feed.json", server.uri());
+    env.add_feed_row(&url, None).await;
+    let p = env.plugins();
+    let remove = async {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        p.remove_feed(&env.db, &url).await
+    };
+    let (refreshed, removed) = tokio::join!(p.refresh_feeds(&env.db), remove);
+    refreshed.unwrap();
+    removed.unwrap();
+    assert!(env.feeds().await.iter().all(|f| f.url != url));
+    assert!(env.rows().await.is_empty());
+    assert!(ids(&p).is_empty());
+}
+
+#[tokio::test]
+async fn concurrent_refreshes_install_once() {
+    let env = Env::new();
+    let (server, url) = serve(feed(1, vec![good()])).await;
+    env.add_feed_row(&url, None).await;
+    let p = env.plugins();
+    // Onboarding's refresh and the background one: the second finds it up to date.
+    let (a, b) = tokio::join!(p.refresh_feeds(&env.db), p.refresh_feeds(&env.db));
+    let mut all = a.unwrap();
+    all.extend(b.unwrap());
+    assert_eq!(all, ["probe"]);
+    let wasm = server.received_requests().await.unwrap();
+    let wasm = wasm.iter().filter(|r| r.url.path() == "/probe.wasm");
+    assert_eq!(wasm.count(), 1, "downloaded and compiled once");
+}
+
+#[tokio::test]
+async fn feeds_list_their_plugin_counts() {
+    let env = Env::new();
+    let (_server, url) = serve(feed(1, vec![good()])).await;
+    env.add_feed_row(&url, None).await;
+    let p = env.plugins();
+    p.refresh_feeds(&env.db).await.unwrap();
+    assert_eq!(
+        p.feeds(&env.db).await.unwrap(),
+        [FeedView {
+            url,
+            name: "Test feed".into(),
+            official: false,
+            plugin_count: 1,
+            fingerprint: fingerprint(&key().verifying_key().to_bytes()),
+        }]
+    );
+}

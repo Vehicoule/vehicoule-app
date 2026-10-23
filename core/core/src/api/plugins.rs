@@ -5,7 +5,7 @@ use crate::error::CoreError;
 use crate::events::LibraryChanged;
 use crate::library::plugins as rows;
 use crate::plugins::FeedPreview;
-pub use crate::plugins::PluginView;
+pub use crate::plugins::{FeedView, PluginView};
 use crate::router;
 
 fn changed() {
@@ -14,6 +14,11 @@ fn changed() {
 
 pub async fn installed_plugins() -> Result<Vec<PluginView>, CoreError> {
     app().plugins.installed(&app().db).await
+}
+
+/// Every feed, the official one included, with its plugin count and key fingerprint.
+pub async fn feeds() -> Result<Vec<FeedView>, CoreError> {
+    app().plugins.feeds(&app().db).await
 }
 
 /// Without one, nothing plays.

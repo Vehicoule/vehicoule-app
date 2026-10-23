@@ -19,6 +19,10 @@ Future<HomeView> home() => RustLib.instance.api.crateApiLibraryHome();
 Future<void> setLiked({required String id, required bool liked}) =>
     RustLib.instance.api.crateApiLibrarySetLiked(id: id, liked: liked);
 
+/// The tracks of these ids, in order (download rows, notifications); unknown ones left out.
+Future<List<TrackView>> tracks({required List<String> ids}) =>
+    RustLib.instance.api.crateApiLibraryTracks(ids: ids);
+
 /// Liked albums, artists or playlists, most recent first.
 Future<List<CollectionView>> liked({
   required ItemKind kind,

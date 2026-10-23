@@ -9,6 +9,7 @@ import '../events.dart';
 import '../frb_generated.dart';
 import '../player.dart';
 import '../queue.dart';
+import '../updates.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
@@ -25,7 +26,8 @@ Future<void> play({
   context: context,
 );
 
-Future<void> playerEvent({required PlayerEvent e}) =>
+/// Sync and fire-and-forget: queued for the player actor in call order, never blocks the UI.
+void playerEvent({required PlayerEvent e}) =>
     RustLib.instance.api.crateApiPlaybackPlayerEvent(e: e);
 
 Future<void> skipNext() => RustLib.instance.api.crateApiPlaybackSkipNext();

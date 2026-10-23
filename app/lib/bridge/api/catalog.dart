@@ -20,8 +20,8 @@ Future<List<String>> suggest({required String prefix}) =>
 Future<EntityView> entity({required String id, String? cursor}) =>
     RustLib.instance.api.crateApiCatalogEntity(id: id, cursor: cursor);
 
-/// The new user playlist's id.
-Future<String> importPlaylist({required String link}) =>
+/// The new user playlist, and whether the 50-page cap cut it.
+Future<ImportResult> importPlaylist({required String link}) =>
     RustLib.instance.api.crateApiCatalogImportPlaylist(link: link);
 
 /// A local file path, `None` when no plugin has a picture.

@@ -409,9 +409,17 @@ async fn store_page(
         .await?)
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportResult {
+    /// The new user playlist.
+    pub id: String,
+    /// The source had more than the 50 pages copied.
+    pub truncated: bool,
+}
+
 /// Copies a public playlist (or album) into a new user playlist: the plugin that recognises
-/// the link, at most 50 pages, all or nothing. Returns the new playlist's id.
-pub(crate) async fn import_playlist(link: &str) -> Result<String, CoreError> {
+/// the link, at most 50 pages, all or nothing.
+pub(crate) async fn import_playlist(link: &str) -> Result<ImportResult, CoreError> {
     online()?;
     let app = app();
     let (plugin, target) = router::first_ok(Capability::Entity, |p| {
@@ -440,6 +448,7 @@ pub(crate) async fn import_playlist(link: &str) -> Result<String, CoreError> {
             None => break,
         }
     }
+    let truncated = cursor.is_some();
     let (title, description) = match header {
         Some(Entity::Playlist(p)) => (p.title, p.description),
         Some(Entity::Album(a)) => (a.title, None),
@@ -458,7 +467,10 @@ pub(crate) async fn import_playlist(link: &str) -> Result<String, CoreError> {
             Ok(playlist)
         })
         .await?;
-    Ok(id.to_string())
+    Ok(ImportResult {
+        id: id.to_string(),
+        truncated,
+    })
 }
 
 /// A local file for the item's artwork (a track without any: its album's). Providers in the

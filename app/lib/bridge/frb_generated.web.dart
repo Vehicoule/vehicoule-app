@@ -154,6 +154,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   FeedPreview dco_decode_feed_preview(dynamic raw);
 
   @protected
+  FeedView dco_decode_feed_view(dynamic raw);
+
+  @protected
   HomeView dco_decode_home_view(dynamic raw);
 
   @protected
@@ -161,6 +164,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
+
+  @protected
+  ImportResult dco_decode_import_result(dynamic raw);
 
   @protected
   ItemKind dco_decode_item_kind(dynamic raw);
@@ -182,6 +188,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<DownloadProgress> dco_decode_list_download_progress(dynamic raw);
+
+  @protected
+  List<FeedView> dco_decode_list_feed_view(dynamic raw);
 
   @protected
   List<LogLine> dco_decode_list_log_line(dynamic raw);
@@ -449,6 +458,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   FeedPreview sse_decode_feed_preview(SseDeserializer deserializer);
 
   @protected
+  FeedView sse_decode_feed_view(SseDeserializer deserializer);
+
+  @protected
   HomeView sse_decode_home_view(SseDeserializer deserializer);
 
   @protected
@@ -456,6 +468,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+
+  @protected
+  ImportResult sse_decode_import_result(SseDeserializer deserializer);
 
   @protected
   ItemKind sse_decode_item_kind(SseDeserializer deserializer);
@@ -483,6 +498,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<DownloadProgress> sse_decode_list_download_progress(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<FeedView> sse_decode_list_feed_view(SseDeserializer deserializer);
 
   @protected
   List<LogLine> sse_decode_list_log_line(SseDeserializer deserializer);
@@ -810,6 +828,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_feed_preview(FeedPreview self, SseSerializer serializer);
 
   @protected
+  void sse_encode_feed_view(FeedView self, SseSerializer serializer);
+
+  @protected
   void sse_encode_home_view(HomeView self, SseSerializer serializer);
 
   @protected
@@ -817,6 +838,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_import_result(ImportResult self, SseSerializer serializer);
 
   @protected
   void sse_encode_item_kind(ItemKind self, SseSerializer serializer);
@@ -853,6 +877,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     List<DownloadProgress> self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_list_feed_view(List<FeedView> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_log_line(List<LogLine> self, SseSerializer serializer);

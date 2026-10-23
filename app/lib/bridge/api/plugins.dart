@@ -14,6 +14,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 Future<List<PluginView>> installedPlugins() =>
     RustLib.instance.api.crateApiPluginsInstalledPlugins();
 
+/// Every feed, the official one included, with its plugin count and key fingerprint.
+Future<List<FeedView>> feeds() => RustLib.instance.api.crateApiPluginsFeeds();
+
 /// Without one, nothing plays.
 Future<bool> hasResolver() => RustLib.instance.api.crateApiPluginsHasResolver();
 

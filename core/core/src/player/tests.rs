@@ -167,7 +167,17 @@ fn ev_pos(entry: &str, ms: u64) -> PlayerEvent {
 }
 
 fn forbidden(entry: &str) -> PlayerEvent {
-    failed(entry, PlayerErrorKind::Forbidden)
+    forbidden_at(entry, 0)
+}
+
+/// A 403 at `position_ms`: where the player stopped.
+fn forbidden_at(entry: &str, position_ms: u64) -> PlayerEvent {
+    PlayerEvent::Error {
+        entry: entry.into(),
+        kind: PlayerErrorKind::Forbidden,
+        message: "mpv says something".into(),
+        position_ms,
+    }
 }
 
 fn failed(entry: &str, kind: PlayerErrorKind) -> PlayerEvent {
@@ -175,6 +185,7 @@ fn failed(entry: &str, kind: PlayerErrorKind) -> PlayerEvent {
         entry: entry.into(),
         kind,
         message: "mpv says something".into(),
+        position_ms: 0,
     }
 }
 
@@ -183,6 +194,8 @@ fn player_futures_are_send() {
     fn send<T: Send>(_: T) {}
     send(play(vec![], 0, None));
     send(on_event(PlayerEvent::Ended { entry: "x".into() }));
+    send(crate::api::library::set_liked("x".into(), true));
+    send(crate::api::library::tracks(vec![]));
     send(skip_next());
     send(previous(0));
     send(edit(QueueOp::Shuffle(true)));
@@ -389,9 +402,10 @@ async fn expired_url_is_resolved_once_then_resumes() {
     play(vec![track("expired").await], 0, None).await.unwrap();
     let (entry, ..) = played(now(&mut t.cmds));
     started(&entry, 180_000).await;
-    on_event(ev_pos(&entry, 42_000)).await;
+    on_event(ev_pos(&entry, 40_000)).await;
     let before = catalog::tests::calls().await;
-    on_event(forbidden(&entry)).await;
+    // Where the player stopped, not the last position reported.
+    on_event(forbidden_at(&entry, 42_000)).await;
     let (e, uri, position, autoplay) = played(now(&mut t.cmds));
     assert_eq!((e, position, autoplay), (entry, 42_000, true));
     assert_eq!(uri, "https://fake.test/stream/t-expired");
@@ -407,13 +421,13 @@ async fn second_forbidden_tries_next_candidate() {
     let (entry, ..) = played(now(&mut t.cmds));
     started(&entry, 180_000).await;
     on_event(ev_pos(&entry, 10_000)).await;
-    on_event(forbidden(&entry)).await;
+    on_event(forbidden_at(&entry, 10_000)).await;
     played(now(&mut t.cmds));
     on_event(PlayerEvent::TrackStarted {
         entry: entry.clone(),
     })
     .await;
-    on_event(forbidden(&entry)).await;
+    on_event(forbidden_at(&entry, 10_000)).await;
     let (e, uri, position, _) = played(now(&mut t.cmds));
     assert_eq!((e.as_str(), position), (entry.as_str(), 10_000));
     assert_eq!(uri, "https://fake.test/stream/r-twice-1");
@@ -745,7 +759,7 @@ async fn started_old_next_while_replace_in_flight() {
     assert_eq!(replaced(t.cmds.recv().await.unwrap()), x);
     // A 403 on `b` still recovers, though nothing was held for it.
     on_event(ev_pos(&b, 12_000)).await;
-    on_event(forbidden(&b)).await;
+    on_event(forbidden_at(&b, 12_000)).await;
     let (e, uri, position, _) = played(now(&mut t.cmds));
     assert_eq!((e, position), (b, 12_000));
     assert_eq!(uri, "https://fake.test/stream/t-race-b");
@@ -956,4 +970,160 @@ async fn current_state_is_sent_again_on_request() {
     assert_eq!(view.current_entry.as_deref(), Some(entry.as_str()));
     let playing = timeout(wait, np.recv()).await.unwrap().unwrap();
     assert_eq!(playing.track.unwrap().title, "state again");
+}
+
+#[tokio::test]
+async fn repeat_all_unplayable_tracks_stop_after_three() {
+    let mut t = setup().await;
+    edit(QueueOp::Repeat(Repeat::All)).await.unwrap();
+    let ids = vec![track("loop a").await, track("loop b").await];
+    play(ids, 0, None).await.unwrap();
+    let mut entry = played(now(&mut t.cmds)).0;
+    for _ in 0..2 {
+        started(&entry, 180_000).await;
+        on_event(failed(&entry, PlayerErrorKind::Decode)).await;
+        entry = played(now(&mut t.cmds)).0;
+    }
+    started(&entry, 180_000).await;
+    on_event(failed(&entry, PlayerErrorKind::Decode)).await;
+    assert_eq!(now(&mut t.cmds), PlayerCommand::Stop);
+    nothing(&mut t.cmds);
+    let notices: Vec<_> = std::iter::from_fn(|| t.notices.try_recv().ok()).collect();
+    assert_eq!(
+        notices.last(),
+        Some(&Notice::Error(CoreError::Internal(
+            "unplayable stream".into()
+        )))
+    );
+
+    // A user action starts the count over; so does a track that plays.
+    edit(QueueOp::JumpTo(entry.clone())).await.unwrap();
+    let (a, ..) = played(now(&mut t.cmds));
+    started(&a, 180_000).await;
+    on_event(failed(&a, PlayerErrorKind::Decode)).await;
+    let (b, ..) = played(now(&mut t.cmds));
+    started(&b, 180_000).await;
+    on_event(ev_pos(&b, 10_000)).await;
+    on_event(failed(&b, PlayerErrorKind::Other)).await;
+    let (a, ..) = played(now(&mut t.cmds));
+    started(&a, 180_000).await;
+    on_event(failed(&a, PlayerErrorKind::Decode)).await;
+    played(now(&mut t.cmds));
+}
+
+#[tokio::test]
+async fn expired_url_while_paused_stays_paused() {
+    let mut t = setup().await;
+    play(vec![track("paused 403").await], 0, None)
+        .await
+        .unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    on_event(PlayerEvent::Paused {
+        entry: entry.clone(),
+        ms: 30_000,
+    })
+    .await;
+    on_event(forbidden_at(&entry, 30_000)).await;
+    let (_, _, position, autoplay) = played(now(&mut t.cmds));
+    assert_eq!((position, autoplay), (30_000, false));
+}
+
+#[tokio::test]
+async fn now_playing_tells_source_and_mime() {
+    let mut t = setup().await;
+    let mut np = test_app().events.now_playing.subscribe();
+    let (a, b) = (track("source net").await, track("source file").await);
+    downloaded(&b, "/music/source-file.mp3").await;
+    play(vec![a, b], 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    let last = std::iter::from_fn(|| np.try_recv().ok()).last().unwrap();
+    assert_eq!(
+        (last.source.as_deref(), last.mime.as_deref()),
+        (Some("fake"), Some("audio/webm"))
+    );
+    skip_next().await;
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    let last = std::iter::from_fn(|| np.try_recv().ok()).last().unwrap();
+    assert_eq!(
+        (last.source.as_deref(), last.mime.as_deref()),
+        (Some("download"), Some("audio/mpeg"))
+    );
+}
+
+#[tokio::test]
+async fn liking_the_playing_track_refreshes_it() {
+    let mut t = setup().await;
+    let mut np = test_app().events.now_playing.subscribe();
+    let a = track("like me now").await;
+    play(vec![a.clone(), track("like me next").await], 0, None)
+        .await
+        .unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    while np.try_recv().is_ok() {}
+    while t.queue.try_recv().is_ok() {}
+    crate::api::library::set_liked(a.clone(), true)
+        .await
+        .unwrap();
+    let wait = Duration::from_secs(5);
+    let playing = timeout(wait, np.recv()).await.unwrap().unwrap();
+    assert!(playing.track.unwrap().liked);
+    let view = timeout(wait, t.queue.recv()).await.unwrap().unwrap();
+    assert!(view.current.unwrap().liked);
+    crate::api::library::set_liked(a, false).await.unwrap();
+}
+
+#[tokio::test]
+async fn sync_events_keep_their_order() {
+    let mut t = setup().await;
+    play(vec![track("in order").await], 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    // Fire-and-forget, as the bridge's sync `player_event` does: handled in call order.
+    for e in [
+        PlayerEvent::TrackStarted {
+            entry: entry.clone(),
+        },
+        ev_pos(&entry, 10_000),
+        ev_pos(&entry, 20_000),
+        ev_pos(&entry, 30_000),
+    ] {
+        send_event(e);
+    }
+    on_event(PlayerEvent::Ended { entry: "x".into() }).await; // a barrier
+    let json = test_app().db.read(saved::load).await.unwrap().unwrap();
+    let saved: crate::queue::QueueState = serde_json::from_str(&json).unwrap();
+    assert_eq!(saved.position_ms, 30_000);
+}
+
+#[tokio::test]
+async fn move_goes_right_after_the_current_entry() {
+    let mut t = setup().await;
+    let ids = vec![
+        track("move a").await,
+        track("move b").await,
+        track("move c").await,
+    ];
+    play(ids, 0, None).await.unwrap();
+    played(now(&mut t.cmds));
+    let view = last_queue(&mut t.queue);
+    let c = view.upcoming[1].entry.clone();
+    edit(QueueOp::Move {
+        entry: c.clone(),
+        after: None,
+    })
+    .await
+    .unwrap();
+    assert_eq!(last_queue(&mut t.queue).upcoming[0].entry, c);
+    let ghost = uuid::Uuid::now_v7().to_string();
+    assert_eq!(
+        edit(QueueOp::Move {
+            entry: c,
+            after: Some(ghost),
+        })
+        .await,
+        Err(CoreError::NotFound)
+    );
 }

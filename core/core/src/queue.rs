@@ -180,6 +180,24 @@ impl QueueState {
         }
     }
 
+    /// Right after `after` in play order (`None`: after the current entry). False when either
+    /// entry is unknown.
+    pub fn move_after(&mut self, entry: EntryId, after: Option<EntryId>) -> bool {
+        let Some(p) = self.position_of(entry) else {
+            return false;
+        };
+        let t = match after {
+            Some(a) => match self.position_of(a) {
+                Some(t) => t,
+                None => return false,
+            },
+            None => self.index,
+        };
+        // Taken out first: everything after `p` shifts back by one.
+        self.move_entry(entry, if p <= t { t } else { t + 1 });
+        true
+    }
+
     /// On: the current entry comes first, the rest is shuffled. Off: natural order, same current.
     pub fn set_shuffle(&mut self, on: bool, seed: u64) {
         if on == self.shuffle {
@@ -533,6 +551,26 @@ mod tests {
         assert_eq!(q.entries, entries);
         assert_eq!(q.next().unwrap().id, last);
         assert_eq!(item(q.current()), Some("t0"));
+    }
+
+    #[test]
+    fn move_after_an_entry_or_the_current_one() {
+        let mut q = QueueState::play(items(5), 1, None, false, 0);
+        // Up the list, then down it: no index arithmetic on the caller's side.
+        assert!(q.move_after(id_of(&q, "t4"), None));
+        assert_eq!(upcoming(&q), ["t4", "t2", "t3"]);
+        assert!(q.move_after(id_of(&q, "t4"), Some(id_of(&q, "t3"))));
+        assert_eq!(upcoming(&q), ["t2", "t3", "t4"]);
+        assert!(q.move_after(id_of(&q, "t0"), Some(id_of(&q, "t2"))));
+        assert_eq!(item(q.current()), Some("t1"));
+        assert_eq!(upcoming(&q), ["t2", "t0", "t3", "t4"]);
+        // After itself, or the current entry right after itself: nothing moves.
+        assert!(q.move_after(id_of(&q, "t3"), Some(id_of(&q, "t3"))));
+        assert!(q.move_after(id_of(&q, "t1"), None));
+        assert_eq!(upcoming(&q), ["t2", "t0", "t3", "t4"]);
+        let ghost = EntryId(uuid::Uuid::now_v7());
+        assert!(!q.move_after(ghost, None));
+        assert!(!q.move_after(id_of(&q, "t2"), Some(ghost)));
     }
 
     #[test]

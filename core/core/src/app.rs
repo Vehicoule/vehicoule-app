@@ -108,22 +108,23 @@ pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
         events: Events::new(),
     });
     // Never during init: 10 s after startup, then every 24 h. Not in unit tests (network).
+    // The api's refresh: the UI hears `LibraryChanged::Plugins`.
     #[cfg(not(test))]
     app().rt.spawn(async {
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         loop {
-            if let Err(e) = app().plugins.refresh_feeds(&app().db).await {
+            if let Err(e) = crate::api::plugins::refresh_feeds().await {
                 crate::logs::push("error", "feeds", &format!("{e:?}"));
             }
             tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
         }
     });
-    // Dart asks once after the first frame; then hourly, `check_if_due` keeps it to once a day.
+    // Dart asks once after the first frame; then hourly, `check(false)` keeps it to once a day.
     #[cfg(not(test))]
     app().rt.spawn(async {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
-            if let Err(e) = crate::updates::check_if_due().await {
+            if let Err(e) = crate::updates::check(false).await {
                 crate::logs::push("warn", "updates", &format!("{e:?}"));
             }
         }

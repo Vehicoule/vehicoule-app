@@ -21,8 +21,10 @@ pub async fn play(
     player::play(items, start as usize, context).await
 }
 
-pub async fn player_event(e: PlayerEvent) {
-    player::on_event(e).await
+/// Sync and fire-and-forget: queued for the player actor in call order, never blocks the UI.
+#[flutter_rust_bridge::frb(sync)]
+pub fn player_event(e: PlayerEvent) {
+    player::send_event(e)
 }
 
 pub async fn skip_next() {

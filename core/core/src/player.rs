@@ -33,7 +33,8 @@ use crate::router;
 
 /// Ahead of the end of the current track, the next one is resolved and handed to the player.
 pub const PRELOAD_LEAD_MS: u64 = 20_000;
-/// Unplayable next tracks skipped per attempt (offline skips cost no call: not counted).
+/// Unplayable next tracks skipped per attempt (offline skips cost no call: not counted); also
+/// current tracks failing in a row (decode errors, the 403 ladder exhausted) before it stops.
 const MAX_SKIPS: usize = 3;
 const RADIO_LIMIT: u32 = 25;
 /// Radio tracks among the last plays are left out.
@@ -99,11 +100,13 @@ pub enum PlayerEvent {
     Ended {
         entry: String,
     },
-    /// `message` is never used: it may hold a URL.
+    /// `message` is never used: it may hold a URL. `position_ms`: where it stopped (a 403
+    /// resumes there).
     Error {
         entry: String,
         kind: PlayerErrorKind,
         message: String,
+        position_ms: u64,
     },
 }
 
@@ -121,7 +124,11 @@ pub enum QueueOp {
     EnqueueNext(Vec<String>),
     EnqueueLast(Vec<String>),
     Remove(String),
-    Move { entry: String, to: u32 },
+    /// Right after `after` (`None`: right after the current entry).
+    Move {
+        entry: String,
+        after: Option<String>,
+    },
     Shuffle(bool),
     Repeat(Repeat),
     JumpTo(String),
@@ -162,8 +169,20 @@ pub(crate) async fn play(
         .unwrap_or_else(stopped)
 }
 
+/// `send_event`, returning once handled: for tests.
+#[cfg(test)]
 pub(crate) async fn on_event(e: PlayerEvent) {
     ask(|r| Msg::Event(e, r)).await;
+}
+
+/// `on_event` without waiting: queued in call order, never blocks (the bridge's sync call).
+pub(crate) fn send_event(e: PlayerEvent) {
+    let _ = actor().send(Msg::Event(e, oneshot::channel().0));
+}
+
+/// The current track and the queue view read again (a like, a finished download).
+pub(crate) fn refresh() {
+    let _ = actor().send(Msg::Refresh);
 }
 
 pub(crate) async fn skip_next() {
@@ -491,6 +510,7 @@ enum Msg {
     Stop(Reply<()>),
     UndoStop(Reply<()>),
     SendState,
+    Refresh,
     Online,
     Artwork(EntryId, String),
 }
@@ -574,6 +594,12 @@ struct Player {
     preload_for: Option<EntryId>,
     deadline: Option<Instant>,
     playing: bool,
+    /// The user's intent: the last `Play`'s autoplay, then `Resumed`/`Paused`. A 403 resumes
+    /// with it.
+    wants_play: bool,
+    /// Current tracks that failed without playing (decode, 403 ladder), since the last that
+    /// played or the last user action: at `MAX_SKIPS` it stops.
+    failed_in_row: usize,
     /// Last position reported, and when.
     pos_ms: u64,
     pos_at: Instant,
@@ -610,6 +636,8 @@ impl Player {
             preload_for: None,
             deadline: None,
             playing: false,
+            wants_play: false,
+            failed_in_row: 0,
             pos_ms: 0,
             pos_at: Instant::now(),
             duration_ms: None,
@@ -631,10 +659,18 @@ impl Player {
                 | Msg::FixMatch(..)
                 | Msg::UndoStop(_)
                 | Msg::SendState
+                | Msg::Refresh
                 | Msg::Online
                 | Msg::Artwork(..)
         ) {
             self.undo = None;
+        }
+        // The user acts: earlier failures no longer count.
+        if matches!(
+            msg,
+            Msg::Play(..) | Msg::SkipNext(_) | Msg::Previous(..) | Msg::UndoStop(_)
+        ) {
+            self.failed_in_row = 0;
         }
         match msg {
             Msg::Play(items, start, context, r) => {
@@ -680,6 +716,16 @@ impl Player {
             Msg::SendState => {
                 self.emit_queue().await;
                 self.now_playing();
+            }
+            Msg::Refresh => {
+                if let Some(item) = self.q.current().and_then(|e| parse_id(&e.item).ok()) {
+                    match app().db.read(move |c| lib::track(c, item)).await {
+                        Ok(t) => self.track = t.map(track_view),
+                        Err(e) => logs::push("error", "player", &e.to_string()),
+                    }
+                }
+                self.now_playing();
+                self.emit_queue().await;
             }
             Msg::Online => {
                 if app().is_online() {
@@ -779,6 +825,7 @@ impl Player {
         self.preloaded = false;
         self.deadline = None;
         self.playing = false;
+        self.wants_play = autoplay;
         self.resume = None;
         self.pos_ms = position_ms;
         self.pos_at = Instant::now();
@@ -958,6 +1005,7 @@ impl Player {
                 self.arm();
             }
             PlayerEvent::Position { entry, ms } if self.is_current(&entry) => {
+                self.failed_in_row = 0; // it plays
                 if let Some(l) = &mut self.current {
                     l.positions = l.positions.saturating_add(1);
                     if l.positions >= 2 {
@@ -971,11 +1019,13 @@ impl Player {
             PlayerEvent::Paused { entry, ms } if self.is_current(&entry) => {
                 self.position(ms);
                 self.playing = false;
+                self.wants_play = false;
                 self.deadline = None;
                 self.save_progress().await;
             }
             PlayerEvent::Resumed { entry } if self.is_current(&entry) => {
                 self.playing = true;
+                self.wants_play = true;
                 self.pos_at = Instant::now();
                 self.arm();
             }
@@ -986,7 +1036,12 @@ impl Player {
                 self.arm();
             }
             PlayerEvent::Ended { entry } if self.is_current(&entry) => self.ended().await,
-            PlayerEvent::Error { entry, kind, .. } => self.error(&entry, kind).await,
+            PlayerEvent::Error {
+                entry,
+                kind,
+                position_ms,
+                ..
+            } => self.error(&entry, kind, position_ms).await,
             // About an entry that is no longer current: late, ignored.
             _ => {}
         }
@@ -1104,12 +1159,13 @@ impl Player {
         let _ = self.start(entries, 0, true).await;
     }
 
-    /// The player stopped on an error.
-    async fn error(&mut self, entry: &str, kind: PlayerErrorKind) {
+    /// The player stopped on an error, at `position_ms`.
+    async fn error(&mut self, entry: &str, kind: PlayerErrorKind, position_ms: u64) {
         if !self.is_current(entry) {
             self.next_failed(entry, kind).await;
             return;
         }
+        self.position(position_ms);
         self.playing = false;
         self.deadline = None;
         let Some(e) = self.q.current() else {
@@ -1124,11 +1180,26 @@ impl Player {
             }
             PlayerErrorKind::Decode | PlayerErrorKind::Other => {
                 let reason = CoreError::Internal("unplayable stream".into());
-                self.skipped(entry, item, reason).await;
-                let entries = self.following_or_radio(false).await;
-                let _ = self.start(entries, 0, true).await;
+                self.skipped(entry, item, reason.clone()).await;
+                self.failed_current(reason).await;
             }
         }
+    }
+
+    /// The current track failed without playing: the next one, unless `MAX_SKIPS` failed in a
+    /// row (`Repeat::All` over unplayable files would loop forever): then it stops, the queue
+    /// kept, and the user is told.
+    async fn failed_current(&mut self, reason: CoreError) {
+        self.failed_in_row += 1;
+        if self.failed_in_row >= MAX_SKIPS {
+            self.failed_in_row = 0;
+            self.stop();
+            self.queue_changed().await;
+            let _ = app().events.notices.send(Notice::Error(reason));
+            return;
+        }
+        let entries = self.following_or_radio(false).await;
+        let _ = self.start(entries, 0, true).await;
     }
 
     /// The held next failed before it started: a 403 climbs the same ladder as the current
@@ -1181,13 +1252,13 @@ impl Player {
         };
         match result {
             Ok(l) => {
-                self.send_play(l, self.pos_ms, true);
+                // Paused stays paused.
+                self.send_play(l, self.pos_ms, self.wants_play);
                 self.resume = Some(entry);
             }
             Err(e) => {
-                self.skipped(entry, item, e).await;
-                let entries = self.following_or_radio(false).await;
-                let _ = self.start(entries, 0, true).await;
+                self.skipped(entry, item, e.clone()).await;
+                self.failed_current(e).await;
             }
         }
     }
@@ -1233,7 +1304,12 @@ impl Player {
             QueueOp::EnqueueNext(items) => self.q.enqueue_next(items),
             QueueOp::EnqueueLast(items) => self.q.enqueue_last(items),
             QueueOp::Remove(e) => self.q.remove(entry_id(&e)?),
-            QueueOp::Move { entry, to } => self.q.move_entry(entry_id(&entry)?, to as usize),
+            QueueOp::Move { entry, after } => {
+                let after = after.as_deref().map(entry_id).transpose()?;
+                if !self.q.move_after(entry_id(&entry)?, after) {
+                    return Err(CoreError::NotFound);
+                }
+            }
             QueueOp::Shuffle(on) => self.q.set_shuffle(on, seed()),
             QueueOp::Repeat(r) => self.q.set_repeat(r),
             QueueOp::JumpTo(e) => {
@@ -1241,6 +1317,7 @@ impl Player {
                 if !self.q.jump_to(id) {
                     return Err(CoreError::NotFound);
                 }
+                self.failed_in_row = 0;
                 let mut entries = vec![id];
                 entries.extend(following(&self.q, false));
                 let _ = self.start(entries, 0, true).await;
@@ -1249,6 +1326,7 @@ impl Player {
         }
         let now = self.current_entry();
         if now != before {
+            self.failed_in_row = 0;
             // The current entry was removed, or a stopped queue got one: play what is current
             // now (only if something was playing), else stop.
             let autoplay = self.playing;
@@ -1489,10 +1567,13 @@ impl Player {
 
     fn now_playing(&self) {
         let catalogue = self.track.as_ref().and_then(|t| t.duration_ms);
+        let res = self.current.as_ref().map(|l| &l.res);
         let _ = app().events.now_playing.send(NowPlaying {
             track: self.track.clone(),
             artwork_path: self.artwork.clone(),
             duration_ms: self.duration_ms.or(catalogue.map(u64::from)),
+            source: res.map(|r| r.plugin.clone().unwrap_or_else(|| "download".into())),
+            mime: res.and_then(|r| r.mime.clone()),
         });
     }
 }

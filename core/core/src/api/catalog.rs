@@ -1,6 +1,6 @@
 //! Search, pages, imports, artwork, lyrics: routed to plugins (online) or read from the cache.
 
-use crate::catalog::{self as core, EntityView, SearchView};
+use crate::catalog::{self as core, EntityView, ImportResult, SearchView};
 use crate::error::CoreError;
 use crate::lyrics::LyricsView;
 
@@ -17,8 +17,8 @@ pub async fn entity(id: String, cursor: Option<String>) -> Result<EntityView, Co
     core::entity(&id, cursor).await
 }
 
-/// The new user playlist's id.
-pub async fn import_playlist(link: String) -> Result<String, CoreError> {
+/// The new user playlist, and whether the 50-page cap cut it.
+pub async fn import_playlist(link: String) -> Result<ImportResult, CoreError> {
     core::import_playlist(&link).await
 }
 

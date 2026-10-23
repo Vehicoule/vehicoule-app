@@ -121,6 +121,27 @@ class EntityView {
           fromCache == other.fromCache;
 }
 
+class ImportResult {
+  /// The new user playlist.
+  final String id;
+
+  /// The source had more than the 50 pages copied.
+  final bool truncated;
+
+  const ImportResult({required this.id, required this.truncated});
+
+  @override
+  int get hashCode => id.hashCode ^ truncated.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ImportResult &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          truncated == other.truncated;
+}
+
 enum ItemKind { track, album, artist, playlist }
 
 class SearchView {

@@ -34,6 +34,9 @@ pub(crate) struct Plugins {
     dir: PathBuf,
     /// Feeds, manifests and `.wasm`.
     http: reqwest::Client,
+    /// Held by `refresh_feeds`, `add_feed` and `remove_feed`: a remove during a refresh is
+    /// not undone by it, and two refreshes never install the same plugin twice.
+    feed_ops: tokio::sync::Mutex<()>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +49,18 @@ pub struct PluginView {
     /// Empty while the plugin is not loaded.
     pub capabilities: Vec<String>,
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeedView {
+    /// What `remove_feed` takes.
+    pub url: String,
+    pub name: String,
+    pub official: bool,
+    /// Its enabled plugins.
+    pub plugin_count: u32,
+    /// Of its first key.
+    pub fingerprint: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,15 +91,18 @@ impl Plugins {
         let dir = Path::new(&cfg.data_dir).join("plugins");
         std::fs::create_dir_all(&dir)?;
         // ponytail: plain http only in debug builds (local test feeds); the signature and the sha256s guard integrity either way
+        // No total timeout: a 32 MiB .wasm on a slow link takes what it takes while bytes flow.
         let http = reqwest::Client::builder()
             .https_only(!cfg!(debug_assertions))
-            .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(30))
             .build()?;
         Ok(Plugins {
             host: Arc::new(host),
             loaded: RwLock::new(Vec::new()),
             dir,
             http,
+            feed_ops: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -151,8 +169,8 @@ impl Plugins {
 
     /// Every feed in turn; a feed or plugin that fails is logged and the rest goes on.
     /// Returns the ids installed or updated.
-    // ponytail: two concurrent refreshes may both install the same plugin (same bytes, atomic writes); add a lock if it shows in logs
     pub async fn refresh_feeds(&self, db: &Db) -> Result<Vec<String>, CoreError> {
+        let _one = self.feed_ops.lock().await;
         let mut installed = Vec::new();
         for feed in db.read(rows::feeds).await? {
             // Logged by name: a URL would be masked to `<url>`.
@@ -365,6 +383,7 @@ impl Plugins {
             return Err(CoreError::InvalidFeed);
         }
         let key = decode_key(public_key_b64)?;
+        let _one = self.feed_ops.lock().await;
         let bytes = self.get(&parse_url(url)?, MAX_FEED_BYTES).await?;
         // Re-adding with the same key keeps the rollback protection.
         let kept = db
@@ -416,11 +435,32 @@ impl Plugins {
             .collect())
     }
 
+    /// Every feed, by url.
+    pub async fn feeds(&self, db: &Db) -> Result<Vec<FeedView>, CoreError> {
+        let (feeds, plugins) = db
+            .read(|c| Ok((rows::feeds(c)?, rows::plugins(c)?)))
+            .await?;
+        Ok(feeds
+            .into_iter()
+            .map(|f| FeedView {
+                plugin_count: plugins
+                    .iter()
+                    .filter(|p| p.enabled && p.feed_url == f.url)
+                    .count() as u32,
+                fingerprint: f.public_keys.first().map(fingerprint).unwrap_or_default(),
+                url: f.url,
+                name: f.name,
+                official: f.official,
+            })
+            .collect())
+    }
+
     /// Uninstalls the feed's plugins (data, files) and forgets the feed; not the official one.
     pub async fn remove_feed(&self, db: &Db, url: &str) -> Result<(), CoreError> {
         if url == OFFICIAL_FEED_URL {
             return Err(CoreError::InvalidFeed);
         }
+        let _one = self.feed_ops.lock().await;
         let url = url.to_string();
         let gone = db
             .write(move |tx| {

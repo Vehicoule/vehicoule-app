@@ -11,10 +11,11 @@ import '../updates.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-/// At most once a day (Dart asks after the first frame; `App` again hourly). A newer version
-/// also comes as `Notice::UpdateAvailable`, the one signal the UI shows.
-Future<UpdateInfo?> checkUpdates() =>
-    RustLib.instance.api.crateApiSystemCheckUpdates();
+/// At most once a day (Dart asks after the first frame; `App` again hourly); `force` (the
+/// settings button) asks now, and offline is `Offline`. A newer version also comes as
+/// `Notice::UpdateAvailable(info)`, the one signal the UI shows.
+Future<UpdateInfo?> checkUpdates({required bool force}) =>
+    RustLib.instance.api.crateApiSystemCheckUpdates(force: force);
 
 /// The verified APK's path.
 Future<String> downloadUpdate({required UpdateInfo info}) =>

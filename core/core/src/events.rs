@@ -10,6 +10,7 @@ use crate::downloads::DownloadProgress;
 use crate::error::CoreError;
 use crate::player::PlayerCommand;
 use crate::queue::{PlayContext, Repeat};
+use crate::updates::UpdateInfo;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueueView {
@@ -37,6 +38,9 @@ pub struct NowPlaying {
     pub track: Option<TrackView>,
     pub artwork_path: Option<String>,
     pub duration_ms: Option<u64>,
+    /// The plugin id that resolved it, or `download`; `None` while nothing is loaded.
+    pub source: Option<String>,
+    pub mime: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,9 +50,8 @@ pub enum Notice {
         title: String,
         reason: CoreError,
     },
-    UpdateAvailable {
-        version: String,
-    },
+    /// The one UI signal for an update (background or manual check).
+    UpdateAvailable(UpdateInfo),
     Error(CoreError),
 }
 

@@ -163,6 +163,9 @@ async fn run(item: ItemId) {
     if let Err(e) = save(&row).await {
         logs::push("error", "downloads", &format!("{e:?}"));
     }
+    if row.state == DownloadState::Done {
+        player::refresh(); // the playing track's `downloaded` flag
+    }
 }
 
 /// Resolves, marks the row running, downloads: once more after a 403 (resolved again), once

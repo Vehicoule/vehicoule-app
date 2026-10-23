@@ -145,20 +145,25 @@ async fn check_at(
 }
 
 /// At most once per 24 h (after a successful check), never offline. Called by Dart after the
-/// first frame, then by `App`'s timer; a newer version is also sent as a `Notice`.
-pub(crate) async fn check_if_due() -> Result<Option<UpdateInfo>, CoreError> {
-    due_check(UPDATES_URL, app().is_online()).await
+/// first frame, then by `App`'s timer; a newer version is also sent as a `Notice`. `force`
+/// (the manual check in settings) skips the 24 h wait, and offline is an error.
+pub(crate) async fn check(force: bool) -> Result<Option<UpdateInfo>, CoreError> {
+    due_check(UPDATES_URL, app().is_online(), force).await
 }
 
-async fn due_check(url: &str, online: bool) -> Result<Option<UpdateInfo>, CoreError> {
+async fn due_check(url: &str, online: bool, force: bool) -> Result<Option<UpdateInfo>, CoreError> {
     if !online {
-        return Ok(None);
+        return if force {
+            Err(CoreError::Offline)
+        } else {
+            Ok(None)
+        };
     }
     let app = app();
     let last = app.db.read(|c| settings::device_get(c, CHECKED_AT)).await?;
     let last = last.and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
     let now = crate::plugins::now_ms();
-    if (now - last).abs() < CHECK_EVERY_MS {
+    if !force && (now - last).abs() < CHECK_EVERY_MS {
         return Ok(None);
     }
     let info = check_at(url, &app.cfg.app_version, app.cfg.platform).await?;
@@ -166,9 +171,7 @@ async fn due_check(url: &str, online: bool) -> Result<Option<UpdateInfo>, CoreEr
         .write(move |tx| settings::device_set(tx, CHECKED_AT, &now.to_string()))
         .await?;
     if let Some(i) = &info {
-        let _ = app.events.notices.send(Notice::UpdateAvailable {
-            version: i.version.clone(),
-        });
+        let _ = app.events.notices.send(Notice::UpdateAvailable(i.clone()));
     }
     Ok(info)
 }
@@ -456,10 +459,10 @@ mod tests {
 
         // Offline: nothing is asked.
         stamp(0).await.unwrap();
-        assert_eq!(due_check(&url, false).await, Ok(None));
+        assert_eq!(due_check(&url, false, false).await, Ok(None));
         // Checked an hour ago: nothing is asked.
         stamp(now - 3_600_000).await.unwrap();
-        assert_eq!(due_check(&url, true).await, Ok(None));
+        assert_eq!(due_check(&url, true, false).await, Ok(None));
         assert_eq!(calls().await, 0);
 
         // A failed check stores nothing, so the next one asks again.
@@ -470,25 +473,33 @@ mod tests {
             .up_to_n_times(1)
             .mount(&server)
             .await;
-        assert_eq!(due_check(&url, true).await, Err(CoreError::Network));
+        assert_eq!(due_check(&url, true, false).await, Err(CoreError::Network));
         assert_eq!(stored().await, day_ago);
 
         Mock::given(method("GET"))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture("https://dl.test")))
             .mount(&server)
             .await;
-        let info = due_check(&url, true).await.unwrap().unwrap();
+        let info = due_check(&url, true, false).await.unwrap().unwrap();
         assert_eq!(info.version, "0.2.0");
         assert!(stored().await >= now);
+        // The notice carries everything the update sheet shows.
         assert_eq!(
             notices.recv().await.unwrap(),
-            Notice::UpdateAvailable {
-                version: "0.2.0".into()
-            }
+            Notice::UpdateAvailable(info.clone())
         );
         assert_eq!(calls().await, 2);
         // And not again for a day.
-        assert_eq!(due_check(&url, true).await, Ok(None));
+        assert_eq!(due_check(&url, true, false).await, Ok(None));
         assert_eq!(calls().await, 2);
+
+        // The manual check (settings) asks anyway, and records when.
+        stamp(now).await.unwrap();
+        assert_eq!(due_check(&url, true, true).await, Ok(Some(info.clone())));
+        assert_eq!(calls().await, 3);
+        assert!(stored().await > now);
+        assert_eq!(notices.recv().await.unwrap(), Notice::UpdateAvailable(info));
+        // Offline, it says so.
+        assert_eq!(due_check(&url, false, true).await, Err(CoreError::Offline));
     }
 }

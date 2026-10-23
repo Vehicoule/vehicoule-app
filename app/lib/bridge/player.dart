@@ -100,11 +100,13 @@ sealed class PlayerEvent with _$PlayerEvent {
   }) = PlayerEvent_Seeked;
   const factory PlayerEvent.ended({required String entry}) = PlayerEvent_Ended;
 
-  /// `message` is never used: it may hold a URL.
+  /// `message` is never used: it may hold a URL. `position_ms`: where it stopped (a 403
+  /// resumes there).
   const factory PlayerEvent.error({
     required String entry,
     required PlayerErrorKind kind,
     required String message,
+    required BigInt positionMs,
   }) = PlayerEvent_Error;
 }
 
@@ -115,7 +117,9 @@ sealed class QueueOp with _$QueueOp {
   const factory QueueOp.enqueueNext(List<String> field0) = QueueOp_EnqueueNext;
   const factory QueueOp.enqueueLast(List<String> field0) = QueueOp_EnqueueLast;
   const factory QueueOp.remove(String field0) = QueueOp_Remove;
-  const factory QueueOp.move({required String entry, required int to}) =
+
+  /// Right after `after` (`None`: right after the current entry).
+  const factory QueueOp.move({required String entry, String? after}) =
       QueueOp_Move;
   const factory QueueOp.shuffle(bool field0) = QueueOp_Shuffle;
   const factory QueueOp.repeat(Repeat field0) = QueueOp_Repeat;

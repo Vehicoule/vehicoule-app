@@ -68,7 +68,17 @@ pub async fn set_liked(id: String, liked: bool) -> Result<(), CoreError> {
         .write(move |tx| likes::set(tx, item, liked))
         .await?;
     changed(LibraryChanged::Likes);
+    crate::player::refresh();
     Ok(())
+}
+
+/// The tracks of these ids, in order (download rows, notifications); unknown ones left out.
+pub async fn tracks(ids: Vec<String>) -> Result<Vec<TrackView>, CoreError> {
+    let items = ids
+        .iter()
+        .map(|i| parse_id(i))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(app().db.read(move |c| track_views(c, &items)).await?)
 }
 
 /// Liked albums, artists or playlists, most recent first.
@@ -273,4 +283,26 @@ pub fn download_progress(sink: StreamSink<DownloadProgress>) {
     forward(app().events.downloads.subscribe(), move |v| {
         sink.add(v).is_ok()
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog;
+
+    #[tokio::test]
+    async fn tracks_by_id_in_order() {
+        let (_lock, _) = catalog::tests::setup().await;
+        let a = catalog::search("rows a").await.unwrap().tracks[0]
+            .id
+            .clone();
+        let b = catalog::search("rows b").await.unwrap().tracks[0]
+            .id
+            .clone();
+        let gone = ItemId::new().to_string();
+        let views = tracks(vec![b, gone, a]).await.unwrap();
+        let titles: Vec<_> = views.iter().map(|t| t.title.as_str()).collect();
+        assert_eq!(titles, ["rows b", "rows a"], "a missing one is left out");
+        assert!(tracks(vec!["nope".into()]).await.is_err());
+    }
 }

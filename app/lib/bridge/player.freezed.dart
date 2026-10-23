@@ -636,7 +636,7 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String entry)?  trackStarted,TResult Function( String entry,  BigInt ms)?  duration,TResult Function( String entry,  BigInt ms)?  position,TResult Function( String entry,  BigInt ms)?  paused,TResult Function( String entry)?  resumed,TResult Function( String entry,  BigInt ms)?  seeked,TResult Function( String entry)?  ended,TResult Function( String entry,  PlayerErrorKind kind,  String message)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String entry)?  trackStarted,TResult Function( String entry,  BigInt ms)?  duration,TResult Function( String entry,  BigInt ms)?  position,TResult Function( String entry,  BigInt ms)?  paused,TResult Function( String entry)?  resumed,TResult Function( String entry,  BigInt ms)?  seeked,TResult Function( String entry)?  ended,TResult Function( String entry,  PlayerErrorKind kind,  String message,  BigInt positionMs)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case PlayerEvent_TrackStarted() when trackStarted != null:
 return trackStarted(_that.entry);case PlayerEvent_Duration() when duration != null:
@@ -646,7 +646,7 @@ return paused(_that.entry,_that.ms);case PlayerEvent_Resumed() when resumed != n
 return resumed(_that.entry);case PlayerEvent_Seeked() when seeked != null:
 return seeked(_that.entry,_that.ms);case PlayerEvent_Ended() when ended != null:
 return ended(_that.entry);case PlayerEvent_Error() when error != null:
-return error(_that.entry,_that.kind,_that.message);case _:
+return error(_that.entry,_that.kind,_that.message,_that.positionMs);case _:
   return orElse();
 
 }
@@ -664,7 +664,7 @@ return error(_that.entry,_that.kind,_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String entry)  trackStarted,required TResult Function( String entry,  BigInt ms)  duration,required TResult Function( String entry,  BigInt ms)  position,required TResult Function( String entry,  BigInt ms)  paused,required TResult Function( String entry)  resumed,required TResult Function( String entry,  BigInt ms)  seeked,required TResult Function( String entry)  ended,required TResult Function( String entry,  PlayerErrorKind kind,  String message)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String entry)  trackStarted,required TResult Function( String entry,  BigInt ms)  duration,required TResult Function( String entry,  BigInt ms)  position,required TResult Function( String entry,  BigInt ms)  paused,required TResult Function( String entry)  resumed,required TResult Function( String entry,  BigInt ms)  seeked,required TResult Function( String entry)  ended,required TResult Function( String entry,  PlayerErrorKind kind,  String message,  BigInt positionMs)  error,}) {final _that = this;
 switch (_that) {
 case PlayerEvent_TrackStarted():
 return trackStarted(_that.entry);case PlayerEvent_Duration():
@@ -674,7 +674,7 @@ return paused(_that.entry,_that.ms);case PlayerEvent_Resumed():
 return resumed(_that.entry);case PlayerEvent_Seeked():
 return seeked(_that.entry,_that.ms);case PlayerEvent_Ended():
 return ended(_that.entry);case PlayerEvent_Error():
-return error(_that.entry,_that.kind,_that.message);}
+return error(_that.entry,_that.kind,_that.message,_that.positionMs);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -688,7 +688,7 @@ return error(_that.entry,_that.kind,_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String entry)?  trackStarted,TResult? Function( String entry,  BigInt ms)?  duration,TResult? Function( String entry,  BigInt ms)?  position,TResult? Function( String entry,  BigInt ms)?  paused,TResult? Function( String entry)?  resumed,TResult? Function( String entry,  BigInt ms)?  seeked,TResult? Function( String entry)?  ended,TResult? Function( String entry,  PlayerErrorKind kind,  String message)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String entry)?  trackStarted,TResult? Function( String entry,  BigInt ms)?  duration,TResult? Function( String entry,  BigInt ms)?  position,TResult? Function( String entry,  BigInt ms)?  paused,TResult? Function( String entry)?  resumed,TResult? Function( String entry,  BigInt ms)?  seeked,TResult? Function( String entry)?  ended,TResult? Function( String entry,  PlayerErrorKind kind,  String message,  BigInt positionMs)?  error,}) {final _that = this;
 switch (_that) {
 case PlayerEvent_TrackStarted() when trackStarted != null:
 return trackStarted(_that.entry);case PlayerEvent_Duration() when duration != null:
@@ -698,7 +698,7 @@ return paused(_that.entry,_that.ms);case PlayerEvent_Resumed() when resumed != n
 return resumed(_that.entry);case PlayerEvent_Seeked() when seeked != null:
 return seeked(_that.entry,_that.ms);case PlayerEvent_Ended() when ended != null:
 return ended(_that.entry);case PlayerEvent_Error() when error != null:
-return error(_that.entry,_that.kind,_that.message);case _:
+return error(_that.entry,_that.kind,_that.message,_that.positionMs);case _:
   return null;
 
 }
@@ -1194,12 +1194,13 @@ as String,
 
 
 class PlayerEvent_Error extends PlayerEvent {
-  const PlayerEvent_Error({required this.entry, required this.kind, required this.message}): super._();
+  const PlayerEvent_Error({required this.entry, required this.kind, required this.message, required this.positionMs}): super._();
   
 
 @override final  String entry;
  final  PlayerErrorKind kind;
  final  String message;
+ final  BigInt positionMs;
 
 /// Create a copy of PlayerEvent
 /// with the given fields replaced by the non-null parameter values.
@@ -1211,18 +1212,18 @@ $PlayerEvent_ErrorCopyWith<PlayerEvent_Error> get copyWith => _$PlayerEvent_Erro
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is PlayerEvent_Error&&(identical(other.entry, entry) || other.entry == entry)&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.message, message) || other.message == message));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PlayerEvent_Error&&(identical(other.entry, entry) || other.entry == entry)&&(identical(other.kind, kind) || other.kind == kind)&&(identical(other.message, message) || other.message == message)&&(identical(other.positionMs, positionMs) || other.positionMs == positionMs));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,entry,kind,message);
+    return Object.hash(runtimeType,entry,kind,message,positionMs);
 }
 
 @override
 String toString() {
-    return 'PlayerEvent.error(entry: $entry, kind: $kind, message: $message)';
+    return 'PlayerEvent.error(entry: $entry, kind: $kind, message: $message, positionMs: $positionMs)';
 }
 
 
@@ -1233,7 +1234,7 @@ abstract mixin class $PlayerEvent_ErrorCopyWith<$Res> implements $PlayerEventCop
   factory $PlayerEvent_ErrorCopyWith(PlayerEvent_Error value, $Res Function(PlayerEvent_Error) _then) = _$PlayerEvent_ErrorCopyWithImpl;
 @override @useResult
 $Res call({
- String entry, PlayerErrorKind kind, String message
+ String entry, PlayerErrorKind kind, String message, BigInt positionMs
 });
 
 
@@ -1250,12 +1251,13 @@ class _$PlayerEvent_ErrorCopyWithImpl<$Res>
 
 /// Create a copy of PlayerEvent
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? entry = null,Object? kind = null,Object? message = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? entry = null,Object? kind = null,Object? message = null,Object? positionMs = null,}) {
   return _then(PlayerEvent_Error(
 entry: null == entry ? _self.entry : entry // ignore: cast_nullable_to_non_nullable
 as String,kind: null == kind ? _self.kind : kind // ignore: cast_nullable_to_non_nullable
 as PlayerErrorKind,message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
-as String,
+as String,positionMs: null == positionMs ? _self.positionMs : positionMs // ignore: cast_nullable_to_non_nullable
+as BigInt,
   ));
 }
 
@@ -1385,13 +1387,13 @@ return jumpTo(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( List<String> field0)?  enqueueNext,TResult Function( List<String> field0)?  enqueueLast,TResult Function( String field0)?  remove,TResult Function( String entry,  int to)?  move,TResult Function( bool field0)?  shuffle,TResult Function( Repeat field0)?  repeat,TResult Function( String field0)?  jumpTo,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( List<String> field0)?  enqueueNext,TResult Function( List<String> field0)?  enqueueLast,TResult Function( String field0)?  remove,TResult Function( String entry,  String? after)?  move,TResult Function( bool field0)?  shuffle,TResult Function( Repeat field0)?  repeat,TResult Function( String field0)?  jumpTo,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case QueueOp_EnqueueNext() when enqueueNext != null:
 return enqueueNext(_that.field0);case QueueOp_EnqueueLast() when enqueueLast != null:
 return enqueueLast(_that.field0);case QueueOp_Remove() when remove != null:
 return remove(_that.field0);case QueueOp_Move() when move != null:
-return move(_that.entry,_that.to);case QueueOp_Shuffle() when shuffle != null:
+return move(_that.entry,_that.after);case QueueOp_Shuffle() when shuffle != null:
 return shuffle(_that.field0);case QueueOp_Repeat() when repeat != null:
 return repeat(_that.field0);case QueueOp_JumpTo() when jumpTo != null:
 return jumpTo(_that.field0);case _:
@@ -1412,13 +1414,13 @@ return jumpTo(_that.field0);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( List<String> field0)  enqueueNext,required TResult Function( List<String> field0)  enqueueLast,required TResult Function( String field0)  remove,required TResult Function( String entry,  int to)  move,required TResult Function( bool field0)  shuffle,required TResult Function( Repeat field0)  repeat,required TResult Function( String field0)  jumpTo,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( List<String> field0)  enqueueNext,required TResult Function( List<String> field0)  enqueueLast,required TResult Function( String field0)  remove,required TResult Function( String entry,  String? after)  move,required TResult Function( bool field0)  shuffle,required TResult Function( Repeat field0)  repeat,required TResult Function( String field0)  jumpTo,}) {final _that = this;
 switch (_that) {
 case QueueOp_EnqueueNext():
 return enqueueNext(_that.field0);case QueueOp_EnqueueLast():
 return enqueueLast(_that.field0);case QueueOp_Remove():
 return remove(_that.field0);case QueueOp_Move():
-return move(_that.entry,_that.to);case QueueOp_Shuffle():
+return move(_that.entry,_that.after);case QueueOp_Shuffle():
 return shuffle(_that.field0);case QueueOp_Repeat():
 return repeat(_that.field0);case QueueOp_JumpTo():
 return jumpTo(_that.field0);}
@@ -1435,13 +1437,13 @@ return jumpTo(_that.field0);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( List<String> field0)?  enqueueNext,TResult? Function( List<String> field0)?  enqueueLast,TResult? Function( String field0)?  remove,TResult? Function( String entry,  int to)?  move,TResult? Function( bool field0)?  shuffle,TResult? Function( Repeat field0)?  repeat,TResult? Function( String field0)?  jumpTo,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( List<String> field0)?  enqueueNext,TResult? Function( List<String> field0)?  enqueueLast,TResult? Function( String field0)?  remove,TResult? Function( String entry,  String? after)?  move,TResult? Function( bool field0)?  shuffle,TResult? Function( Repeat field0)?  repeat,TResult? Function( String field0)?  jumpTo,}) {final _that = this;
 switch (_that) {
 case QueueOp_EnqueueNext() when enqueueNext != null:
 return enqueueNext(_that.field0);case QueueOp_EnqueueLast() when enqueueLast != null:
 return enqueueLast(_that.field0);case QueueOp_Remove() when remove != null:
 return remove(_that.field0);case QueueOp_Move() when move != null:
-return move(_that.entry,_that.to);case QueueOp_Shuffle() when shuffle != null:
+return move(_that.entry,_that.after);case QueueOp_Shuffle() when shuffle != null:
 return shuffle(_that.field0);case QueueOp_Repeat() when repeat != null:
 return repeat(_that.field0);case QueueOp_JumpTo() when jumpTo != null:
 return jumpTo(_that.field0);case _:
@@ -1672,11 +1674,11 @@ as String,
 
 
 class QueueOp_Move extends QueueOp {
-  const QueueOp_Move({required this.entry, required this.to}): super._();
+  const QueueOp_Move({required this.entry, this.after}): super._();
   
 
  final  String entry;
- final  int to;
+ final  String? after;
 
 /// Create a copy of QueueOp
 /// with the given fields replaced by the non-null parameter values.
@@ -1688,18 +1690,18 @@ $QueueOp_MoveCopyWith<QueueOp_Move> get copyWith => _$QueueOp_MoveCopyWithImpl<Q
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is QueueOp_Move&&(identical(other.entry, entry) || other.entry == entry)&&(identical(other.to, to) || other.to == to));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is QueueOp_Move&&(identical(other.entry, entry) || other.entry == entry)&&(identical(other.after, after) || other.after == after));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,entry,to);
+    return Object.hash(runtimeType,entry,after);
 }
 
 @override
 String toString() {
-    return 'QueueOp.move(entry: $entry, to: $to)';
+    return 'QueueOp.move(entry: $entry, after: $after)';
 }
 
 
@@ -1710,7 +1712,7 @@ abstract mixin class $QueueOp_MoveCopyWith<$Res> implements $QueueOpCopyWith<$Re
   factory $QueueOp_MoveCopyWith(QueueOp_Move value, $Res Function(QueueOp_Move) _then) = _$QueueOp_MoveCopyWithImpl;
 @useResult
 $Res call({
- String entry, int to
+ String entry, String? after
 });
 
 
@@ -1727,11 +1729,11 @@ class _$QueueOp_MoveCopyWithImpl<$Res>
 
 /// Create a copy of QueueOp
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? entry = null,Object? to = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? entry = null,Object? after = freezed,}) {
   return _then(QueueOp_Move(
 entry: null == entry ? _self.entry : entry // ignore: cast_nullable_to_non_nullable
-as String,to: null == to ? _self.to : to // ignore: cast_nullable_to_non_nullable
-as int,
+as String,after: freezed == after ? _self.after : after // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 

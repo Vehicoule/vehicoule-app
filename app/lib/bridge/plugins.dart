@@ -31,6 +31,46 @@ class FeedPreview {
           plugins == other.plugins;
 }
 
+class FeedView {
+  /// What `remove_feed` takes.
+  final String url;
+  final String name;
+  final bool official;
+
+  /// Its enabled plugins.
+  final int pluginCount;
+
+  /// Of its first key.
+  final String fingerprint;
+
+  const FeedView({
+    required this.url,
+    required this.name,
+    required this.official,
+    required this.pluginCount,
+    required this.fingerprint,
+  });
+
+  @override
+  int get hashCode =>
+      url.hashCode ^
+      name.hashCode ^
+      official.hashCode ^
+      pluginCount.hashCode ^
+      fingerprint.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FeedView &&
+          runtimeType == other.runtimeType &&
+          url == other.url &&
+          name == other.name &&
+          official == other.official &&
+          pluginCount == other.pluginCount &&
+          fingerprint == other.fingerprint;
+}
+
 class PluginPreview {
   final String id;
   final String version;

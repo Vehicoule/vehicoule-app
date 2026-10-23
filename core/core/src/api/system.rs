@@ -5,10 +5,11 @@ use crate::logs::{self, LogLine};
 use crate::telemetry::{self, PerfMetric};
 use crate::updates::{self, UpdateInfo};
 
-/// At most once a day (Dart asks after the first frame; `App` again hourly). A newer version
-/// also comes as `Notice::UpdateAvailable`, the one signal the UI shows.
-pub async fn check_updates() -> Result<Option<UpdateInfo>, CoreError> {
-    updates::check_if_due().await
+/// At most once a day (Dart asks after the first frame; `App` again hourly); `force` (the
+/// settings button) asks now, and offline is `Offline`. A newer version also comes as
+/// `Notice::UpdateAvailable(info)`, the one signal the UI shows.
+pub async fn check_updates(force: bool) -> Result<Option<UpdateInfo>, CoreError> {
+    updates::check(force).await
 }
 
 /// The verified APK's path.

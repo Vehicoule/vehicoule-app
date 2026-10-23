@@ -283,13 +283,17 @@ async fn unknown_link_is_not_found() {
 async fn import_follows_pages_up_to_50() {
     let (_lock, app) = setup().await;
     let before = calls().await;
-    let id = item(
-        &import_playlist("https://fake.test/playlist/p-big")
-            .await
-            .unwrap(),
-    );
-    // One parse-link, then 50 pages and no more.
+    let imported = import_playlist("https://fake.test/playlist/p-big")
+        .await
+        .unwrap();
+    let id = item(&imported.id);
+    // One parse-link, then 50 pages and no more: the UI says it was cut.
     assert_eq!(calls().await - before, 51);
+    assert!(imported.truncated);
+    let album = import_playlist("https://fake.test/album/al-whole")
+        .await
+        .unwrap();
+    assert!(!album.truncated);
     let (row, entries) = app
         .db
         .read(move |c| {

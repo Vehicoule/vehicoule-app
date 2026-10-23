@@ -12,6 +12,7 @@ import 'package:vehicoule/bridge/api/system.dart';
 import 'package:vehicoule/bridge/app.dart';
 import 'package:vehicoule/bridge/error.dart';
 import 'package:vehicoule/bridge/frb_generated.dart';
+import 'package:vehicoule/bridge/player.dart';
 
 import 'fixture.dart';
 
@@ -84,6 +85,20 @@ void main() {
     await undoStop();
   });
 
+  testWidgets('player events are sync and fire-and-forget', (t) async {
+    // Returns at once (void, not a Future); a late event for no entry is ignored.
+    playerEvent(e: const PlayerEvent.ended(entry: 'gone'));
+    playerEvent(
+      e: PlayerEvent.error(
+        entry: 'gone',
+        kind: PlayerErrorKind.network,
+        message: '',
+        positionMs: BigInt.zero,
+      ),
+    );
+    await skipNext(); // queued behind them: they were handled without a crash
+  });
+
   testWidgets('bad input is a typed error, not a crash', (t) async {
     await expectLater(
       entity(id: 'not-a-uuid'),
@@ -95,7 +110,7 @@ void main() {
     // updates.vehicoule.app is not deployed yet: a typed error is fine, a panic (Android
     // verifier not initialised) is not.
     try {
-      expect(await checkUpdates(), anything);
+      expect(await checkUpdates(force: true), anything);
     } on CoreError catch (_) {}
     // A real TLS handshake: example.com answers, its page is not a feed. Without the JNI
     // init the handshake fails (Network).

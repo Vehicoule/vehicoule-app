@@ -535,11 +535,11 @@ return error(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String title,  CoreError reason)?  skipped,TResult Function( String version)?  updateAvailable,TResult Function( CoreError field0)?  error,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String title,  CoreError reason)?  skipped,TResult Function( UpdateInfo field0)?  updateAvailable,TResult Function( CoreError field0)?  error,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case Notice_Skipped() when skipped != null:
 return skipped(_that.title,_that.reason);case Notice_UpdateAvailable() when updateAvailable != null:
-return updateAvailable(_that.version);case Notice_Error() when error != null:
+return updateAvailable(_that.field0);case Notice_Error() when error != null:
 return error(_that.field0);case _:
   return orElse();
 
@@ -558,11 +558,11 @@ return error(_that.field0);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String title,  CoreError reason)  skipped,required TResult Function( String version)  updateAvailable,required TResult Function( CoreError field0)  error,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String title,  CoreError reason)  skipped,required TResult Function( UpdateInfo field0)  updateAvailable,required TResult Function( CoreError field0)  error,}) {final _that = this;
 switch (_that) {
 case Notice_Skipped():
 return skipped(_that.title,_that.reason);case Notice_UpdateAvailable():
-return updateAvailable(_that.version);case Notice_Error():
+return updateAvailable(_that.field0);case Notice_Error():
 return error(_that.field0);}
 }
 /// A variant of `when` that fallback to returning `null`
@@ -577,11 +577,11 @@ return error(_that.field0);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String title,  CoreError reason)?  skipped,TResult? Function( String version)?  updateAvailable,TResult? Function( CoreError field0)?  error,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String title,  CoreError reason)?  skipped,TResult? Function( UpdateInfo field0)?  updateAvailable,TResult? Function( CoreError field0)?  error,}) {final _that = this;
 switch (_that) {
 case Notice_Skipped() when skipped != null:
 return skipped(_that.title,_that.reason);case Notice_UpdateAvailable() when updateAvailable != null:
-return updateAvailable(_that.version);case Notice_Error() when error != null:
+return updateAvailable(_that.field0);case Notice_Error() when error != null:
 return error(_that.field0);case _:
   return null;
 
@@ -673,10 +673,10 @@ $CoreErrorCopyWith<$Res> get reason {
 
 
 class Notice_UpdateAvailable extends Notice {
-  const Notice_UpdateAvailable({required this.version}): super._();
+  const Notice_UpdateAvailable(this.field0): super._();
   
 
- final  String version;
+ final  UpdateInfo field0;
 
 /// Create a copy of Notice
 /// with the given fields replaced by the non-null parameter values.
@@ -688,18 +688,18 @@ $Notice_UpdateAvailableCopyWith<Notice_UpdateAvailable> get copyWith => _$Notice
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is Notice_UpdateAvailable&&(identical(other.version, version) || other.version == version));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Notice_UpdateAvailable&&(identical(other.field0, field0) || other.field0 == field0));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,version);
+    return Object.hash(runtimeType,field0);
 }
 
 @override
 String toString() {
-    return 'Notice.updateAvailable(version: $version)';
+    return 'Notice.updateAvailable(field0: $field0)';
 }
 
 
@@ -710,7 +710,7 @@ abstract mixin class $Notice_UpdateAvailableCopyWith<$Res> implements $NoticeCop
   factory $Notice_UpdateAvailableCopyWith(Notice_UpdateAvailable value, $Res Function(Notice_UpdateAvailable) _then) = _$Notice_UpdateAvailableCopyWithImpl;
 @useResult
 $Res call({
- String version
+ UpdateInfo field0
 });
 
 
@@ -727,10 +727,10 @@ class _$Notice_UpdateAvailableCopyWithImpl<$Res>
 
 /// Create a copy of Notice
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? version = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? field0 = null,}) {
   return _then(Notice_UpdateAvailable(
-version: null == version ? _self.version : version // ignore: cast_nullable_to_non_nullable
-as String,
+null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
+as UpdateInfo,
   ));
 }
 

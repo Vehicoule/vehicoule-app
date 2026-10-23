@@ -11,6 +11,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 
 import 'queue.dart';
+import 'updates.dart';
 part 'events.freezed.dart';
 
 @freezed
@@ -35,7 +36,9 @@ sealed class Notice with _$Notice {
     required String title,
     required CoreError reason,
   }) = Notice_Skipped;
-  const factory Notice.updateAvailable({required String version}) =
+
+  /// The one UI signal for an update (background or manual check).
+  const factory Notice.updateAvailable(UpdateInfo field0) =
       Notice_UpdateAvailable;
   const factory Notice.error(CoreError field0) = Notice_Error;
 }
@@ -45,11 +48,25 @@ class NowPlaying {
   final String? artworkPath;
   final BigInt? durationMs;
 
-  const NowPlaying({this.track, this.artworkPath, this.durationMs});
+  /// The plugin id that resolved it, or `download`; `None` while nothing is loaded.
+  final String? source;
+  final String? mime;
+
+  const NowPlaying({
+    this.track,
+    this.artworkPath,
+    this.durationMs,
+    this.source,
+    this.mime,
+  });
 
   @override
   int get hashCode =>
-      track.hashCode ^ artworkPath.hashCode ^ durationMs.hashCode;
+      track.hashCode ^
+      artworkPath.hashCode ^
+      durationMs.hashCode ^
+      source.hashCode ^
+      mime.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -58,7 +75,9 @@ class NowPlaying {
           runtimeType == other.runtimeType &&
           track == other.track &&
           artworkPath == other.artworkPath &&
-          durationMs == other.durationMs;
+          durationMs == other.durationMs &&
+          source == other.source &&
+          mime == other.mime;
 }
 
 /// One queue entry: its id is what `QueueOp::Remove`, `Move` and `JumpTo` take.
