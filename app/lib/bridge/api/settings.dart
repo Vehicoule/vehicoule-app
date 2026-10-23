@@ -13,7 +13,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 Future<Settings> settings() => RustLib.instance.api.crateApiSettingsSettings();
 
-/// Telemetry starts or stops when it changes.
+/// Telemetry is stored, and starts or stops, only when it changes: an unchosen one stays
+/// unchosen (`onboarding().telemetry == None`) until turned on or onboarding chooses.
 Future<void> setSettings({required Settings s}) =>
     RustLib.instance.api.crateApiSettingsSetSettings(s: s);
 

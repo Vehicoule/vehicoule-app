@@ -10,7 +10,6 @@ import '../plugins.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `changed`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `eq`, `fmt`
 
 Future<List<PluginView>> installedPlugins() =>
     RustLib.instance.api.crateApiPluginsInstalledPlugins();
@@ -48,46 +47,3 @@ Future<void> setCapabilityOrder({
   capability: capability,
   pluginIds: pluginIds,
 );
-
-class PluginView {
-  final String id;
-  final String name;
-  final String version;
-
-  /// The feed's URL (what `remove_feed` takes).
-  final String feed;
-
-  /// Empty while the plugin is not loaded.
-  final List<String> capabilities;
-  final bool enabled;
-
-  const PluginView({
-    required this.id,
-    required this.name,
-    required this.version,
-    required this.feed,
-    required this.capabilities,
-    required this.enabled,
-  });
-
-  @override
-  int get hashCode =>
-      id.hashCode ^
-      name.hashCode ^
-      version.hashCode ^
-      feed.hashCode ^
-      capabilities.hashCode ^
-      enabled.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is PluginView &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          name == other.name &&
-          version == other.version &&
-          feed == other.feed &&
-          capabilities == other.capabilities &&
-          enabled == other.enabled;
-}

@@ -36,6 +36,16 @@ pub async fn queue_op(op: QueueOp) -> Result<(), CoreError> {
     player::edit(op).await
 }
 
+/// Stops and empties the queue (the mini-player hides); `undo_stop` brings it back.
+pub async fn stop() {
+    player::stop().await
+}
+
+/// The queue `stop` emptied, playing where it was; forgotten by any other queue change.
+pub async fn undo_stop() {
+    player::undo_stop().await
+}
+
 pub async fn fix_match(id: String) -> Result<Vec<Candidate>, CoreError> {
     player::fix_match(&id).await
 }
@@ -48,12 +58,15 @@ pub fn player_commands(sink: StreamSink<PlayerCommand>) {
     forward(&app().events.commands, move |v| sink.add(v).is_ok());
 }
 
+/// The current state first, then each change (`queue_states` and `now_playing`).
 pub fn queue_states(sink: StreamSink<QueueView>) {
     forward(&app().events.queue, move |v| sink.add(v).is_ok());
+    player::send_state();
 }
 
 pub fn now_playing(sink: StreamSink<NowPlaying>) {
     forward(&app().events.now_playing, move |v| sink.add(v).is_ok());
+    player::send_state();
 }
 
 pub fn notices(sink: StreamSink<Notice>) {

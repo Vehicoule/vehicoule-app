@@ -58,3 +58,46 @@ class PluginPreview {
           domains == other.domains &&
           capabilities == other.capabilities;
 }
+
+class PluginView {
+  final String id;
+  final String name;
+  final String version;
+
+  /// The feed's URL (what `remove_feed` takes).
+  final String feed;
+
+  /// Empty while the plugin is not loaded.
+  final List<String> capabilities;
+  final bool enabled;
+
+  const PluginView({
+    required this.id,
+    required this.name,
+    required this.version,
+    required this.feed,
+    required this.capabilities,
+    required this.enabled,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
+      version.hashCode ^
+      feed.hashCode ^
+      capabilities.hashCode ^
+      enabled.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PluginView &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          version == other.version &&
+          feed == other.feed &&
+          capabilities == other.capabilities &&
+          enabled == other.enabled;
+}

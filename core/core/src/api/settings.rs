@@ -65,7 +65,8 @@ pub async fn settings() -> Result<Settings, CoreError> {
         .await?)
 }
 
-/// Telemetry starts or stops when it changes.
+/// Telemetry is stored, and starts or stops, only when it changes: an unchosen one stays
+/// unchosen (`onboarding().telemetry == None`) until turned on or onboarding chooses.
 pub async fn set_settings(s: Settings) -> Result<(), CoreError> {
     let was = settings().await?.telemetry;
     let on = s.telemetry;
@@ -75,7 +76,10 @@ pub async fn set_settings(s: Settings) -> Result<(), CoreError> {
             rows::device_set(tx, "quality", s.quality.as_str())?;
             rows::device_set(tx, "normalize_volume", &s.normalize_volume.to_string())?;
             rows::shared_set(tx, "radio", &s.radio.to_string())?;
-            rows::device_set(tx, TELEMETRY, &s.telemetry.to_string())
+            match on != was {
+                true => rows::device_set(tx, TELEMETRY, &on.to_string()),
+                false => Ok(()),
+            }
         })
         .await?;
     if on != was {
@@ -118,5 +122,21 @@ mod tests {
         let defaults = stored(None, None, None, None);
         set_settings(defaults.clone()).await.unwrap();
         assert_eq!(settings().await.unwrap(), defaults);
+    }
+
+    #[tokio::test]
+    async fn an_unchosen_telemetry_stays_unchosen() {
+        let (_turn, app) = crate::catalog::tests::setup().await;
+        let forget = |app: &'static crate::app::App| {
+            app.db.write(|tx| {
+                tx.tx
+                    .execute("DELETE FROM settings_device WHERE key = ?1", [TELEMETRY])?;
+                Ok(())
+            })
+        };
+        forget(app).await.unwrap();
+        set_settings(stored(None, None, None, None)).await.unwrap();
+        assert_eq!(crate::api::app::onboarding().unwrap().telemetry, None);
+        forget(app).await.unwrap();
     }
 }

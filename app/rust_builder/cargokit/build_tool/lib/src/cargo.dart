@@ -23,12 +23,14 @@ class ManifestException {
 }
 
 class CrateInfo {
-  CrateInfo({required this.packageName});
+  CrateInfo({required this.packageName, String? libName})
+      : libName = libName ?? packageName.replaceAll('-', '_');
 
   final String packageName;
 
-  /// The library file's name: cargo turns `-` into `_` (vehicoule: package `vehicoule-core`).
-  String get libName => packageName.replaceAll('-', '_');
+  /// The library file's name: `[lib] name`, else the package name with `-` turned into `_`
+  /// (what cargo does). Vehicoule patch: `flutter_rust_bridge_codegen integrate` overwrites it.
+  final String libName;
 
   static CrateInfo parseManifest(String manifest, {final String? fileName}) {
     final toml = TomlDocument.parse(manifest);
@@ -40,7 +42,11 @@ class CrateInfo {
     if (name == null) {
       throw ManifestException('Missing package name', fileName: fileName);
     }
-    return CrateInfo(packageName: name);
+    final lib = toml.toMap()['lib'];
+    return CrateInfo(
+      packageName: name,
+      libName: lib is Map ? lib['name'] as String? : null,
+    );
   }
 
   static CrateInfo load(String manifestDir) {

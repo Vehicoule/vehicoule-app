@@ -11,10 +11,14 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `joined`, `set_telemetry`
 
-/// First call (on Android, after `RustInit.initVerifier`). Idempotent. Then the saved queue
-/// comes back paused, pending downloads restart, and telemetry starts if opted in.
+/// First call (on Android, after `RustInit.initVerifier`). Idempotent. Only initialises:
+/// Dart then subscribes to the streams, then calls `start`.
 Future<void> initApp({required AppConfig cfg}) =>
     RustLib.instance.api.crateApiAppInitApp(cfg: cfg);
+
+/// Once Dart listens (what it sends would be lost before): the saved queue comes back
+/// paused, pending downloads restart, telemetry starts if opted in. Idempotent.
+Future<void> start() => RustLib.instance.api.crateApiAppStart();
 
 /// Offline, no plugin is called; back online, pending downloads restart.
 Future<void> setOnline({required bool online}) =>

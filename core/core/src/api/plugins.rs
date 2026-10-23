@@ -5,19 +5,8 @@ use crate::error::CoreError;
 use crate::events::LibraryChanged;
 use crate::library::plugins as rows;
 use crate::plugins::FeedPreview;
+pub use crate::plugins::PluginView;
 use crate::router;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PluginView {
-    pub id: String,
-    pub name: String,
-    pub version: String,
-    /// The feed's URL (what `remove_feed` takes).
-    pub feed: String,
-    /// Empty while the plugin is not loaded.
-    pub capabilities: Vec<String>,
-    pub enabled: bool,
-}
 
 fn changed() {
     let _ = app().events.library.send(LibraryChanged::Plugins);

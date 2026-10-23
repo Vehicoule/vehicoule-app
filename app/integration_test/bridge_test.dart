@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:vehicoule/bridge/api/app.dart';
 import 'package:vehicoule/bridge/api/catalog.dart';
+import 'package:vehicoule/bridge/api/library.dart';
+import 'package:vehicoule/bridge/api/playback.dart';
 import 'package:vehicoule/bridge/api/plugins.dart';
 import 'package:vehicoule/bridge/api/system.dart';
 import 'package:vehicoule/bridge/app.dart';
@@ -31,9 +33,12 @@ Future<io.HttpServer> serveFixture() async {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('core boots and searches through a local feed', (t) async {
+  late io.Directory dir;
+
+  // The app's boot: init, subscribe to every stream, then start.
+  setUpAll(() async {
     await RustLib.init();
-    final dir = await io.Directory.systemTemp.createTemp('vehicoule-it');
+    dir = await io.Directory.systemTemp.createTemp('vehicoule-it');
     await initApp(
       cfg: AppConfig(
         dataDir: '${dir.path}/data',
@@ -46,6 +51,22 @@ void main() {
         deviceModel: 'test',
       ),
     );
+    for (final s in <Stream<Object>>[
+      playerCommands(),
+      queueStates(),
+      nowPlaying(),
+      notices(),
+      libraryChanges(),
+      downloadProgress(),
+    ]) {
+      s.listen((_) {});
+    }
+    await start();
+  });
+
+  tearDownAll(() => dir.delete(recursive: true));
+
+  testWidgets('core boots and searches through a local feed', (t) async {
     // Plain http and this key: accepted by debug builds only (release feeds are https).
     final server = await serveFixture();
     addTearDown(() => server.close(force: true));
@@ -55,6 +76,12 @@ void main() {
     );
     final r = await search(query: 'halo');
     expect(r.tracks, isNotEmpty);
+  });
+
+  testWidgets('stop then undo', (t) async {
+    // Nothing queued: both are no-ops, not errors.
+    await stop();
+    await undoStop();
   });
 
   testWidgets('bad input is a typed error, not a crash', (t) async {

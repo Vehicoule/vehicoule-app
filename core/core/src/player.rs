@@ -201,6 +201,22 @@ pub(crate) async fn restore() {
     ask(Msg::Restore).await;
 }
 
+/// Stops and empties the queue (saved empty); the previous one is kept for `undo_stop`.
+pub(crate) async fn stop() {
+    ask(Msg::Stop).await;
+}
+
+/// The queue `stop` emptied, playing again where it was. Any other queue change or `play`
+/// forgets it; nothing to undo, nothing happens.
+pub(crate) async fn undo_stop() {
+    ask(Msg::UndoStop).await;
+}
+
+/// The queue and now-playing, broadcast again: for a new subscriber.
+pub(crate) fn send_state() {
+    let _ = actor().send(Msg::SendState);
+}
+
 /// The app's connectivity. A preloaded next track is chosen again (offline: the next
 /// downloaded one).
 pub(crate) fn set_online(online: bool) {
@@ -472,6 +488,9 @@ enum Msg {
     FixMatch(ItemId, Reply<Result<Vec<Candidate>, CoreError>>),
     ChooseMatch(ItemId, String, Reply<Result<(), CoreError>>),
     Restore(Reply<()>),
+    Stop(Reply<()>),
+    UndoStop(Reply<()>),
+    SendState,
     Online,
     Artwork(EntryId, String),
 }
@@ -496,7 +515,7 @@ fn actor() -> mpsc::UnboundedSender<Msg> {
 
 /// A fresh actor on next use: an app restart, for tests.
 #[cfg(test)]
-fn reset() {
+pub(crate) fn reset() {
     *ACTOR.lock().unwrap_or_else(PoisonError::into_inner) = None;
 }
 
@@ -569,6 +588,8 @@ struct Player {
     resume: Option<EntryId>,
     /// Per item: the plugin and candidates of its last resolution.
     candidates: HashMap<ItemId, (String, Vec<Candidate>)>,
+    /// The queue `stop` emptied, until another queue change.
+    undo: Option<QueueState>,
 }
 
 fn send(cmd: PlayerCommand) {
@@ -598,10 +619,23 @@ impl Player {
             listened_ms: 0,
             resume: None,
             candidates: HashMap::new(),
+            undo: None,
         }
     }
 
     async fn handle(&mut self, msg: Msg) {
+        // Only what leaves the queue alone keeps the undo of a stop.
+        if !matches!(
+            msg,
+            Msg::Event(..)
+                | Msg::FixMatch(..)
+                | Msg::UndoStop(_)
+                | Msg::SendState
+                | Msg::Online
+                | Msg::Artwork(..)
+        ) {
+            self.undo = None;
+        }
         match msg {
             Msg::Play(items, start, context, r) => {
                 let _ = r.send(self.play(items, start, context).await);
@@ -634,6 +668,18 @@ impl Player {
             Msg::Restore(r) => {
                 self.restore().await;
                 let _ = r.send(());
+            }
+            Msg::Stop(r) => {
+                self.stop_queue().await;
+                let _ = r.send(());
+            }
+            Msg::UndoStop(r) => {
+                self.undo_stop().await;
+                let _ = r.send(());
+            }
+            Msg::SendState => {
+                self.emit_queue().await;
+                self.now_playing();
             }
             Msg::Online => {
                 if app().is_online() {
@@ -1267,6 +1313,34 @@ impl Player {
         self.send_play(l, self.pos_ms, autoplay);
         self.resume = Some(entry);
         Ok(())
+    }
+
+    async fn stop_queue(&mut self) {
+        if self.playing {
+            self.position(self.pos_ms + self.pos_at.elapsed().as_millis() as u64);
+        }
+        self.save_progress().await; // the time listened
+        let empty = QueueState::play(vec![], 0, None, self.q.shuffle, seed());
+        let q = std::mem::replace(&mut self.q, empty);
+        self.q.set_repeat(q.repeat);
+        self.undo = Some(q).filter(|q| !q.entries.is_empty());
+        self.stop();
+        (self.play, self.listened_ms) = (None, 0);
+        (self.track, self.artwork, self.duration_ms) = (None, None, None);
+        self.now_playing();
+        self.queue_changed().await;
+    }
+
+    async fn undo_stop(&mut self) {
+        let Some(q) = self.undo.take() else { return };
+        let (position, current) = (q.position_ms, q.current().map(|e| e.id));
+        self.q = q;
+        let mut entries: Vec<EntryId> = current.into_iter().collect();
+        entries.extend(following(&self.q, false));
+        let _ = self.start(entries, position, true).await;
+        if self.current.is_some() && self.current_entry() == current {
+            self.resume = current; // its `TrackStarted` keeps the position
+        }
     }
 
     /// Once, and only into an empty queue.

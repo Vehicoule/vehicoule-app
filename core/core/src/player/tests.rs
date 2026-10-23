@@ -189,6 +189,8 @@ fn player_futures_are_send() {
     send(fix_match("x"));
     send(choose_match("x", "y"));
     send(restore());
+    send(stop());
+    send(undo_stop());
 }
 
 #[tokio::test(start_paused = true)]
@@ -848,4 +850,83 @@ async fn offline_skip_is_told_once() {
     );
     assert!(skipped(&mut t.notices).is_empty());
     set_online(true);
+}
+
+#[tokio::test]
+async fn stop_hides_and_undo_resumes_where_it_was() {
+    let mut t = setup().await;
+    let mut np = test_app().events.now_playing.subscribe();
+    let ids = vec![track("stop a").await, track("stop b").await];
+    play(ids, 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    on_event(PlayerEvent::Paused {
+        entry: entry.clone(),
+        ms: 42_000,
+    })
+    .await;
+
+    stop().await;
+    assert_eq!(now(&mut t.cmds), PlayerCommand::Stop);
+    let last = std::iter::from_fn(|| np.try_recv().ok()).last().unwrap();
+    assert_eq!(last.track, None, "the mini-player hides");
+    let view = last_queue(&mut t.queue);
+    assert_eq!((view.current_entry, view.upcoming.len()), (None, 0));
+    let json = test_app().db.read(saved::load).await.unwrap().unwrap();
+    let saved: crate::queue::QueueState = serde_json::from_str(&json).unwrap();
+    assert!(saved.entries.is_empty());
+
+    undo_stop().await;
+    let (e, uri, position, autoplay) = played(now(&mut t.cmds));
+    assert_eq!(
+        (e.as_str(), position, autoplay),
+        (entry.as_str(), 42_000, true)
+    );
+    assert_eq!(uri, "https://fake.test/stream/t-stop-a");
+    let view = last_queue(&mut t.queue);
+    assert_eq!(view.current_entry.as_deref(), Some(entry.as_str()));
+    assert_eq!(view.upcoming.len(), 1);
+    // Nothing left to undo.
+    undo_stop().await;
+    nothing(&mut t.cmds);
+}
+
+#[tokio::test]
+async fn any_other_op_discards_the_undo() {
+    let mut t = setup().await;
+    let a = track("undo gone").await;
+    for discard in 0..2 {
+        play(vec![a.clone()], 0, None).await.unwrap();
+        played(now(&mut t.cmds));
+        stop().await;
+        assert_eq!(now(&mut t.cmds), PlayerCommand::Stop);
+        if discard == 0 {
+            edit(QueueOp::Repeat(Repeat::All)).await.unwrap();
+        } else {
+            play(vec![a.clone()], 0, None).await.unwrap();
+            played(now(&mut t.cmds));
+        }
+        while t.cmds.try_recv().is_ok() {}
+        undo_stop().await;
+        nothing(&mut t.cmds);
+    }
+    edit(QueueOp::Repeat(Repeat::Off)).await.unwrap();
+}
+
+#[tokio::test]
+async fn current_state_is_sent_again_on_request() {
+    let mut t = setup().await;
+    let a = track("state again").await;
+    play(vec![a], 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    // A subscriber that came after all that.
+    let mut queue = test_app().events.queue.subscribe();
+    let mut np = test_app().events.now_playing.subscribe();
+    send_state();
+    let wait = Duration::from_secs(5);
+    let view = timeout(wait, queue.recv()).await.unwrap().unwrap();
+    assert_eq!(view.current_entry.as_deref(), Some(entry.as_str()));
+    let playing = timeout(wait, np.recv()).await.unwrap().unwrap();
+    assert_eq!(playing.track.unwrap().title, "state again");
 }

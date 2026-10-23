@@ -35,6 +35,12 @@ Future<void> previous({required BigInt positionMs}) =>
 Future<void> queueOp({required QueueOp op}) =>
     RustLib.instance.api.crateApiPlaybackQueueOp(op: op);
 
+/// Stops and empties the queue (the mini-player hides); `undo_stop` brings it back.
+Future<void> stop() => RustLib.instance.api.crateApiPlaybackStop();
+
+/// The queue `stop` emptied, playing where it was; forgotten by any other queue change.
+Future<void> undoStop() => RustLib.instance.api.crateApiPlaybackUndoStop();
+
 Future<List<Candidate>> fixMatch({required String id}) =>
     RustLib.instance.api.crateApiPlaybackFixMatch(id: id);
 
@@ -47,6 +53,7 @@ Future<void> chooseMatch({required String id, required String candidateId}) =>
 Stream<PlayerCommand> playerCommands() =>
     RustLib.instance.api.crateApiPlaybackPlayerCommands();
 
+/// The current state first, then each change (`queue_states` and `now_playing`).
 Stream<QueueView> queueStates() =>
     RustLib.instance.api.crateApiPlaybackQueueStates();
 

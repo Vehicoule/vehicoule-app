@@ -12,7 +12,6 @@ use plugin_host::{
 };
 use reqwest::Url;
 
-use crate::api::plugins::PluginView;
 use crate::app::AppConfig;
 use crate::error::CoreError;
 use crate::keys::{OFFICIAL_FEED_URL, OFFICIAL_KEYS};
@@ -35,6 +34,18 @@ pub(crate) struct Plugins {
     dir: PathBuf,
     /// Feeds, manifests and `.wasm`.
     http: reqwest::Client,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PluginView {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    /// The feed's URL (what `remove_feed` takes).
+    pub feed: String,
+    /// Empty while the plugin is not loaded.
+    pub capabilities: Vec<String>,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

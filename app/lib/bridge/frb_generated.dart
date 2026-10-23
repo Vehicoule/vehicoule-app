@@ -86,7 +86,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1622054715;
+  int get rustContentHash => -1885426489;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -264,7 +264,13 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiPlaybackSkipNext();
 
+  Future<void> crateApiAppStart();
+
+  Future<void> crateApiPlaybackStop();
+
   Future<List<String>> crateApiCatalogSuggest({required String prefix});
+
+  Future<void> crateApiPlaybackUndoStop();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -1949,6 +1955,60 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "skip_next", argNames: []);
 
   @override
+  Future<void> crateApiAppStart() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 56,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_core_error,
+        ),
+        constMeta: kCrateApiAppStartConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAppStartConstMeta =>
+      const TaskConstMeta(debugName: "start", argNames: []);
+
+  @override
+  Future<void> crateApiPlaybackStop() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 57,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiPlaybackStopConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiPlaybackStopConstMeta =>
+      const TaskConstMeta(debugName: "stop", argNames: []);
+
+  @override
   Future<List<String>> crateApiCatalogSuggest({required String prefix}) {
     return handler.executeNormal(
       NormalTask(
@@ -1958,7 +2018,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 56,
+            funcId: 58,
             port: port_,
           );
         },
@@ -1975,6 +2035,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiCatalogSuggestConstMeta =>
       const TaskConstMeta(debugName: "suggest", argNames: ["prefix"]);
+
+  @override
+  Future<void> crateApiPlaybackUndoStop() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 59,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiPlaybackUndoStopConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiPlaybackUndoStopConstMeta =>
+      const TaskConstMeta(debugName: "undo_stop", argNames: []);
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
