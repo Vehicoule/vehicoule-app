@@ -264,9 +264,13 @@ pub async fn downloads() -> Result<Vec<DownloadProgress>, CoreError> {
 }
 
 pub fn library_changes(sink: StreamSink<LibraryChanged>) {
-    forward(&app().events.library, move |v| sink.add(v).is_ok());
+    forward(app().events.library.subscribe(), move |v| {
+        sink.add(v).is_ok()
+    });
 }
 
 pub fn download_progress(sink: StreamSink<DownloadProgress>) {
-    forward(&app().events.downloads, move |v| sink.add(v).is_ok());
+    forward(app().events.downloads.subscribe(), move |v| {
+        sink.add(v).is_ok()
+    });
 }

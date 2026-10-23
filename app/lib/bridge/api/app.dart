@@ -16,8 +16,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 Future<void> initApp({required AppConfig cfg}) =>
     RustLib.instance.api.crateApiAppInitApp(cfg: cfg);
 
-/// Once Dart listens (what it sends would be lost before): the saved queue comes back
-/// paused, pending downloads restart, telemetry starts if opted in. Idempotent.
+/// After `init_app`, once Dart listens: the saved queue comes back paused, pending downloads
+/// restart, telemetry starts if opted in. Idempotent; a failed call leaves it to the next.
 Future<void> start() => RustLib.instance.api.crateApiAppStart();
 
 /// Offline, no plugin is called; back online, pending downloads restart.

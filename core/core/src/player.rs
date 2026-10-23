@@ -729,16 +729,24 @@ impl Player {
     }
 
     /// Plays the first entry of `entries` that has a source (those before it are skipped,
-    /// with a notice); none: `Stop`, and the error if there was one.
+    /// with a notice), at `position_ms` if it is the first one, else from 0; none: `Stop`,
+    /// and the error if there was one.
     async fn start(
         &mut self,
         entries: Vec<EntryId>,
         position_ms: u64,
         autoplay: bool,
     ) -> Result<(), CoreError> {
+        let first = entries.first().copied();
         let found = self.first_playable(entries).await;
         let result = match found {
             Ok(Some(l)) => {
+                // A fallback starts from its beginning.
+                let position_ms = if Some(l.entry) == first {
+                    position_ms
+                } else {
+                    0
+                };
                 self.q.jump_to(l.entry);
                 self.q.position_ms = position_ms;
                 self.send_play(l, position_ms, autoplay);

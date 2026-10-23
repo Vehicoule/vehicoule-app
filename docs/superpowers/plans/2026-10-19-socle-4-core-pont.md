@@ -552,7 +552,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   // api/app.rs
   pub async fn init_app(cfg: AppConfig) -> Result<(), CoreError>;   // initialise seulement
   pub async fn start() -> Result<(), CoreError>;   // idempotent ; après les abonnements Dart :
-                                                   // restore → resume_pending → télémétrie (non bloquant)
+                                                   // restore → resume_pending → télémétrie (non bloquant) ;
+                                                   // avant init_app : Internal, et un start suivant fonctionne
   pub async fn set_online(online: bool);
   pub fn onboarding() -> Result<Onboarding, CoreError>;  pub struct Onboarding { pub done: bool, pub telemetry: Option<bool> }
   pub async fn finish_onboarding(telemetry: bool) -> Result<(), CoreError>;
@@ -570,7 +571,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub async fn queue_op(op: QueueOp) -> Result<(), CoreError>;
   pub async fn stop();       // PlayerCommand::Stop, now-playing vidé (le mini-lecteur se cache),
                              // file enregistrée vide ; l'ancienne gardée pour undo_stop
-  pub async fn undo_stop();  // rétablit cette file, Play { autoplay: true } à la position gardée ;
+  pub async fn undo_stop();  // rétablit cette file, Play { autoplay: true } à la position gardée
+                             // (si l'entrée arrêtée est jouable, sinon la suivante à 0) ;
                              // toute autre op de file ou play() l'oublie ; rien à annuler = rien
   pub enum QueueOp { EnqueueNext(Vec<String>), EnqueueLast(Vec<String>), Remove(String), Move { entry: String, to: u32 },
                      Shuffle(bool), Repeat(Repeat), JumpTo(String) }
@@ -578,7 +580,8 @@ rustls-platform-verifier 0.7, sentry 0.49, semver, sha2, Flutter 3.47 (squelette
   pub async fn choose_match(id: String, candidate_id: String) -> Result<(), CoreError>;
   pub fn player_commands(sink: StreamSink<PlayerCommand>);  pub fn queue_states(sink: StreamSink<QueueView>);
   pub fn now_playing(sink: StreamSink<NowPlaying>);         pub fn notices(sink: StreamSink<Notice>);
-  // queue_states et now_playing envoient l'état courant dès l'abonnement
+  // queue_states et now_playing envoient l'état courant dès l'abonnement ; le premier
+  // player_commands reçoit aussi ce qui a été envoyé depuis init_app (récepteur créé par init)
   // api/library.rs
   pub async fn home() -> Result<HomeView, CoreError>;
   pub struct HomeView { pub recent: Vec<TrackView>, pub liked: Vec<TrackView>, pub playlists: Vec<CollectionView>, pub downloads: Vec<TrackView> } // 20 de chaque

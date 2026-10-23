@@ -9,7 +9,7 @@ pub mod plugins;
 pub mod settings;
 pub mod system;
 
-use tokio::sync::broadcast::{Sender, error::RecvError};
+use tokio::sync::broadcast::{Receiver, error::RecvError};
 
 use crate::app::app;
 use crate::logs;
@@ -17,8 +17,10 @@ use crate::logs;
 /// Forwards a broadcast to Dart until Dart stops listening (`add` fails). A lagging stream
 /// skips what it missed, logged: the next state message carries the current state, but a
 /// dropped `PlayerCommand` is lost.
-fn forward<T: Clone + Send + 'static>(tx: &Sender<T>, add: impl Fn(T) -> bool + Send + 'static) {
-    let mut rx = tx.subscribe();
+fn forward<T: Clone + Send + 'static>(
+    mut rx: Receiver<T>,
+    add: impl Fn(T) -> bool + Send + 'static,
+) {
     app().rt.spawn(async move {
         loop {
             match rx.recv().await {
@@ -54,7 +56,7 @@ mod tests {
         let (open, gate) = mpsc::channel::<()>();
         let (seen, got) = mpsc::channel::<u32>();
         let gate = Mutex::new(Some(gate));
-        forward(&tx, move |v| {
+        forward(tx.subscribe(), move |v| {
             // Held on the first message while 10 more are sent.
             if let Some(g) = gate.lock().unwrap().take() {
                 let _ = g.recv();

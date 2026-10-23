@@ -1,6 +1,8 @@
 //! Broadcasts to Dart (each one subscribed by a `StreamSink` in api/). A slow subscriber lags
 //! and loses old messages; the next one carries the current state anyway.
 
+use std::sync::Mutex;
+
 use tokio::sync::broadcast;
 
 use crate::catalog::TrackView;
@@ -62,6 +64,9 @@ pub enum LibraryChanged {
 
 pub(crate) struct Events {
     pub commands: broadcast::Sender<PlayerCommand>,
+    /// Subscribed with `commands`, for the first `player_commands`: a `PlayerCommand` is
+    /// never sent again, and the bridge may run `start` before that subscription.
+    pub first_commands: Mutex<Option<broadcast::Receiver<PlayerCommand>>>,
     pub queue: broadcast::Sender<QueueView>,
     pub now_playing: broadcast::Sender<NowPlaying>,
     pub library: broadcast::Sender<LibraryChanged>,
@@ -72,8 +77,10 @@ pub(crate) struct Events {
 impl Events {
     pub fn new() -> Events {
         const CAP: usize = 256;
+        let (commands, first) = broadcast::channel(CAP);
         Events {
-            commands: broadcast::channel(CAP).0,
+            commands,
+            first_commands: Mutex::new(Some(first)),
             queue: broadcast::channel(CAP).0,
             now_playing: broadcast::channel(CAP).0,
             library: broadcast::channel(CAP).0,

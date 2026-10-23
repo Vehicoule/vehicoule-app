@@ -12,6 +12,8 @@ import '../queue.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These functions are ignored because they are not marked as `pub`: `commands_rx`
+
 /// Replaces the queue with `items` and plays `items[start]`.
 Future<void> play({
   required List<String> items,

@@ -67,6 +67,10 @@ pub(crate) fn app() -> &'static App {
         .expect("vehicoule-core: init_app must be called before anything else")
 }
 
+pub(crate) fn is_init() -> bool {
+    APP.get().is_some()
+}
+
 /// Idempotent: a second call returns `Ok` and keeps the first `App` (and its config).
 pub(crate) fn init(cfg: AppConfig) -> Result<(), CoreError> {
     static INIT: Mutex<()> = Mutex::new(());

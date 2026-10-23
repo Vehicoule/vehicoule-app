@@ -1,6 +1,8 @@
 //! Playback: Rust decides, the Dart player executes `PlayerCommand`s and reports
 //! `PlayerEvent`s (play, pause and seek go straight to the Dart player).
 
+use std::sync::PoisonError;
+
 use crate::api::forward;
 use crate::app::app;
 use crate::error::CoreError;
@@ -55,20 +57,35 @@ pub async fn choose_match(id: String, candidate_id: String) -> Result<(), CoreEr
 }
 
 pub fn player_commands(sink: StreamSink<PlayerCommand>) {
-    forward(&app().events.commands, move |v| sink.add(v).is_ok());
+    forward(commands_rx(), move |v| sink.add(v).is_ok());
+}
+
+/// The first call gets the receiver `init_app` made: whatever `start` sent before is there.
+pub(crate) fn commands_rx() -> tokio::sync::broadcast::Receiver<PlayerCommand> {
+    let events = &app().events;
+    let first = events
+        .first_commands
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take();
+    first.unwrap_or_else(|| events.commands.subscribe())
 }
 
 /// The current state first, then each change (`queue_states` and `now_playing`).
 pub fn queue_states(sink: StreamSink<QueueView>) {
-    forward(&app().events.queue, move |v| sink.add(v).is_ok());
+    forward(app().events.queue.subscribe(), move |v| sink.add(v).is_ok());
     player::send_state();
 }
 
 pub fn now_playing(sink: StreamSink<NowPlaying>) {
-    forward(&app().events.now_playing, move |v| sink.add(v).is_ok());
+    forward(app().events.now_playing.subscribe(), move |v| {
+        sink.add(v).is_ok()
+    });
     player::send_state();
 }
 
 pub fn notices(sink: StreamSink<Notice>) {
-    forward(&app().events.notices, move |v| sink.add(v).is_ok());
+    forward(app().events.notices.subscribe(), move |v| {
+        sink.add(v).is_ok()
+    });
 }

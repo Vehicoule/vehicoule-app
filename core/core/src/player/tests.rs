@@ -892,6 +892,33 @@ async fn stop_hides_and_undo_resumes_where_it_was() {
 }
 
 #[tokio::test]
+async fn undo_falling_through_starts_the_next_at_zero() {
+    let mut t = setup().await;
+    let [x, c] = [track("undo x").await, track("undo c").await];
+    downloaded(&c, "/music/undo-c.mp3").await;
+    play(vec![x, c], 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 180_000).await;
+    on_event(PlayerEvent::Paused {
+        entry: entry.clone(),
+        ms: 42_000,
+    })
+    .await;
+    stop().await;
+    assert_eq!(now(&mut t.cmds), PlayerCommand::Stop);
+    set_online(false); // `x` was never downloaded
+    undo_stop().await;
+    let (next, uri, position, _) = played(now(&mut t.cmds));
+    set_online(true);
+    assert_eq!((uri.as_str(), position), ("/music/undo-c.mp3", 0));
+    let view = last_queue(&mut t.queue);
+    assert_eq!(view.current_entry.as_deref(), Some(next.as_str()));
+    let json = test_app().db.read(saved::load).await.unwrap().unwrap();
+    let saved: crate::queue::QueueState = serde_json::from_str(&json).unwrap();
+    assert_eq!(saved.position_ms, 0, "the saved queue agrees");
+}
+
+#[tokio::test]
 async fn any_other_op_discards_the_undo() {
     let mut t = setup().await;
     let a = track("undo gone").await;

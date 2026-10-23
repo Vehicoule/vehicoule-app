@@ -2,7 +2,8 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::app::{self as core, AppConfig, app};
+use crate::app::{self as core, app};
+pub use crate::app::{AppConfig, Platform};
 use crate::error::CoreError;
 use crate::library::settings as rows;
 use crate::{downloads, player, telemetry};
@@ -25,16 +26,20 @@ pub async fn init_app(cfg: AppConfig) -> Result<(), CoreError> {
     joined(tokio::task::spawn_blocking(move || core::init(cfg)).await)
 }
 
-/// Once Dart listens (what it sends would be lost before): the saved queue comes back
-/// paused, pending downloads restart, telemetry starts if opted in. Idempotent.
+/// After `init_app`, once Dart listens: the saved queue comes back paused, pending downloads
+/// restart, telemetry starts if opted in. Idempotent; a failed call leaves it to the next.
 pub async fn start() -> Result<(), CoreError> {
     static STARTED: AtomicBool = AtomicBool::new(false);
+    if !core::is_init() {
+        return Err(CoreError::Internal("start before init_app".into()));
+    }
+    let telemetry = onboarding()?.telemetry;
     if STARTED.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
     player::restore().await;
     downloads::resume_pending().await;
-    if onboarding()?.telemetry == Some(true) {
+    if telemetry == Some(true) {
         set_telemetry(true);
     }
     Ok(())
@@ -89,6 +94,7 @@ mod tests {
     use crate::library::queue as saved;
     use crate::player::PlayerCommand;
     use crate::queue::QueueState;
+    use tokio::sync::broadcast::error::TryRecvError;
 
     #[tokio::test]
     async fn start_restores_once_dart_listens() {
@@ -107,18 +113,27 @@ mod tests {
         crate::player::reset(); // a cold start
 
         init_app(app.cfg.clone()).await.unwrap();
-        let mut cmds = app.events.commands.subscribe();
         let mut queue = app.events.queue.subscribe();
+        // `start` before `player_commands` subscribes: the bridge runs them on different
+        // threads, in no set order.
         start().await.unwrap();
-        match cmds.try_recv() {
-            Ok(PlayerCommand::Play {
+        let mut cmds = crate::api::playback::commands_rx();
+        // The receiver parked by `init` also holds other tests' commands.
+        let restored = std::iter::from_fn(|| match cmds.try_recv() {
+            Err(TryRecvError::Empty | TryRecvError::Closed) => None,
+            c => Some(c),
+        })
+        .any(|c| {
+            matches!(c, Ok(PlayerCommand::Play {
                 position_ms: 5_000,
                 autoplay: false,
+                ref source,
                 ..
-            }) => {}
-            c => panic!("expected a paused load, got {c:?}"),
-        }
-        let view = queue.try_recv().unwrap();
+            }) if source.uri.ends_with("t-cold-start"))
+        });
+        assert!(restored, "the paused load reaches a late subscriber");
+        while cmds.try_recv().is_ok() {}
+        let view = std::iter::from_fn(|| queue.try_recv().ok()).last().unwrap();
         assert!(view.current.is_some());
         start().await.unwrap(); // idempotent
         assert!(cmds.try_recv().is_err());
