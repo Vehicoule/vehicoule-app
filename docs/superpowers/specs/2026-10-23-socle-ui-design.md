@@ -444,7 +444,7 @@ Chart, Recent, Playlists, Downloads ou End. Le **titre est traduit côté Dart**
 `kind` et de la `seed` : le cœur ne produit pas de texte d'interface. Une étagère Discovery
 porte des `TrackView` et la raison de chacun.
 
-`TrackSort` : Added, Title, Artist. `CollectionSort` : Recent, Played, Name.
+`TrackSort` : Added, Title, Artist. `CollectionSort` : Recent, Played, Title (« Nom A→Z »).
 
 ## 8. Accessibilité et performance
 
