@@ -431,4 +431,25 @@ mod tests {
         let hits = db.read_blocking(|c| history(c, "edith", 10)).unwrap();
         assert_eq!(hits, vec!["Édith Piaf"]);
     }
+
+    /// `%` and `_` typed by the user never act as LIKE wildcards: `fold` turns every
+    /// non-alphanumeric into a space before the pattern is built, so no escaping is needed.
+    /// (`50%` folds to `50`, which does match `500 Days` as a plain substring.)
+    #[test]
+    fn typed_wildcards_never_widen_a_search() {
+        let db = Db::open_in_memory().unwrap();
+        db.write_blocking(|tx| {
+            liked_track(tx, "axb", "Someone", "1")?;
+            liked_track(tx, "axxb", "Someone", "2")?;
+            record_query(tx, "axb")?;
+            record_query(tx, "axxb")
+        })
+        .unwrap();
+        for q in ["a_b", "a%b", "a__b"] {
+            let hits = db.read_blocking(|c| local(c, q, 10)).unwrap();
+            assert!(hits.iter().all(|h| h.score < 1.0), "local {q:?} matched as a pattern");
+            let past = db.read_blocking(|c| history(c, q, 10)).unwrap();
+            assert!(past.is_empty(), "history {q:?}: {past:?}");
+        }
+    }
 }
