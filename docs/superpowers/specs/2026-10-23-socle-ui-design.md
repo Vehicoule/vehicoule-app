@@ -1,13 +1,13 @@
 # Vehicoule — Interface de la musique v1 : design
 
 Date : 2026-10-23 · Statut : en relecture (v2 : lecteur, mini-lecteur, desktop, réutilisation,
-mouvement, haptique, minuterie, widget Android, barre des menus macOS)
+mouvement, haptique, minuterie, widget Android, barre des menus macOS, langage des formes)
 
 Spec parente : `2026-10-18-socle-musique-design.md` (le « socle »). Celle-ci fixe l'identité
 visuelle, les composants, les écrans et les deux nouveautés de cœur qu'ils demandent
 (`music.browse`, le fil d'accueil). Maquettes de référence : `.superpowers/brainstorm/…/content/`
 (`revision-1.html`, `composants.html`, `desktop.html`, `retours-2.html`, `accueil.html`, puis
-`59588-…/content/desktop-2.html` et `lecteur-v3.html`).
+`59588-…/content/desktop-2.html`, `lecteur-v3.html` et `app-formes.html`).
 
 ## 1. Ce que cette spec change dans le socle
 
@@ -53,6 +53,20 @@ pochette mise en avant, sélection) ; le reste est calme.
 
 Les formes expressives de M3E, avec retenue : pochette mise en avant, bouton lecture qui morphe,
 cartes héros, FAB. Les listes, les champs et les réglages gardent des coins standards.
+
+**Langage des formes.** Chaque forme de pochette a un sens fixe, le même partout. C'est
+`VArtwork` qui l'applique ; un écran ne choisit pas la forme d'une pochette.
+
+| Forme | Sens | Où on la voit |
+|---|---|---|
+| Carré arrondi | au repos | toute pochette de titre, d'album ou de playlist |
+| **Cookie** (12 lobes), qui tourne lentement | **ce qui joue** | le titre, l'album ou la playlist en cours, dans les listes, les raccourcis de l'accueil, les cartes, l'en-tête de sa page et les épinglés du rail ; dans le lecteur, en style Disque |
+| Cercle | un artiste | lignes, cartes et en-têtes d'artiste. Un artiste qui joue garde son cercle, avec l'égaliseur |
+| Cookie + coche | choisi, sélectionné | sélection multiple, artistes du premier lancement |
+
+Les autres formes M3E (trèfle, fleur, soleil, éclat, pilule, arche, gemme…) ne servent qu'au
+décor : tuiles de genre, étapes du premier lancement, états vides, tirer-pour-rafraîchir. Elles
+ne servent jamais aux pochettes. Avec « réduire les animations », le cookie ne tourne plus.
 
 ### 2.4 Typographie
 
@@ -407,8 +421,12 @@ désactivé, l'accueil ne garde que les étagères locales, et aucune graine ne 
   - deux grandes cartes « vedettes » données par `music.browse` (avec Deezer : Top 50 et
     Sélection) ;
   - la grille « Parcourir » des catégories (genres et humeurs), deux colonnes, sur téléphone.
-    Chaque tuile a une teinte pastel fixe tirée de l'identifiant de la catégorie, et l'image de
-    la catégorie inclinée dans le coin. Pas d'extraction.
+    Chaque tuile a une teinte pastel fixe tirée de l'identifiant de la catégorie. L'image de la
+    catégorie y est **découpée dans une forme de décor M3E**, elle aussi fixe et tirée de l'id
+    (trèfle, soleil, fleur, pilule, éclat, arche, gemme, cookie). Elle est inclinée et dépasse
+    du coin de la tuile. Au toucher, la forme grossit et morphe en carré pendant le container
+    transform vers la page du genre. Pas d'extraction. Les deux cartes vedettes suivent la
+    même règle, en plus grand.
 - **Une catégorie** : grande app bar, puis des étagères (titres, albums, artistes, playlists),
   paginées.
 - **Pendant la frappe** : search view M3 en plein écran, **que des suggestions** :
@@ -430,11 +448,21 @@ désactivé, l'accueil ne garde que les étagères locales, et aucune graine ne 
 
 - Grande app bar : ☰, recherche dans la bibliothèque, tri.
 - **Tuiles** :
-  - **Likés** ;
+  - **Likés** : un petit collage des 3 dernières pochettes likées ;
   - **Téléchargés** ;
   - **Top 50** : tes 50 titres les plus écoutés. On compte les écoutes d'au moins 30 s sur
     90 jours. Si cela donne moins de 50 titres, on complète sur tout l'historique. Ordre fixe ;
-  - **Historique** : groupé par jour.
+  - **Historique** : groupé par jour, avec des en-têtes de jour qui restent visibles au
+    défilement.
+
+  Chaque tuile a son icône dans un conteneur de forme de décor différente.
+- **Page Top 50 en podium** :
+  - les 3 premiers en tête, le n°1 au centre et plus grand. Le n°1 est en cookie avec son
+    anneau s'il joue, sinon en carré arrondi ;
+  - ensuite, les rangs s'affichent en **grands chiffres arrondis en contour**, à la place du
+    numéro dans la ligne de titre ;
+  - le sous-titre donne le nombre d'écoutes ;
+  - ▶ et aléatoire sont dans l'app bar ; pas de tri.
 - **Puces** Playlists / Albums / Artistes, puis la liste.
 - **FAB menu** : nouvelle playlist, importer un lien.
 - **Tri** (bottom sheet sur mobile, menu sur desktop ; choix retenu par liste) :
@@ -445,12 +473,15 @@ désactivé, l'accueil ne garde que les étagères locales, et aucune graine ne 
 
 ### 6.4 Album / playlist
 
-- La pochette en grand, en forme expressive, fondue dans la surface du thème (pas de teinte
-  propre, 2.2).
+- La pochette en grand (carré arrondi, ou cookie si cet album joue), fondue dans la surface du
+  thème (pas de teinte propre, 2.2).
 - Titre, artistes, année et durée.
 - Split button « Lire | ▾ », like et télécharger en boutons tonaux.
 - Lignes de titre (numérotées pour un album).
-- Au défilement, l'en-tête se replie et un FAB lecture reste.
+- **En-tête qui se replie** (app bar flexible M3E) : au défilement, la grande pochette
+  rétrécit en continu jusqu'à se loger dans l'app bar, à gauche du titre, qui la suit. Le
+  split button étendu devient un FAB lecture. La même mécanique sert aux pages playlist,
+  artiste (en cercle) et catégorie.
 - Playlist perso : réordonner par glisser, et sélection multiple avec toolbar flottante.
 - **Pochette d'une playlist perso** : sa pochette propre si elle en a une. Sinon, une
   **mosaïque 2×2** des pochettes des 4 premiers titres distincts, ou moins s'il y en a moins.
@@ -477,6 +508,9 @@ carte). Viennent ensuite les titres populaires, puis les albums en carousel mult
 
 - **Réglages** : listes M3E en groupes arrondis.
   - Apparence : source de couleur, noir pur, thème, style du lecteur (Disque / Vague).
+    - En haut, un **aperçu en direct** : un vrai `VNowPlaying` compact (ce qui joue, ou une
+      pochette d'exemple) qui change à chaque toucher.
+    - Les choix sont des **groupes de boutons connectés**, pas des listes radio.
   - Lecture : radio de fin de file, normalisation.
   - Téléchargements.
   - Sources : dépôts, ordre des plugins.
@@ -488,13 +522,28 @@ carte). Viennent ensuite les titres populaires, puis les albums en carousel mult
 - **Premier lancement** : loading indicator M3E, étapes, puis le choix de télémétrie sans option
   présélectionnée (socle §4.6). Une étape s'ajoute après l'installation des sources :
   **« Choisis au moins 3 artistes »**.
-  - Une grille de pochettes rondes, tirée de l'étagère « artists » de la catégorie vedette
-    `chart:0`, avec un champ de recherche au-dessus.
-  - Un toucher like l'artiste : la pochette prend la forme cookie et une coche apparaît.
+  - Des **bulles** de tailles variées, qui flottent doucement. Elles sont tirées de l'étagère
+    « artists » de la catégorie vedette `chart:0`, avec un champ de recherche au-dessus.
+  - Un toucher like l'artiste : sa bulle grossit et morphe de cercle en cookie, avec une coche
+    et une haptique légère.
+  - Le bouton s'écrit « Continuer · N ».
+  - Chaque étape du premier lancement a sa grande forme de décor, qui morphe vers celle de
+    l'étape suivante (shared axis).
   - « Continuer » s'active dès 3 artistes ; « Passer » reste toujours possible.
   - Sans plugin `browse`, ou hors ligne, l'étape est sautée.
   - Ces likes servent de graines au fil d'accueil dès la première ouverture (7.2).
 - **Dépôts et plugins**, **Téléchargements** : sections globales, ouvertes depuis le rail.
+  - Téléchargements : une barre de stockage en tête (musique téléchargée / espace libre). Un
+    titre en cours a l'**anneau ondulé** autour de sa pochette, celui du mini-lecteur, qui
+    montre le pourcentage.
+
+### 6.9 États transverses
+
+- **Hors ligne** : une puce discrète sous l'app bar, « Hors ligne · tes téléchargements restent
+  là ». Pas de bannière.
+- **Tirer pour rafraîchir** : le loading indicator M3E (forme qui morphe), pas un spinner.
+- **États vides** : une grande forme de décor avec une icône, une phrase et une action. Aucune
+  image externe ; un seul `VEmptyState`.
 
 ### 6.8 Hors de l'app : widget Android, barre des menus macOS
 
