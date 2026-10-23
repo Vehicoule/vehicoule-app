@@ -97,6 +97,9 @@ validation finale.
 - Create :
   - `app/lib/design/{design,tokens,theme,color,typography,motion,symbols}.dart` ;
   - `app/lib/design/components/{artwork,artwork_ring,track_row,menu,side_sheet,shelf,loading,empty_state,snack}.dart` ;
+  - `app/lib/design/gallery.dart` : la galerie de validation, une route de debug
+    `/debug/gallery` enregistrée seulement si `kDebugMode`, sans `FakeApi` (données en dur,
+    pochettes de `app/assets/gallery/`) ;
   - `app/assets/fonts/` : Google Sans Flex variable (axes `opsz`, `wght`, `ROND`), Noto Sans
     JP variable, Material Symbols Rounded variable (`FILL`, `wght`).
 - Modify : `app/pubspec.yaml` (`material_ui: 1.8.0`, `material_3_expressive: 1.2.0`,
@@ -168,7 +171,24 @@ testWidgets('reduce motion settles in one frame', ...);  // disableAnimations : 
 - [ ] **Step 3 : implémenter.** Utiliser le composant M3E de `material_3_expressive` quand il
   existe. Sinon, le construire dans `components/` à partir des tokens.
 - [ ] **Step 4 : vérifier** : `flutter test test/design` puis `flutter analyze` → PASS.
-- [ ] **Step 5 : commit** : `feat(app): système de design M3E (tokens, couleur, typo, composants)`.
+- [ ] **Step 5 : galerie.** `gallery.dart` montre :
+  - chaque composant de `components/` dans tous ses états (`VTrackRow` normal, numéroté, en
+    lecture, hors ligne, glissé ; mini-lecteur avec anneau en lecture et en pause ; menu
+    ouvert ; étagère ; carte héros ; split button ; groupe connecté ; slider ondulé ;
+    `VLoading` ; snackbar avec action ; side sheet) ;
+  - la typographie ;
+  - l'échelle d'espacement.
+
+  En haut, des sélecteurs : clair / sombre / noir pur, source de couleur (3 pochettes
+  d'exemple, Système, 2 préréglages) et « réduire les animations ». Test :
+  `testWidgets('gallery renders every component without overflow', ...)` à 400 et 1280 dp.
+- [ ] **Step 6 : commit** : `feat(app): système de design M3E (tokens, couleur, typo, composants, galerie)`.
+- [ ] **Step 7 : point de contrôle utilisateur (bloquant).** Lancer la galerie sur le
+  téléphone Android de référence et sur macOS (`flutter run --debug`, route
+  `/debug/gallery`). Demander à l'utilisateur de la valider. Ses retours sont corrigés dans
+  `design/` (tokens d'abord), avec le test de la galerie toujours vert, puis commités.
+  Les tâches 5 à 7 ne commencent qu'après son accord, consigné dans le ledger
+  (`Ruling (user): gallery approved`).
 
 ### Task 2 : traductions FR / EN et messages d'erreur
 
