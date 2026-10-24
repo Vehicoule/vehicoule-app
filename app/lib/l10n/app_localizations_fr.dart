@@ -26,7 +26,7 @@ class AppLocalizationsFr extends AppLocalizations {
       'La source a mis trop de temps à répondre. Réessaie.';
 
   @override
-  String get errorNotFound => 'Rien trouvé. Essaie avec d\'autres mots.';
+  String get errorNotFound => 'Ce contenu n\'est plus disponible.';
 
   @override
   String get errorExpired =>
@@ -40,30 +40,29 @@ class AppLocalizationsFr extends AppLocalizations {
   String get errorOffline => 'Hors ligne · tes téléchargements restent là.';
 
   @override
-  String get errorInvalidFeed =>
-      'Ce lien de source ne marche pas. Demande un nouveau lien à son auteur.';
+  String get errorInvalidFeed => 'Ce lien de source n\'a pas pu être utilisé.';
 
   @override
-  String get errorNoSourceSearch =>
-      'Aucune source de recherche installée. Ajoute une source pour chercher.';
+  String get errorNoSourceSearch => 'Il te faut une source pour chercher.';
 
   @override
   String get errorNoSourceEntity =>
-      'Aucune source ne peut ouvrir cette page. Ajoute une source pour explorer.';
+      'Il te faut une source pour ouvrir cette page.';
 
   @override
-  String get errorNoSourcePlay =>
-      'Aucune source de lecture installée. Ajoute une source pour lire.';
+  String get errorNoSourcePlay => 'Il te faut une source pour lire.';
 
   @override
   String get errorNoSourceLyrics =>
-      'Aucune source de paroles installée. Ajoute une source pour voir les paroles.';
+      'Il te faut une source pour voir les paroles.';
 
   @override
   String get errorNoSourceRadio =>
-      'Aucune source de radio installée. Ajoute une source pour lancer une radio.';
+      'Il te faut une source pour lancer une radio.';
 
   @override
-  String get errorNoSourceBrowse =>
-      'Aucune source pour explorer. Ajoute une source pour découvrir de la musique.';
+  String get errorNoSourceBrowse => 'Il te faut une source pour explorer.';
+
+  @override
+  String get actionAddSource => 'Ajouter une source';
 }

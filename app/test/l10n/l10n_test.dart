@@ -54,24 +54,43 @@ void main() {
     }
   });
 
-  test('no source to play points to adding one', () {
+  test('no source to play: the ruled wording and its action', () {
     expect(
       errorMessage(fr, const CoreError.noPlugin(Capability.resolve)),
-      contains('Ajoute une source pour lire'),
+      'Il te faut une source pour lire.',
     );
     expect(
       errorMessage(en, const CoreError.noPlugin(Capability.resolve)),
-      contains('Add a source'),
+      'You need a source to play music.',
     );
+    expect(fr.actionAddSource, 'Ajouter une source');
+    expect(en.actionAddSource, 'Add a source');
   });
 
+  test(
+    'notFound is neutral: the core raises it for pages, tracks, downloads',
+    () {
+      expect(
+        errorMessage(fr, const CoreError.notFound()),
+        "Ce contenu n'est plus disponible.",
+      );
+      expect(
+        errorMessage(en, const CoreError.notFound()),
+        "This isn't available anymore.",
+      );
+    },
+  );
+
   test('arb strings follow voice.md', () {
-    // ♡ is the like glyph the UI names (voice.md), not an emoji.
+    // ♡ too: the like heart is an icon with a spoken label, never the raw glyph.
     // The analyzer checks this pattern without the unicode flag, so \p{} looks invalid.
-    // ignore: valid_regexps
-    final emoji = RegExp(r'[\p{Extended_Pictographic}\u{FE0F}]', unicode: true);
+    final emoji = RegExp(
+      // ignore: valid_regexps
+      r'[\p{Extended_Pictographic}\u{FE0F}♡]',
+      unicode: true,
+    );
     final banned = RegExp(
-      r'\b(plugins?|feeds?|oups|oops|veuillez|please|vous)\b'
+      r'\b(plug-?ins?|repo(sitor(y|ies))?s?|feeds?|oups|oops|veuillez|please|vous)\b'
       r'|d[ée]p[ôo]ts?|r[ée]solutions?|\b[1-5]\d\d\b',
       caseSensitive: false,
       unicode: true,
@@ -80,11 +99,7 @@ void main() {
       for (final MapEntry(:key, :value) in _strings(lang).entries) {
         final where = '$lang.$key: $value';
         expect(value, isNot(contains('!')), reason: where);
-        expect(
-          emoji.hasMatch(value.replaceAll('♡', '')),
-          isFalse,
-          reason: where,
-        );
+        expect(emoji.hasMatch(value), isFalse, reason: where);
         expect(banned.hasMatch(value), isFalse, reason: where);
         expect(
           value,
@@ -95,6 +110,8 @@ void main() {
           expect(value, isNot(matches(r'[“”]')), reason: where);
           // French spacing: no-break space inside « » and before ? ; : (wraps cleanly).
           expect(value, isNot(matches(r'« | »| [?;:]')), reason: where);
+          // ...and the no-break space is there (\s covers U+00A0 and U+202F).
+          expect(value, isNot(matches(r'[^\s][?;:!»]|«[^\s]')), reason: where);
         } else {
           expect(value, isNot(matches(r'[«»]')), reason: where);
         }

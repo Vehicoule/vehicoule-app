@@ -125,7 +125,7 @@ abstract class AppLocalizations {
   /// No description provided for @errorNotFound.
   ///
   /// In fr, this message translates to:
-  /// **'Rien trouvé. Essaie avec d\'autres mots.'**
+  /// **'Ce contenu n\'est plus disponible.'**
   String get errorNotFound;
 
   /// No description provided for @errorExpired.
@@ -149,44 +149,50 @@ abstract class AppLocalizations {
   /// No description provided for @errorInvalidFeed.
   ///
   /// In fr, this message translates to:
-  /// **'Ce lien de source ne marche pas. Demande un nouveau lien à son auteur.'**
+  /// **'Ce lien de source n\'a pas pu être utilisé.'**
   String get errorInvalidFeed;
 
   /// No description provided for @errorNoSourceSearch.
   ///
   /// In fr, this message translates to:
-  /// **'Aucune source de recherche installée. Ajoute une source pour chercher.'**
+  /// **'Il te faut une source pour chercher.'**
   String get errorNoSourceSearch;
 
   /// No description provided for @errorNoSourceEntity.
   ///
   /// In fr, this message translates to:
-  /// **'Aucune source ne peut ouvrir cette page. Ajoute une source pour explorer.'**
+  /// **'Il te faut une source pour ouvrir cette page.'**
   String get errorNoSourceEntity;
 
   /// No description provided for @errorNoSourcePlay.
   ///
   /// In fr, this message translates to:
-  /// **'Aucune source de lecture installée. Ajoute une source pour lire.'**
+  /// **'Il te faut une source pour lire.'**
   String get errorNoSourcePlay;
 
   /// No description provided for @errorNoSourceLyrics.
   ///
   /// In fr, this message translates to:
-  /// **'Aucune source de paroles installée. Ajoute une source pour voir les paroles.'**
+  /// **'Il te faut une source pour voir les paroles.'**
   String get errorNoSourceLyrics;
 
   /// No description provided for @errorNoSourceRadio.
   ///
   /// In fr, this message translates to:
-  /// **'Aucune source de radio installée. Ajoute une source pour lancer une radio.'**
+  /// **'Il te faut une source pour lancer une radio.'**
   String get errorNoSourceRadio;
 
   /// No description provided for @errorNoSourceBrowse.
   ///
   /// In fr, this message translates to:
-  /// **'Aucune source pour explorer. Ajoute une source pour découvrir de la musique.'**
+  /// **'Il te faut une source pour explorer.'**
   String get errorNoSourceBrowse;
+
+  /// No description provided for @actionAddSource.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter une source'**
+  String get actionAddSource;
 }
 
 class _AppLocalizationsDelegate
