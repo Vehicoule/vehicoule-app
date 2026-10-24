@@ -611,7 +611,25 @@ Issus de la revue finale du plan 7 (`final-rereview.md`). Rust uniquement, TDD, 
 3. Un build réseau demandé, l'appareil désormais hors ligne et un doc existant → `Offline`,
    rien n'est écrit. Test : le doc stocké reste identique à l'octet près.
 
-La Task 6 doit aussi repartir de la page 1 à chaque `LibraryChanged::Home`.
+   L'arrêt ne vaut qu'en ligne avec les découvertes activées ; sinon la page continue.
+
+La Task 6 doit aussi repartir de la page 1 à chaque `LibraryChanged::Home`, et continuer à
+charger tant qu'une page a moins de deux étagères.
+
+**Données du cœur pour la spec UI v2** (Rust + pont régénéré ; vérifier d'abord ce qui existe
+déjà, puis ajouter seulement ce qui manque, en TDD) :
+
+4. Activer / désactiver une source (`set_plugin_enabled(id, bool)`, état dans
+   `installed_plugins`). Une source désactivée n'est plus routée.
+5. Mise à jour d'un feed signée par une autre clé : refusée avec une erreur distincte
+   (`CoreError::FeedKeyChanged { url }` ou équivalent), exposée par `feeds()` pour que l'écran
+   Sources montre le message de spec UI §6.7.
+6. Taille de la mise à jour dans `UpdateInfo` (la taille de l'asset de la release).
+7. `playlists_containing(track_id) -> Vec<String>` pour « Ajouter à une playlist ».
+8. Candidats de « Ce n'est pas le bon morceau » avec la source et la durée, et un moyen de
+   lire un candidat avant de le choisir (sans le retenir).
+9. Progression de l'import page par page (`LibraryChanged::ImportProgress { page, pages }` ou
+   un flux équivalent), pour la progression ondulée.
 
 ### Task 6 : écrans d'écoute (accueil, Explorer, pages, lecteur, file, paroles)
 
