@@ -230,10 +230,6 @@ fn card(c: &Connection, id: ItemId) -> rusqlite::Result<Option<CardView>> {
 
 /// An artist's releases, newest first: the album items and their `YYYY-MM-DD` dates. The
 /// plugins asked are those holding a ref of the artist.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the home feed (plan 7, Task 6)")
-)]
 pub(crate) async fn releases(artist: ItemId) -> Result<Vec<(ItemId, String)>, CoreError> {
     let key = format!("browse_releases:{artist}");
     let (found, _) = cached(key, || fetch_releases(artist)).await?;

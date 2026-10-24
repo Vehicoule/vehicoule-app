@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::items::canonical;
 use super::{ItemId, Kind, Page, Tx};
@@ -172,6 +172,21 @@ pub fn played_or_liked(c: &Connection) -> rusqlite::Result<HashSet<ItemId>> {
          WHERE l.deleted_at IS NULL",
     )?;
     st.query_map([], |r| r.get(0))?.collect()
+}
+
+/// The artist's most played track, all time (counted plays); merges resolved on both.
+pub fn top_track_of(c: &Connection, artist: ItemId) -> rusqlite::Result<Option<ItemId>> {
+    let sql = format!(
+        "SELECT r.id {PLAYED} JOIN music_track_artists ta ON ta.track_id = r.id
+         JOIN items a ON a.id = ta.artist_id
+         WHERE {} AND r.kind = 'track' AND r.deleted_at IS NULL
+           AND COALESCE(a.merged_into, a.id) = ?2
+         GROUP BY r.id ORDER BY count(DISTINCT p.id) DESC, max(p.started_at) DESC, r.id DESC
+         LIMIT 1",
+        counted()
+    );
+    c.query_row(&sql, params![0, canonical(c, artist)?], |r| r.get(0))
+        .optional()
 }
 
 #[cfg(test)]
@@ -452,6 +467,54 @@ pub(crate) mod tests {
         // b's plays count for its root a; d's artist "X bis" counts as x.
         assert_eq!(tracks, vec![a, c, d]);
         assert_eq!(artists, vec![x, y]);
+    }
+
+    #[test]
+    fn top_track_of_counts_all_time_plays_of_the_artist() {
+        let db = Db::open_in_memory().unwrap();
+        let (a, b, c, other, twin) = db
+            .write_blocking(|tx| {
+                Ok((
+                    song(tx, "a", "A", "X", None)?,
+                    song(tx, "b", "B", "X", None)?,
+                    song(tx, "c", "C", "X", None)?,
+                    song(tx, "o", "O", "Y", None)?,
+                    song(tx, "t", "T", "X bis", None)?,
+                ))
+            })
+            .unwrap();
+        let (x, y, x_bis) = (
+            artist_of(&db, a),
+            artist_of(&db, other),
+            artist_of(&db, twin),
+        );
+        let now = now_ms();
+        // b: two counted plays, one long ago; a: one; c: skips only; o: another artist.
+        play_at(&db, b, now - 400 * DAY, 60_000, None);
+        play_at(&db, b, now - DAY, 60_000, None);
+        play_at(&db, a, now - DAY, 60_000, None);
+        for _ in 0..3 {
+            play_at(&db, c, now - DAY, 29_999, None);
+            play_at(&db, other, now - DAY, 60_000, None);
+        }
+        let (top, unplayed) = db
+            .read_blocking(move |cn| Ok((top_track_of(cn, x)?, top_track_of(cn, x_bis)?)))
+            .unwrap();
+        assert_eq!(top, Some(b));
+        assert_eq!(unplayed, None);
+        // Once "X bis" is merged into X, its plays count for X, asked by either id.
+        for _ in 0..3 {
+            play_at(&db, twin, now - DAY, 60_000, None);
+        }
+        merge(&db, x, x_bis);
+        let (by_root, by_twin) = db
+            .read_blocking(move |cn| Ok((top_track_of(cn, x)?, top_track_of(cn, x_bis)?)))
+            .unwrap();
+        assert_eq!((by_root, by_twin), (Some(twin), Some(twin)));
+        assert_eq!(
+            db.read_blocking(move |cn| top_track_of(cn, y)).unwrap(),
+            Some(other)
+        );
     }
 
     #[test]

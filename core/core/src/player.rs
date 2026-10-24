@@ -424,8 +424,8 @@ async fn gain_for(res: &Resolution) -> f32 {
     }
 }
 
-/// A radio seeded by `seed`: tracks stored in the catalogue, minus the last plays.
-async fn radio(seed: ItemId) -> Result<Vec<String>, CoreError> {
+/// A radio seeded by `seed`: its tracks stored in the catalogue, without duplicates.
+pub(crate) async fn radio_tracks(seed: ItemId) -> Result<Vec<ItemId>, CoreError> {
     let app = app();
     let (track, refs) = track_and_refs(seed).await?;
     let (plugin, found) = router::first_ok(Capability::Radio, |p| {
@@ -445,25 +445,37 @@ async fn radio(seed: ItemId) -> Result<Vec<String>, CoreError> {
     })
     .await?;
     let p = plugin.id().to_string();
-    let ids = app
+    Ok(app
         .db
         .write(move |tx| {
-            let recent = Page {
-                offset: 0,
-                limit: RADIO_EXCLUDE,
-            };
-            let recent = plays::recent_items(&tx.tx, Kind::Track, recent)?;
             let mut out = Vec::new();
             for t in found {
                 let id = lib::upsert_track(tx, &p, &convert::track(t))?;
-                if !recent.contains(&id) && !out.contains(&id) {
+                if !out.contains(&id) {
                     out.push(id);
                 }
             }
             Ok(out)
         })
+        .await?)
+}
+
+/// `radio_tracks` minus the last plays.
+async fn radio(seed: ItemId) -> Result<Vec<String>, CoreError> {
+    let found = radio_tracks(seed).await?;
+    let recent = Page {
+        offset: 0,
+        limit: RADIO_EXCLUDE,
+    };
+    let recent = app()
+        .db
+        .read(move |c| plays::recent_items(c, Kind::Track, recent))
         .await?;
-    Ok(ids.into_iter().map(|i| i.to_string()).collect())
+    Ok(found
+        .into_iter()
+        .filter(|id| !recent.contains(id))
+        .map(|i| i.to_string())
+        .collect())
 }
 
 fn seed() -> u64 {
