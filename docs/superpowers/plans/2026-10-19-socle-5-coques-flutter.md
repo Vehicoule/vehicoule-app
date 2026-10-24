@@ -532,6 +532,20 @@ testWidgets('first launch redirects to onboarding', ...);
   La tâche 6 ne commence qu'après son accord, consigné dans le ledger
   (`Ruling (user): shell approved`).
 
+### Task 5b : reliquats du fil d'accueil (cœur, avant la Task 6)
+
+Issus de la revue finale du plan 7 (`final-rereview.md`). Rust uniquement, TDD, dans
+`core/core/src/home/mod.rs` :
+
+1. `failure()` ne compte pas `NotFound` (radio vide) comme une panne réseau. Test : toutes
+   les radios répondent vide en ligne → le fil est reconstruit, pas figé.
+2. La page 1 s'arrête sur une étagère « Parce que tu as écouté » non chargée au lieu de la
+   sauter. Test : 4 étagères locales vides devant la 2ᵉ BYL → elle arrive en page 2, chargée.
+3. Un build réseau demandé, l'appareil désormais hors ligne et un doc existant → `Offline`,
+   rien n'est écrit. Test : le doc stocké reste identique à l'octet près.
+
+La Task 6 doit aussi repartir de la page 1 à chaque `LibraryChanged::Home`.
+
 ### Task 6 : écrans d'écoute (accueil, Explorer, pages, lecteur, file, paroles)
 
 **Files :**
