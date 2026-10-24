@@ -20,7 +20,8 @@ Future<void> initApp({required AppConfig cfg}) =>
 /// restart, telemetry starts if opted in. Idempotent; a failed call leaves it to the next.
 Future<void> start() => RustLib.instance.api.crateApiAppStart();
 
-/// Offline, no plugin is called; back online, pending downloads restart.
+/// Offline, no plugin is called; back online, pending downloads restart and a home feed over
+/// 24 h old is rebuilt in the background.
 Future<void> setOnline({required bool online}) =>
     RustLib.instance.api.crateApiAppSetOnline(online: online);
 

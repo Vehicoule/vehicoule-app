@@ -56,7 +56,7 @@ extension LibraryChangedPatterns on LibraryChanged {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( LibraryChanged_Likes value)?  likes,TResult Function( LibraryChanged_Playlists value)?  playlists,TResult Function( LibraryChanged_Playlist value)?  playlist,TResult Function( LibraryChanged_Downloads value)?  downloads,TResult Function( LibraryChanged_History value)?  history,TResult Function( LibraryChanged_Plugins value)?  plugins,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( LibraryChanged_Likes value)?  likes,TResult Function( LibraryChanged_Playlists value)?  playlists,TResult Function( LibraryChanged_Playlist value)?  playlist,TResult Function( LibraryChanged_Downloads value)?  downloads,TResult Function( LibraryChanged_History value)?  history,TResult Function( LibraryChanged_Plugins value)?  plugins,TResult Function( LibraryChanged_Home value)?  home,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case LibraryChanged_Likes() when likes != null:
@@ -65,7 +65,8 @@ return playlists(_that);case LibraryChanged_Playlist() when playlist != null:
 return playlist(_that);case LibraryChanged_Downloads() when downloads != null:
 return downloads(_that);case LibraryChanged_History() when history != null:
 return history(_that);case LibraryChanged_Plugins() when plugins != null:
-return plugins(_that);case _:
+return plugins(_that);case LibraryChanged_Home() when home != null:
+return home(_that);case _:
   return orElse();
 
 }
@@ -83,7 +84,7 @@ return plugins(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( LibraryChanged_Likes value)  likes,required TResult Function( LibraryChanged_Playlists value)  playlists,required TResult Function( LibraryChanged_Playlist value)  playlist,required TResult Function( LibraryChanged_Downloads value)  downloads,required TResult Function( LibraryChanged_History value)  history,required TResult Function( LibraryChanged_Plugins value)  plugins,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( LibraryChanged_Likes value)  likes,required TResult Function( LibraryChanged_Playlists value)  playlists,required TResult Function( LibraryChanged_Playlist value)  playlist,required TResult Function( LibraryChanged_Downloads value)  downloads,required TResult Function( LibraryChanged_History value)  history,required TResult Function( LibraryChanged_Plugins value)  plugins,required TResult Function( LibraryChanged_Home value)  home,}){
 final _that = this;
 switch (_that) {
 case LibraryChanged_Likes():
@@ -92,7 +93,8 @@ return playlists(_that);case LibraryChanged_Playlist():
 return playlist(_that);case LibraryChanged_Downloads():
 return downloads(_that);case LibraryChanged_History():
 return history(_that);case LibraryChanged_Plugins():
-return plugins(_that);}
+return plugins(_that);case LibraryChanged_Home():
+return home(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -106,7 +108,7 @@ return plugins(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( LibraryChanged_Likes value)?  likes,TResult? Function( LibraryChanged_Playlists value)?  playlists,TResult? Function( LibraryChanged_Playlist value)?  playlist,TResult? Function( LibraryChanged_Downloads value)?  downloads,TResult? Function( LibraryChanged_History value)?  history,TResult? Function( LibraryChanged_Plugins value)?  plugins,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( LibraryChanged_Likes value)?  likes,TResult? Function( LibraryChanged_Playlists value)?  playlists,TResult? Function( LibraryChanged_Playlist value)?  playlist,TResult? Function( LibraryChanged_Downloads value)?  downloads,TResult? Function( LibraryChanged_History value)?  history,TResult? Function( LibraryChanged_Plugins value)?  plugins,TResult? Function( LibraryChanged_Home value)?  home,}){
 final _that = this;
 switch (_that) {
 case LibraryChanged_Likes() when likes != null:
@@ -115,7 +117,8 @@ return playlists(_that);case LibraryChanged_Playlist() when playlist != null:
 return playlist(_that);case LibraryChanged_Downloads() when downloads != null:
 return downloads(_that);case LibraryChanged_History() when history != null:
 return history(_that);case LibraryChanged_Plugins() when plugins != null:
-return plugins(_that);case _:
+return plugins(_that);case LibraryChanged_Home() when home != null:
+return home(_that);case _:
   return null;
 
 }
@@ -132,7 +135,7 @@ return plugins(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  likes,TResult Function()?  playlists,TResult Function( String id)?  playlist,TResult Function()?  downloads,TResult Function()?  history,TResult Function()?  plugins,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  likes,TResult Function()?  playlists,TResult Function( String id)?  playlist,TResult Function()?  downloads,TResult Function()?  history,TResult Function()?  plugins,TResult Function()?  home,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case LibraryChanged_Likes() when likes != null:
 return likes();case LibraryChanged_Playlists() when playlists != null:
@@ -140,7 +143,8 @@ return playlists();case LibraryChanged_Playlist() when playlist != null:
 return playlist(_that.id);case LibraryChanged_Downloads() when downloads != null:
 return downloads();case LibraryChanged_History() when history != null:
 return history();case LibraryChanged_Plugins() when plugins != null:
-return plugins();case _:
+return plugins();case LibraryChanged_Home() when home != null:
+return home();case _:
   return orElse();
 
 }
@@ -158,7 +162,7 @@ return plugins();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  likes,required TResult Function()  playlists,required TResult Function( String id)  playlist,required TResult Function()  downloads,required TResult Function()  history,required TResult Function()  plugins,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  likes,required TResult Function()  playlists,required TResult Function( String id)  playlist,required TResult Function()  downloads,required TResult Function()  history,required TResult Function()  plugins,required TResult Function()  home,}) {final _that = this;
 switch (_that) {
 case LibraryChanged_Likes():
 return likes();case LibraryChanged_Playlists():
@@ -166,7 +170,8 @@ return playlists();case LibraryChanged_Playlist():
 return playlist(_that.id);case LibraryChanged_Downloads():
 return downloads();case LibraryChanged_History():
 return history();case LibraryChanged_Plugins():
-return plugins();}
+return plugins();case LibraryChanged_Home():
+return home();}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -180,7 +185,7 @@ return plugins();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  likes,TResult? Function()?  playlists,TResult? Function( String id)?  playlist,TResult? Function()?  downloads,TResult? Function()?  history,TResult? Function()?  plugins,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  likes,TResult? Function()?  playlists,TResult? Function( String id)?  playlist,TResult? Function()?  downloads,TResult? Function()?  history,TResult? Function()?  plugins,TResult? Function()?  home,}) {final _that = this;
 switch (_that) {
 case LibraryChanged_Likes() when likes != null:
 return likes();case LibraryChanged_Playlists() when playlists != null:
@@ -188,7 +193,8 @@ return playlists();case LibraryChanged_Playlist() when playlist != null:
 return playlist(_that.id);case LibraryChanged_Downloads() when downloads != null:
 return downloads();case LibraryChanged_History() when history != null:
 return history();case LibraryChanged_Plugins() when plugins != null:
-return plugins();case _:
+return plugins();case LibraryChanged_Home() when home != null:
+return home();case _:
   return null;
 
 }
@@ -416,6 +422,38 @@ int get hashCode => runtimeType.hashCode;
 @override
 String toString() {
     return 'LibraryChanged.plugins()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class LibraryChanged_Home extends LibraryChanged {
+  const LibraryChanged_Home(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is LibraryChanged_Home);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'LibraryChanged.home()';
 }
 
 

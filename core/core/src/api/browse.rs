@@ -30,7 +30,8 @@ pub struct CategoryPageView {
     pub title: String,
     pub shelves: Vec<BrowseShelfView>,
     pub next: Option<String>,
-    /// Served from the stored copy, not from this call.
+    /// The last stored copy, served because the call failed or the app is offline (a copy
+    /// still fresh is not flagged).
     pub from_cache: bool,
 }
 

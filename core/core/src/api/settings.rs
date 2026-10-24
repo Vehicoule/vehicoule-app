@@ -1,10 +1,14 @@
-//! Settings: `quality`, `normalize_volume`, telemetry on this device; `radio` shared with the
-//! user's other devices. Stored as text: booleans are on unless `false`.
+//! Settings: `quality`, `normalize_volume`, telemetry, `discover` on this device; `radio`
+//! shared with the user's other devices. Stored as text: booleans are on unless `false`.
+//! Interface preferences (`ui.*`) live on this device too, never read by the core.
 
 use crate::api::app::{TELEMETRY, set_telemetry};
 use crate::app::app;
 use crate::error::CoreError;
 use crate::library::settings as rows;
+
+/// Device setting, on unless `false`: the home feed reads it too.
+pub(crate) const DISCOVER: &str = "discover";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
@@ -13,6 +17,8 @@ pub struct Settings {
     pub radio: bool,
     /// `false` until chosen (onboarding).
     pub telemetry: bool,
+    /// The home feed asks the plugins (discovery, mixes, releases, chart).
+    pub discover: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,12 +38,13 @@ impl Quality {
     }
 }
 
-/// Defaults: normal quality, normalisation and radio on, telemetry off.
+/// Defaults: normal quality, normalisation, radio and discover on, telemetry off.
 fn stored(
     quality: Option<String>,
     normalize: Option<String>,
     radio: Option<String>,
     telemetry: Option<String>,
+    discover: Option<String>,
 ) -> Settings {
     let on = |v: Option<String>| v.as_deref() != Some("false");
     Settings {
@@ -48,6 +55,7 @@ fn stored(
         normalize_volume: on(normalize),
         radio: on(radio),
         telemetry: telemetry.as_deref() == Some("true"),
+        discover: on(discover),
     }
 }
 
@@ -60,6 +68,7 @@ pub async fn settings() -> Result<Settings, CoreError> {
                 rows::device_get(c, "normalize_volume")?,
                 rows::shared_get(c, "radio")?,
                 rows::device_get(c, TELEMETRY)?,
+                rows::device_get(c, DISCOVER)?,
             ))
         })
         .await?)
@@ -76,6 +85,7 @@ pub async fn set_settings(s: Settings) -> Result<(), CoreError> {
             rows::device_set(tx, "quality", s.quality.as_str())?;
             rows::device_set(tx, "normalize_volume", &s.normalize_volume.to_string())?;
             rows::shared_set(tx, "radio", &s.radio.to_string())?;
+            rows::device_set(tx, DISCOVER, &s.discover.to_string())?;
             match on != was {
                 true => rows::device_set(tx, TELEMETRY, &on.to_string()),
                 false => Ok(()),
@@ -85,6 +95,33 @@ pub async fn set_settings(s: Settings) -> Result<(), CoreError> {
     if on != was {
         set_telemetry(on);
     }
+    Ok(())
+}
+
+/// Only `ui.*` keys: any other is `NotFound`.
+fn ui_key(key: &str) -> Result<(), CoreError> {
+    match key.starts_with("ui.") {
+        true => Ok(()),
+        false => Err(CoreError::NotFound),
+    }
+}
+
+/// An interface preference (`ui.theme`, `ui.sort.<list>`...), stored for Dart as given.
+pub async fn ui_pref(key: String) -> Result<Option<String>, CoreError> {
+    ui_key(&key)?;
+    Ok(app().db.read(move |c| rows::device_get(c, &key)).await?)
+}
+
+/// `None` removes it.
+pub async fn set_ui_pref(key: String, value: Option<String>) -> Result<(), CoreError> {
+    ui_key(&key)?;
+    app()
+        .db
+        .write(move |tx| match &value {
+            Some(v) => rows::device_set(tx, &key, v),
+            None => rows::device_delete(tx, &key),
+        })
+        .await?;
     Ok(())
 }
 
@@ -99,10 +136,11 @@ mod tests {
             normalize_volume: true,
             radio: true,
             telemetry: false,
+            discover: true,
         };
-        assert_eq!(stored(None, None, None, None), want);
+        assert_eq!(stored(None, None, None, None, None), want);
         let s = |v: &str| Some(v.to_string());
-        assert_eq!(stored(s("bogus"), s("x"), None, s("x")), want);
+        assert_eq!(stored(s("bogus"), s("x"), None, s("x"), s("x")), want);
     }
 
     #[tokio::test]
@@ -114,12 +152,13 @@ mod tests {
             normalize_volume: false,
             radio: false,
             telemetry: false,
+            discover: false,
         };
         set_settings(s.clone()).await.unwrap();
         assert_eq!(settings().await.unwrap(), s);
         let quality = app.db.read(|c| rows::device_get(c, "quality")).await;
         assert_eq!(quality.unwrap().as_deref(), Some("low"));
-        let defaults = stored(None, None, None, None);
+        let defaults = stored(None, None, None, None, None);
         set_settings(defaults.clone()).await.unwrap();
         assert_eq!(settings().await.unwrap(), defaults);
     }
@@ -135,8 +174,38 @@ mod tests {
             })
         };
         forget(app).await.unwrap();
-        set_settings(stored(None, None, None, None)).await.unwrap();
+        set_settings(stored(None, None, None, None, None))
+            .await
+            .unwrap();
         assert_eq!(crate::api::app::onboarding().unwrap().telemetry, None);
         forget(app).await.unwrap();
+    }
+
+    #[test]
+    fn settings_discover_defaults_on() {
+        assert!(stored(None, None, None, None, None).discover);
+        let off = stored(None, None, None, None, Some("false".into()));
+        assert!(!off.discover);
+    }
+
+    #[tokio::test]
+    async fn ui_pref_round_trips_and_rejects_other_keys() {
+        let (_turn, _) = crate::catalog::tests::setup().await;
+        set_ui_pref("ui.theme".into(), Some("dark".into()))
+            .await
+            .unwrap();
+        assert_eq!(
+            ui_pref("ui.theme".into()).await.unwrap().as_deref(),
+            Some("dark")
+        );
+        set_ui_pref("ui.theme".into(), None).await.unwrap();
+        assert_eq!(ui_pref("ui.theme".into()).await.unwrap(), None);
+        assert_eq!(ui_pref("quality".into()).await, Err(CoreError::NotFound));
+        let set = set_ui_pref("quality".into(), Some("low".into())).await;
+        assert_eq!(set, Err(CoreError::NotFound));
+        assert_eq!(
+            set_ui_pref("quality".into(), None).await,
+            Err(CoreError::NotFound)
+        );
     }
 }

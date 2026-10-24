@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `as_str`, `stored`
+// These functions are ignored because they are not marked as `pub`: `as_str`, `stored`, `ui_key`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `eq`, `eq`, `fmt`, `fmt`
 
 Future<Settings> settings() => RustLib.instance.api.crateApiSettingsSettings();
@@ -17,6 +17,14 @@ Future<Settings> settings() => RustLib.instance.api.crateApiSettingsSettings();
 /// unchosen (`onboarding().telemetry == None`) until turned on or onboarding chooses.
 Future<void> setSettings({required Settings s}) =>
     RustLib.instance.api.crateApiSettingsSetSettings(s: s);
+
+/// An interface preference (`ui.theme`, `ui.sort.<list>`...), stored for Dart as given.
+Future<String?> uiPref({required String key}) =>
+    RustLib.instance.api.crateApiSettingsUiPref(key: key);
+
+/// `None` removes it.
+Future<void> setUiPref({required String key, String? value}) =>
+    RustLib.instance.api.crateApiSettingsSetUiPref(key: key, value: value);
 
 enum Quality { low, normal, high }
 
@@ -28,11 +36,15 @@ class Settings {
   /// `false` until chosen (onboarding).
   final bool telemetry;
 
+  /// The home feed asks the plugins (discovery, mixes, releases, chart).
+  final bool discover;
+
   const Settings({
     required this.quality,
     required this.normalizeVolume,
     required this.radio,
     required this.telemetry,
+    required this.discover,
   });
 
   @override
@@ -40,7 +52,8 @@ class Settings {
       quality.hashCode ^
       normalizeVolume.hashCode ^
       radio.hashCode ^
-      telemetry.hashCode;
+      telemetry.hashCode ^
+      discover.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -50,5 +63,6 @@ class Settings {
           quality == other.quality &&
           normalizeVolume == other.normalizeVolume &&
           radio == other.radio &&
-          telemetry == other.telemetry;
+          telemetry == other.telemetry &&
+          discover == other.discover;
 }

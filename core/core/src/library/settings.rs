@@ -27,6 +27,12 @@ pub fn device_set(tx: &Tx, key: &str, value: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+pub fn device_delete(tx: &Tx, key: &str) -> rusqlite::Result<()> {
+    tx.tx
+        .execute("DELETE FROM settings_device WHERE key = ?1", [key])?;
+    Ok(())
+}
+
 /// `None` when missing or logically deleted.
 pub fn shared_get(c: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
     c.query_row(

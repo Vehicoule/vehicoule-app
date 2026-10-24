@@ -43,7 +43,8 @@ class CategoryPageView {
   final List<BrowseShelfView> shelves;
   final String? next;
 
-  /// Served from the stored copy, not from this call.
+  /// The last stored copy, served because the call failed or the app is offline (a copy
+  /// still fresh is not flagged).
   final bool fromCache;
 
   const CategoryPageView({

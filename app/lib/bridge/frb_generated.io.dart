@@ -178,7 +178,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   HistoryEntryView dco_decode_history_entry_view(dynamic raw);
 
   @protected
-  HomeView dco_decode_home_view(dynamic raw);
+  HomeFeedPage dco_decode_home_feed_page(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -248,6 +248,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
+
+  @protected
+  List<ShelfView> dco_decode_list_shelf_view(dynamic raw);
 
   @protected
   List<SuggestionView> dco_decode_list_suggestion_view(dynamic raw);
@@ -350,6 +353,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Settings dco_decode_settings(dynamic raw);
+
+  @protected
+  ShelfKindView dco_decode_shelf_kind_view(dynamic raw);
+
+  @protected
+  ShelfView dco_decode_shelf_view(dynamic raw);
 
   @protected
   Source dco_decode_source(dynamic raw);
@@ -526,7 +535,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   HistoryEntryView sse_decode_history_entry_view(SseDeserializer deserializer);
 
   @protected
-  HomeView sse_decode_home_view(SseDeserializer deserializer);
+  HomeFeedPage sse_decode_home_feed_page(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -616,6 +625,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<(String, String)> sse_decode_list_record_string_string(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<ShelfView> sse_decode_list_shelf_view(SseDeserializer deserializer);
 
   @protected
   List<SuggestionView> sse_decode_list_suggestion_view(
@@ -734,6 +746,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Settings sse_decode_settings(SseDeserializer deserializer);
+
+  @protected
+  ShelfKindView sse_decode_shelf_kind_view(SseDeserializer deserializer);
+
+  @protected
+  ShelfView sse_decode_shelf_view(SseDeserializer deserializer);
 
   @protected
   Source sse_decode_source(SseDeserializer deserializer);
@@ -961,7 +979,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_home_view(HomeView self, SseSerializer serializer);
+  void sse_encode_home_feed_page(HomeFeedPage self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
@@ -1074,6 +1092,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_record_string_string(
     List<(String, String)> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_shelf_view(
+    List<ShelfView> self,
     SseSerializer serializer,
   );
 
@@ -1208,6 +1232,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_settings(Settings self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shelf_kind_view(ShelfKindView self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shelf_view(ShelfView self, SseSerializer serializer);
 
   @protected
   void sse_encode_source(Source self, SseSerializer serializer);

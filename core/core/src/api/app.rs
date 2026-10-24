@@ -6,7 +6,7 @@ use crate::app::{self as core, app};
 pub use crate::app::{AppConfig, Platform};
 use crate::error::CoreError;
 use crate::library::settings as rows;
-use crate::{downloads, player, telemetry};
+use crate::{downloads, home, player, telemetry};
 
 /// Device settings: onboarding finished (`true`), telemetry opt-in (`true`/`false`, absent
 /// until chosen).
@@ -45,11 +45,13 @@ pub async fn start() -> Result<(), CoreError> {
     Ok(())
 }
 
-/// Offline, no plugin is called; back online, pending downloads restart.
+/// Offline, no plugin is called; back online, pending downloads restart and a home feed over
+/// 24 h old is rebuilt in the background.
 pub async fn set_online(online: bool) {
     player::set_online(online);
     if online {
         downloads::resume_pending().await;
+        home::on_online().await;
     }
 }
 

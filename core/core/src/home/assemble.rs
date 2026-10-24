@@ -25,12 +25,13 @@ pub(crate) struct Inputs {
     /// The `folded` keys of the played or liked tracks.
     pub folded_excluded: HashSet<String>,
     /// Per seed: its title and its radio's tracks.
-    pub discovery: Vec<(String, Vec<Candidate>)>,
+    pub discovery: Vec<(String, Vec<Pick>)>,
     pub releases: Vec<ItemId>,
     pub chart: Vec<ItemId>,
 }
 
-pub(crate) struct Candidate {
+/// A discovery candidate.
+pub(crate) struct Pick {
     pub id: ItemId,
     pub isrc: Option<String>,
     /// `folded(title, first artist)`.
@@ -105,7 +106,7 @@ fn shelf(kind: ShelfKind, network: bool, ids: Vec<ItemId>) -> StoredShelf {
 /// The seeds' candidates in turn (each one's first, then each one's second...), without
 /// duplicates by id, ISRC or folded key, nor anything excluded; at most 30.
 fn discovery(
-    seeds: Vec<(String, Vec<Candidate>)>,
+    seeds: Vec<(String, Vec<Pick>)>,
     excluded: &HashSet<ItemId>,
     folded_excluded: &HashSet<String>,
 ) -> Vec<StoredItem> {
@@ -141,8 +142,8 @@ fn discovery(
 mod tests {
     use super::*;
 
-    fn cand(title: &str, artist: &str, isrc: Option<&str>) -> Candidate {
-        Candidate {
+    fn cand(title: &str, artist: &str, isrc: Option<&str>) -> Pick {
+        Pick {
             id: ItemId::new(),
             isrc: isrc.map(Into::into),
             folded: folded(title, artist),
@@ -150,13 +151,13 @@ mod tests {
     }
 
     /// `n` candidates of distinct titles by `artist`.
-    fn cands(artist: &str, n: usize) -> Vec<Candidate> {
+    fn cands(artist: &str, n: usize) -> Vec<Pick> {
         (0..n)
             .map(|i| cand(&format!("{artist} {i}"), artist, None))
             .collect()
     }
 
-    fn ids(c: &[Candidate]) -> Vec<String> {
+    fn ids(c: &[Pick]) -> Vec<String> {
         c.iter().map(|c| c.id.to_string()).collect()
     }
 
@@ -234,7 +235,7 @@ mod tests {
         let a = vec![cand("X", "a", Some("US1"))];
         let mut b = vec![cand("Y", "b", Some("US1"))];
         // The same id from another seed too.
-        b.push(Candidate {
+        b.push(Pick {
             id: a[0].id,
             isrc: None,
             folded: folded("Z", "c"),

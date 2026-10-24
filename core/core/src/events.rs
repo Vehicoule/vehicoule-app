@@ -59,10 +59,14 @@ pub enum Notice {
 pub enum LibraryChanged {
     Likes,
     Playlists,
-    Playlist { id: String },
+    Playlist {
+        id: String,
+    },
     Downloads,
     History,
     Plugins,
+    /// The home feed was rebuilt: read it again from its first page.
+    Home,
 }
 
 pub(crate) struct Events {

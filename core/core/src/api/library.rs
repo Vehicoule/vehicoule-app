@@ -1,28 +1,56 @@
-//! The user's library: likes, history, playlists, downloads, local search.
+//! The user's library: the home feed, likes, history, playlists, downloads, local search.
+
+use serde::{Deserialize, Serialize};
 
 use crate::api::forward;
 use crate::app::app;
 use crate::catalog::{
-    CollectionView, ItemKind, TrackView, collection_views, parse_id, track_view, track_views,
+    CardView, CollectionView, ItemKind, TrackView, collection_views, parse_id, track_view,
+    track_views,
 };
 use crate::downloads::{self, DownloadProgress};
 use crate::error::CoreError;
 use crate::events::LibraryChanged;
 use crate::frb_generated::StreamSink;
-use crate::library::downloads::{self as rows, DownloadState};
+use crate::library::downloads as rows;
 use crate::library::playlists::{self, EntryId, Place};
 use crate::library::{
     CollectionSort, ItemId, Kind, Page, TrackSort, catalog, likes, plays, search,
 };
+use crate::{home, player};
 
-const HOME_ROWS: u32 = 20;
 const LOCAL_HITS: u32 = 50;
 
-pub struct HomeView {
-    pub recent: Vec<TrackView>,
-    pub liked: Vec<TrackView>,
-    pub playlists: Vec<CollectionView>,
-    pub downloads: Vec<TrackView>,
+/// What a home shelf is: Dart names it (the core produces no text).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShelfKindView {
+    Shortcuts,
+    Discovery,
+    Mixes,
+    BecauseYouListened,
+    NewReleases,
+    Rediscover,
+    Chart,
+    Recent,
+    Playlists,
+    Downloads,
+    End,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShelfView {
+    pub kind: ShelfKindView,
+    /// `BecauseYouListened`: the artist's name.
+    pub seed: Option<String>,
+    /// `Discovery`: tracks, each with its seed's title as `reason`; `Mixes`: artists.
+    pub items: Vec<CardView>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HomeFeedPage {
+    pub shelves: Vec<ShelfView>,
+    /// `None` once `End` is in this page.
+    pub next: Option<String>,
 }
 
 /// A track of the history and when it was last played (unix ms), for grouping by day.
@@ -49,24 +77,21 @@ fn changed(c: LibraryChanged) {
     let _ = app().events.library.send(c);
 }
 
-/// 20 of each: recently played, liked, playlists, downloaded.
-pub async fn home() -> Result<HomeView, CoreError> {
-    Ok(app()
-        .db
-        .read(|c| {
-            let mut done = rows::list(c, Some(DownloadState::Done))?;
-            done.truncate(HOME_ROWS as usize);
-            let downloaded: Vec<ItemId> = done.iter().map(|r| r.item).collect();
-            let mut mine = playlists::list(c, CollectionSort::Recent)?;
-            mine.truncate(HOME_ROWS as usize);
-            Ok(HomeView {
-                recent: track_views(c, &plays::recent_items(c, Kind::Track, page(0, HOME_ROWS))?)?,
-                liked: track_views(c, &likes::list(c, Kind::Track, page(0, HOME_ROWS))?)?,
-                playlists: collection_views(c, &mine)?,
-                downloads: track_views(c, &downloaded)?,
-            })
-        })
-        .await?)
+/// Up to 4 shelves from `cursor` (`None`: the first page; else the previous `next`). A feed
+/// over 24 h old (or none yet) is served as is and rebuilt in the background;
+/// `LibraryChanged::Home` tells when.
+pub async fn home_feed(cursor: Option<String>) -> Result<HomeFeedPage, CoreError> {
+    home::page(cursor).await
+}
+
+/// Rebuilds the feed now (pull to refresh); `LibraryChanged::Home` follows.
+pub async fn refresh_home() -> Result<(), CoreError> {
+    home::rebuild().await
+}
+
+/// Plays a radio of the artist's most played track (else the first of its page).
+pub async fn play_mix(artist_id: String) -> Result<(), CoreError> {
+    player::play_mix(artist_id).await
 }
 
 pub async fn set_liked(id: String, liked: bool) -> Result<(), CoreError> {
@@ -413,5 +438,60 @@ mod tests {
         let mine = all.iter().find(|e| e.track.id == id).unwrap();
         assert_eq!(mine.played_at_ms, at);
         assert_eq!(mine.track.title, "history at");
+    }
+
+    #[tokio::test]
+    async fn refresh_home_emits_library_changed_home() {
+        let (_lock, app) = catalog::tests::setup().await;
+        crate::home::tests::wipe().await;
+        let mut rx = app.events.library.subscribe();
+        refresh_home().await.unwrap();
+        let mut got = vec![];
+        while let Ok(c) = rx.try_recv() {
+            got.push(c);
+        }
+        assert_eq!(got, [LibraryChanged::Home]);
+        let page = home_feed(None).await.unwrap();
+        assert_eq!(
+            page.shelves.last().map(|s| s.kind),
+            Some(ShelfKindView::End)
+        );
+    }
+
+    #[tokio::test]
+    async fn play_mix_seeds_with_most_played_track() {
+        use crate::home::tests::{play, song, wipe};
+        let (_lock, app) = catalog::tests::setup().await;
+        crate::player::reset();
+        wipe().await;
+        let (_, _, artist) = song("mix a").await;
+        // The artist's page: "ar-mix-a 1" then "ar-mix-a 2", both by the artist.
+        let page = catalog::entity(&artist.to_string(), None).await.unwrap();
+        let ids: Vec<ItemId> = page
+            .tracks
+            .iter()
+            .map(|t| parse_id(&t.id).unwrap())
+            .collect();
+        play(ids[1], None).await;
+        play(ids[1], None).await;
+        play(ids[0], None).await;
+        let mut rx = app.events.queue.subscribe();
+        play_mix(artist.to_string()).await.unwrap();
+        let mut last = None;
+        while let Ok(v) = rx.try_recv() {
+            last = Some(v);
+        }
+        let q = last.unwrap();
+        let context = q.context.unwrap();
+        assert_eq!(
+            (context.kind.as_str(), context.id, context.title.as_str()),
+            ("mix", Some(artist.to_string()), "Artist mix-a")
+        );
+        // The radio of the most played one.
+        assert_eq!(q.current.unwrap().title, "radio ar-mix-a-2 1");
+        app.set_online(false);
+        let offline = play_mix(artist.to_string()).await;
+        app.set_online(true);
+        assert_eq!(offline, Err(CoreError::Offline));
     }
 }

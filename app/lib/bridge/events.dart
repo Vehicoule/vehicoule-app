@@ -25,6 +25,9 @@ sealed class LibraryChanged with _$LibraryChanged {
   const factory LibraryChanged.downloads() = LibraryChanged_Downloads;
   const factory LibraryChanged.history() = LibraryChanged_History;
   const factory LibraryChanged.plugins() = LibraryChanged_Plugins;
+
+  /// The home feed was rebuilt: read it again from its first page.
+  const factory LibraryChanged.home() = LibraryChanged_Home;
 }
 
 @freezed

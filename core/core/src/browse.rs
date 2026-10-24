@@ -43,8 +43,9 @@ struct PageDoc {
     next: Option<String>,
 }
 
-/// The copy under `key` while younger than 24 h; else `fetch`'s answer, stored; else
-/// (offline, or the call failed) the copy whatever its age. `true`: served from the copy.
+/// The copy under `key` while younger than 24 h; else `fetch`'s answer, stored (a failed
+/// write is logged); else (offline, or the call failed) the copy whatever its age. `true`:
+/// that fallback copy was served.
 async fn cached<T, Fut>(key: String, fetch: impl FnOnce() -> Fut) -> Result<(T, bool), CoreError>
 where
     T: Serialize + DeserializeOwned + Send + 'static,
@@ -58,7 +59,7 @@ where
             .ok()
     });
     if let Some(c) = copy.take_if(|c| now_ms() - c.built_at_ms < TTL_MS) {
-        return Ok((c.data, true));
+        return Ok((c.data, false));
     }
     let fetched = match online() {
         Ok(()) => fetch().await,
@@ -70,8 +71,18 @@ where
                 built_at_ms: now_ms(),
                 data: &data,
             };
-            let bytes = serde_json::to_vec(&doc).map_err(|e| CoreError::Internal(e.to_string()))?;
-            db.write(move |tx| kv::set(tx, NS, &key, &bytes)).await?;
+            let stored = match serde_json::to_vec(&doc) {
+                Ok(bytes) => {
+                    let k = key.clone();
+                    db.write(move |tx| kv::set(tx, NS, &k, &bytes))
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+                Err(e) => Err(e.to_string()),
+            };
+            if let Err(e) = stored {
+                logs::push("warn", "browse", &format!("{key}: {e}"));
+            }
             Ok((data, false))
         }
         Err(e) => copy.map(|c| (c.data, true)).ok_or(e),
@@ -218,7 +229,7 @@ fn upsert(tx: &Tx, provider: &str, e: Entity) -> rusqlite::Result<ItemId> {
 }
 
 /// A track or a collection; `None` for an item gone since the copy was made.
-fn card(c: &Connection, id: ItemId) -> rusqlite::Result<Option<CardView>> {
+pub(crate) fn card(c: &Connection, id: ItemId) -> rusqlite::Result<Option<CardView>> {
     if let Some(t) = catalog::track(c, id)? {
         return Ok(Some(CardView::Track {
             track: track_view(t),
@@ -348,7 +359,8 @@ mod tests {
         assert!(!page.from_cache);
         let again = browse_category("chart:0".into(), None).await.unwrap();
         assert_eq!(calls().await, before + 2);
-        assert!(again.from_cache);
+        // A fresh copy is not a fallback: not flagged.
+        assert!(!again.from_cache);
         assert_eq!(ids(&again), ids(&page));
         assert_eq!(again.next.as_deref(), Some("1"));
     }
@@ -536,5 +548,37 @@ mod tests {
         assert_eq!(images.len(), 2);
         assert!(hits.is_empty());
         assert_eq!(search_library("Top fake".into()).await.unwrap(), []);
+    }
+
+    #[tokio::test]
+    async fn a_failed_copy_write_still_serves_the_data() {
+        let (_lock, app) = setup().await;
+        clear().await;
+        let block = "CREATE TEMP TRIGGER no_copy BEFORE INSERT ON plugin_kv
+                     WHEN NEW.plugin_id = '@core' BEGIN SELECT RAISE(ABORT, 'disk full'); END;";
+        app.db
+            .write(move |tx| tx.tx.execute_batch(block))
+            .await
+            .unwrap();
+        let cats = browse_categories().await;
+        let page = browse_category("chart:0".into(), None).await;
+        app.db
+            .write(|tx| tx.tx.execute_batch("DROP TRIGGER no_copy;"))
+            .await
+            .unwrap();
+        assert_eq!(cats.unwrap().len(), 2);
+        assert!(!page.unwrap().from_cache);
+        let copy = app
+            .db
+            .read(|c| kv::get(c, "@core", "browse_categories"))
+            .await;
+        assert_eq!(copy.unwrap(), None);
+        let logged = crate::logs::recent();
+        assert!(
+            logged
+                .iter()
+                .any(|l| l.source == "browse" && l.message.contains("browse_categories")),
+            "{logged:?}"
+        );
     }
 }

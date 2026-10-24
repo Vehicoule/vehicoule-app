@@ -13,9 +13,20 @@ import '../library.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `changed`, `entry_id`, `page`, `playlist_changed`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`
 
-/// 20 of each: recently played, liked, playlists, downloaded.
-Future<HomeView> home() => RustLib.instance.api.crateApiLibraryHome();
+/// Up to 4 shelves from `cursor` (`None`: the first page; else the previous `next`). A feed
+/// over 24 h old (or none yet) is served as is and rebuilt in the background;
+/// `LibraryChanged::Home` tells when.
+Future<HomeFeedPage> homeFeed({String? cursor}) =>
+    RustLib.instance.api.crateApiLibraryHomeFeed(cursor: cursor);
+
+/// Rebuilds the feed now (pull to refresh); `LibraryChanged::Home` follows.
+Future<void> refreshHome() => RustLib.instance.api.crateApiLibraryRefreshHome();
+
+/// Plays a radio of the artist's most played track (else the first of its page).
+Future<void> playMix({required String artistId}) =>
+    RustLib.instance.api.crateApiLibraryPlayMix(artistId: artistId);
 
 Future<void> setLiked({required String id, required bool liked}) =>
     RustLib.instance.api.crateApiLibrarySetLiked(id: id, liked: liked);
@@ -145,35 +156,24 @@ class HistoryEntryView {
           track == other.track;
 }
 
-class HomeView {
-  final List<TrackView> recent;
-  final List<TrackView> liked;
-  final List<CollectionView> playlists;
-  final List<TrackView> downloads;
+class HomeFeedPage {
+  final List<ShelfView> shelves;
 
-  const HomeView({
-    required this.recent,
-    required this.liked,
-    required this.playlists,
-    required this.downloads,
-  });
+  /// `None` once `End` is in this page.
+  final String? next;
+
+  const HomeFeedPage({required this.shelves, this.next});
 
   @override
-  int get hashCode =>
-      recent.hashCode ^
-      liked.hashCode ^
-      playlists.hashCode ^
-      downloads.hashCode;
+  int get hashCode => shelves.hashCode ^ next.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is HomeView &&
+      other is HomeFeedPage &&
           runtimeType == other.runtimeType &&
-          recent == other.recent &&
-          liked == other.liked &&
-          playlists == other.playlists &&
-          downloads == other.downloads;
+          shelves == other.shelves &&
+          next == other.next;
 }
 
 class PlaylistEntryView {
@@ -193,4 +193,43 @@ class PlaylistEntryView {
           runtimeType == other.runtimeType &&
           entry == other.entry &&
           track == other.track;
+}
+
+/// What a home shelf is: Dart names it (the core produces no text).
+enum ShelfKindView {
+  shortcuts,
+  discovery,
+  mixes,
+  becauseYouListened,
+  newReleases,
+  rediscover,
+  chart,
+  recent,
+  playlists,
+  downloads,
+  end,
+}
+
+class ShelfView {
+  final ShelfKindView kind;
+
+  /// `BecauseYouListened`: the artist's name.
+  final String? seed;
+
+  /// `Discovery`: tracks, each with its seed's title as `reason`; `Mixes`: artists.
+  final List<CardView> items;
+
+  const ShelfView({required this.kind, this.seed, required this.items});
+
+  @override
+  int get hashCode => kind.hashCode ^ seed.hashCode ^ items.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShelfView &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          seed == other.seed &&
+          items == other.items;
 }

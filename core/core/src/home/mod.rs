@@ -1,26 +1,35 @@
 //! The home feed (spec UI 6.1, 7.2): seeds read from the library, a discovery list merged
 //! from their radios, shelves assembled in a fixed order and stored in kv `@core`/`home_feed`.
 //! The core produces no text: a shelf is a kind and, for some, a seed's name.
+//!
+//! Read by pages of 4 shelves; a "because you listened" shelf loads on its first read.
+//! Rebuilt in the background when over 24 h old (first page, back online), or on demand.
 
 mod assemble;
 mod seeds;
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use assemble::assemble;
 use seeds::TRACK_SEEDS;
 
 use crate::api::browse::CategoryPageView;
+use crate::api::library::{HomeFeedPage, ShelfView};
+use crate::api::settings::DISCOVER;
 use crate::app::app;
 use crate::browse;
 use crate::catalog::{self as views, CardView, parse_id};
 use crate::error::CoreError;
+use crate::events::LibraryChanged;
 use crate::library::catalog;
-use crate::library::{ItemId, kv, settings};
+use crate::library::{ItemId, kv, plays, settings};
 use crate::logs;
 use crate::player;
+use crate::plugins::now_ms;
 
 /// The core's kv namespace, as in `browse`.
 const NS: &str = "@core";
@@ -29,21 +38,18 @@ const KEY: &str = "home_feed";
 const RELEASES_MS: i64 = 30 * 86_400_000;
 /// The featured chart (Deezer's Top 50); else the first featured category.
 const CHART: &str = "chart:0";
+/// Shelves per page.
+const PAGE: usize = 4;
+/// Older, the doc is rebuilt in the background.
+const STALE_MS: i64 = 24 * 3600 * 1000;
+/// "Because you listened": albums and artists.
+const BECAUSE_ITEMS: usize = 12;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum ShelfKind {
-    Shortcuts,
-    Discovery,
-    Mixes,
-    BecauseYouListened,
-    NewReleases,
-    Rediscover,
-    Chart,
-    Recent,
-    Playlists,
-    Downloads,
-    End,
-}
+/// A background build is running.
+static BUILDING: AtomicBool = AtomicBool::new(false);
+
+/// Stored as is: the bridge's kind is the doc's.
+pub(crate) use crate::api::library::ShelfKindView as ShelfKind;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct StoredItem {
@@ -74,11 +80,15 @@ pub(crate) struct FeedDoc {
 /// Reads the seeds, asks the plugins when `discover` is on and online (a failing source is
 /// left empty and logged), assembles the shelves and stores the doc.
 pub(crate) async fn build(now_ms: i64) -> Result<FeedDoc, CoreError> {
+    build_doc(now_ms, true).await
+}
+
+/// `build`; without `ask`, as if offline.
+async fn build_doc(now_ms: i64, ask: bool) -> Result<FeedDoc, CoreError> {
     let app = app();
-    let discover = app.db.read(|c| settings::device_get(c, "discover")).await?;
-    let discover = discover.as_deref() != Some("false");
+    let discover = app.db.read(discover_on).await?;
     let mut local = app.db.read(move |c| seeds::read(c, now_ms)).await?;
-    if discover && app.is_online() {
+    if ask && discover && app.is_online() {
         network(&mut local, now_ms).await?;
     }
     let doc = FeedDoc {
@@ -88,6 +98,215 @@ pub(crate) async fn build(now_ms: i64) -> Result<FeedDoc, CoreError> {
     let bytes = serde_json::to_vec(&doc).map_err(|e| CoreError::Internal(e.to_string()))?;
     app.db.write(move |tx| kv::set(tx, NS, KEY, &bytes)).await?;
     Ok(doc)
+}
+
+/// The `discover` device setting: on unless `false`.
+fn discover_on(c: &Connection) -> rusqlite::Result<bool> {
+    Ok(settings::device_get(c, DISCOVER)?.as_deref() != Some("false"))
+}
+
+/// `build`, then `LibraryChanged::Home`.
+pub(crate) async fn rebuild() -> Result<(), CoreError> {
+    build(now_ms()).await?;
+    let _ = app().events.library.send(LibraryChanged::Home);
+    Ok(())
+}
+
+/// `rebuild` on the app's runtime, unless one is running already.
+fn in_background() {
+    /// Clears `BUILDING`, a panic included.
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            BUILDING.store(false, Ordering::SeqCst);
+        }
+    }
+    if BUILDING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    app().rt.spawn(async {
+        let _done = Done;
+        logged("build", rebuild().await);
+    });
+}
+
+/// The stored doc; an unreadable one counts as none.
+async fn read_doc() -> Result<Option<FeedDoc>, CoreError> {
+    let bytes = app().db.read(|c| kv::get(c, NS, KEY)).await?;
+    Ok(bytes.and_then(|b| {
+        let doc = serde_json::from_slice(&b);
+        logged("doc", doc.map_err(|e| CoreError::Internal(e.to_string())))
+    }))
+}
+
+fn stale(doc: Option<&FeedDoc>, now_ms: i64) -> bool {
+    doc.is_none_or(|d| now_ms - d.built_at_ms >= STALE_MS)
+}
+
+/// Back online: a doc over 24 h old is rebuilt in the background.
+pub(crate) async fn on_online() {
+    if let Some(doc) = logged("doc", read_doc().await)
+        && stale(doc.as_ref(), now_ms())
+    {
+        in_background();
+    }
+}
+
+/// Up to `PAGE` shelves from the shelf index `cursor`. The first page of a missing or stale
+/// doc starts a background build; a missing doc is first built locally (no plugin call).
+pub(crate) async fn page(cursor: Option<String>) -> Result<HomeFeedPage, CoreError> {
+    let start = match &cursor {
+        Some(c) => c.parse::<usize>().map_err(|_| CoreError::NotFound)?,
+        None => 0,
+    };
+    let now = now_ms();
+    let doc = read_doc().await?;
+    let rebuild = cursor.is_none() && stale(doc.as_ref(), now);
+    let doc = match doc {
+        Some(d) => d,
+        None => build_doc(now, false).await?,
+    };
+    if rebuild {
+        in_background();
+    }
+    let discover = app().db.read(discover_on).await?;
+    let ask = discover && app().is_online();
+    let mut out = HomeFeedPage {
+        shelves: vec![],
+        next: None,
+    };
+    let mut loaded = vec![];
+    for (i, shelf) in doc.shelves.iter().enumerate().skip(start) {
+        if out.shelves.len() == PAGE {
+            out.next = Some(i.to_string());
+            break;
+        }
+        if shelf.network && !discover {
+            continue;
+        }
+        let items = match (&shelf.seed_id, shelf.loaded) {
+            (Some(artist), false) if ask => {
+                let Some(items) = logged("because", load_because(artist).await) else {
+                    continue;
+                };
+                loaded.push((i, items));
+                &loaded[loaded.len() - 1].1
+            }
+            (_, false) => continue,
+            (_, true) => &shelf.items,
+        };
+        let view = view_of(shelf, items).await?;
+        if view.kind == ShelfKind::End {
+            out.shelves.push(view);
+            break;
+        }
+        if !view.items.is_empty() {
+            out.shelves.push(view);
+        }
+    }
+    if !loaded.is_empty() {
+        store_loaded(doc.built_at_ms, loaded).await?;
+    }
+    Ok(out)
+}
+
+/// The shelf as cards; items gone from the catalogue left out.
+async fn view_of(shelf: &StoredShelf, items: &[StoredItem]) -> Result<ShelfView, CoreError> {
+    let ids: Vec<_> = items
+        .iter()
+        .filter_map(|i| Some((parse_id(&i.id).ok()?, i.reason.clone())))
+        .collect();
+    let cards = app()
+        .db
+        .read(move |c| {
+            let mut out = Vec::with_capacity(ids.len());
+            for (id, reason) in ids {
+                out.extend(card(c, id, reason)?);
+            }
+            Ok(out)
+        })
+        .await?;
+    Ok(ShelfView {
+        kind: shelf.kind,
+        seed: shelf.seed.clone(),
+        items: cards,
+    })
+}
+
+fn card(c: &Connection, id: ItemId, why: Option<String>) -> rusqlite::Result<Option<CardView>> {
+    Ok(browse::card(c, id)?.map(|card| match card {
+        CardView::Track { track, .. } => CardView::Track { track, reason: why },
+        other => other,
+    }))
+}
+
+/// Writes the shelves loaded into the doc, unless a build replaced it meanwhile.
+async fn store_loaded(
+    built_at_ms: i64,
+    loaded: Vec<(usize, Vec<StoredItem>)>,
+) -> Result<(), CoreError> {
+    app()
+        .db
+        .write(move |tx| {
+            let Some(bytes) = kv::get(&tx.tx, NS, KEY)? else {
+                return Ok(());
+            };
+            let Ok(mut doc) = serde_json::from_slice::<FeedDoc>(&bytes) else {
+                return Ok(());
+            };
+            if doc.built_at_ms != built_at_ms {
+                return Ok(());
+            }
+            for (i, items) in loaded {
+                if let Some(s) = doc.shelves.get_mut(i) {
+                    s.loaded = true;
+                    s.items = items;
+                }
+            }
+            let bytes = serde_json::to_vec(&doc)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
+            kv::set(tx, NS, KEY, &bytes)
+        })
+        .await?;
+    Ok(())
+}
+
+/// The artist's radio (from `seed_track`) as its distinct albums and artists, the artist
+/// left out: at most 12.
+async fn load_because(artist: &str) -> Result<Vec<StoredItem>, CoreError> {
+    let artist = parse_id(artist)?;
+    let seed = seed_track(artist).await?.ok_or(CoreError::NotFound)?;
+    let found = player::radio_tracks(seed).await?;
+    let tracks = app().db.read(move |c| catalog::tracks(c, &found)).await?;
+    let mut ids = vec![];
+    for t in tracks {
+        let album = t.album.map(|a| a.0);
+        for id in album.into_iter().chain(t.artists.into_iter().map(|a| a.0)) {
+            if id != artist && !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    ids.truncate(BECAUSE_ITEMS);
+    Ok(ids
+        .into_iter()
+        .map(|id| StoredItem {
+            id: id.to_string(),
+            reason: None,
+        })
+        .collect())
+}
+
+/// The artist's most played track (all time), else the first of its `entity` page.
+pub(crate) async fn seed_track(artist: ItemId) -> Result<Option<ItemId>, CoreError> {
+    let top = app()
+        .db
+        .read(move |c| plays::top_track_of(c, artist))
+        .await?;
+    Ok(match top {
+        Some(t) => Some(t),
+        None => first_track(artist).await,
+    })
 }
 
 /// Fills the network inputs: discovery, releases, chart.
@@ -208,7 +427,7 @@ fn date(ms: i64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::app::test_app;
     use crate::catalog;
@@ -222,7 +441,7 @@ mod tests {
 
     /// An empty library: no plays, likes, downloads nor user playlists; no `@core` copy;
     /// `discover` unset.
-    async fn wipe() {
+    pub(crate) async fn wipe() {
         test_app()
             .db
             .write(|tx| {
@@ -238,7 +457,7 @@ mod tests {
     }
 
     /// The track a search for `q` stores: (track, its album, its artist).
-    async fn song(q: &str) -> (ItemId, ItemId, ItemId) {
+    pub(crate) async fn song(q: &str) -> (ItemId, ItemId, ItemId) {
         let t = catalog::search(q).await.unwrap().tracks.remove(0);
         (
             parse_id(&t.id).unwrap(),
@@ -248,7 +467,7 @@ mod tests {
     }
 
     /// A one-minute play of `t` a day ago, from `ctx`.
-    async fn play(t: ItemId, ctx: Option<ItemId>) {
+    pub(crate) async fn play(t: ItemId, ctx: Option<ItemId>) {
         let at = now_ms() - DAY_MS;
         test_app()
             .db
@@ -523,5 +742,221 @@ mod tests {
         let doc = build(now_ms()).await.unwrap();
         assert_eq!(items(&doc, ShelfKind::Discovery), Vec::<String>::new());
         assert_eq!(items(&doc, ShelfKind::Chart).len(), 2);
+    }
+
+    /// A loaded shelf of `ids`.
+    fn stored(kind: ShelfKind, network: bool, ids: &[ItemId]) -> StoredShelf {
+        StoredShelf {
+            kind,
+            seed: None,
+            seed_id: None,
+            network,
+            loaded: true,
+            items: ids
+                .iter()
+                .map(|id| StoredItem {
+                    id: id.to_string(),
+                    reason: None,
+                })
+                .collect(),
+        }
+    }
+
+    /// A "because you listened" shelf of `artist`, not loaded yet.
+    fn because(artist: ItemId, name: &str) -> StoredShelf {
+        StoredShelf {
+            kind: ShelfKind::BecauseYouListened,
+            seed: Some(name.into()),
+            seed_id: Some(artist.to_string()),
+            network: true,
+            loaded: false,
+            items: vec![],
+        }
+    }
+
+    /// Stores a doc of these shelves, built at `at`.
+    async fn store(at: i64, shelves: Vec<StoredShelf>) {
+        let doc = FeedDoc {
+            built_at_ms: at,
+            shelves,
+        };
+        let bytes = serde_json::to_vec(&doc).unwrap();
+        test_app()
+            .db
+            .write(move |tx| kv::set(tx, NS, KEY, &bytes))
+            .await
+            .unwrap();
+    }
+
+    async fn raw_doc() -> Vec<u8> {
+        let db = &test_app().db;
+        db.read(|c| kv::get(c, NS, KEY)).await.unwrap().unwrap()
+    }
+
+    async fn stored_doc() -> FeedDoc {
+        serde_json::from_slice(&raw_doc().await).unwrap()
+    }
+
+    fn page_kinds(p: &HomeFeedPage) -> Vec<ShelfKind> {
+        p.shelves.iter().map(|s| s.kind).collect()
+    }
+
+    fn card_ids(s: &ShelfView) -> Vec<String> {
+        s.items
+            .iter()
+            .map(|c| match c {
+                CardView::Track { track, .. } => track.id.clone(),
+                CardView::Collection(c) => c.id.clone(),
+            })
+            .collect()
+    }
+
+    /// Waits for a background build to end.
+    async fn settle() {
+        for _ in 0..1000 {
+            if !BUILDING.load(Ordering::SeqCst) {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("background build still running");
+    }
+
+    #[tokio::test]
+    async fn feed_pages_by_four_and_ends() {
+        use ShelfKind::*;
+        let (_lock, _) = setup().await;
+        wipe().await;
+        let (t, _, _) = song("home page a").await;
+        let mut shelves: Vec<_> = (0..9).map(|_| stored(Recent, false, &[t])).collect();
+        shelves.push(stored(End, false, &[]));
+        store(now_ms(), shelves).await;
+        let first = page(None).await.unwrap();
+        assert_eq!(page_kinds(&first), [Recent; 4]);
+        assert_eq!(card_ids(&first.shelves[0]), [t.to_string()]);
+        assert_eq!(first.next.as_deref(), Some("4"));
+        let second = page(first.next).await.unwrap();
+        assert_eq!(page_kinds(&second), [Recent; 4]);
+        assert_eq!(second.next.as_deref(), Some("8"));
+        let last = page(second.next).await.unwrap();
+        assert_eq!(page_kinds(&last), [Recent, End]);
+        assert_eq!(last.next, None);
+        assert!(page(Some("x".into())).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn unloaded_because_shelf_is_skipped_offline() {
+        use ShelfKind::*;
+        let (_lock, app) = setup().await;
+        wipe().await;
+        let (t, _, artist) = song("home byl offline").await;
+        play(t, None).await;
+        let shelves = vec![
+            stored(Recent, false, &[t]),
+            because(artist, "Artist home-byl-offline"),
+            stored(End, false, &[]),
+        ];
+        store(now_ms(), shelves).await;
+        app.set_online(false);
+        let before = calls().await;
+        let p = page(None).await.unwrap();
+        assert_eq!(page_kinds(&p), [Recent, End]);
+        assert_eq!(calls().await, before);
+        assert!(!stored_doc().await.shelves[1].loaded);
+        app.set_online(true);
+    }
+
+    #[tokio::test]
+    async fn because_shelf_loads_once_and_is_stored() {
+        use ShelfKind::*;
+        let (_lock, _) = setup().await;
+        wipe().await;
+        // The radio of "home byl a" is by its own artist, on its own album.
+        let (t, album, artist) = song("home byl a").await;
+        play(t, None).await;
+        let name = "Artist home-byl-a";
+        store(
+            now_ms(),
+            vec![because(artist, name), stored(End, false, &[])],
+        )
+        .await;
+        let p = page(None).await.unwrap();
+        assert_eq!(page_kinds(&p), [BecauseYouListened, End]);
+        assert_eq!(p.shelves[0].seed.as_deref(), Some(name));
+        assert_eq!(card_ids(&p.shelves[0]), [album.to_string()]);
+        let doc = stored_doc().await;
+        assert!(doc.shelves[0].loaded);
+        assert_eq!(items(&doc, BecauseYouListened), [album.to_string()]);
+        let before = calls().await;
+        let again = page(None).await.unwrap();
+        assert_eq!(calls().await, before);
+        assert_eq!(card_ids(&again.shelves[0]), [album.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn discover_off_hides_cached_network_shelves() {
+        use ShelfKind::*;
+        let (_lock, app) = setup().await;
+        wipe().await;
+        let (t, _, artist) = song("home private cached").await;
+        let shelves = vec![
+            stored(Recent, false, &[t]),
+            stored(Mixes, true, &[artist]),
+            stored(End, false, &[]),
+        ];
+        store(now_ms(), shelves).await;
+        let on = page(None).await.unwrap();
+        assert_eq!(page_kinds(&on), [Recent, Mixes, End]);
+        let CardView::Collection(mix) = &on.shelves[1].items[0] else {
+            panic!("{on:?}");
+        };
+        assert_eq!(mix.kind, views::ItemKind::Artist);
+        app.db
+            .write(|tx| settings::device_set(tx, "discover", "false"))
+            .await
+            .unwrap();
+        let bytes = raw_doc().await;
+        let off = page(None).await.unwrap();
+        assert_eq!(page_kinds(&off), [Recent, End]);
+        assert_eq!(raw_doc().await, bytes);
+        wipe().await;
+    }
+
+    #[tokio::test]
+    async fn stale_feed_rebuilds_in_background_once() {
+        use ShelfKind::*;
+        let (_lock, app) = setup().await;
+        wipe().await;
+        let (t, _, _) = song("home stale").await;
+        let old = now_ms() - 25 * 3600 * 1000;
+        store(
+            old,
+            vec![stored(Recent, false, &[t]), stored(End, false, &[])],
+        )
+        .await;
+        let mut rx = app.events.library.subscribe();
+        // Both served the stale doc; only the first starts a build.
+        let (a, b) = (page(None).await.unwrap(), page(None).await.unwrap());
+        assert_eq!(page_kinds(&a), [Recent, End]);
+        assert_eq!(page_kinds(&b), [Recent, End]);
+        settle().await;
+        let mut homes = 0;
+        while let Ok(c) = rx.try_recv() {
+            homes += usize::from(c == LibraryChanged::Home);
+        }
+        assert_eq!(homes, 1);
+        assert!(stored_doc().await.built_at_ms > old);
+    }
+
+    #[tokio::test]
+    async fn missing_feed_serves_a_local_doc() {
+        use ShelfKind::*;
+        let (_lock, app) = setup().await;
+        wipe().await;
+        app.plugins.replace_loaded(vec![]);
+        let p = page(None).await.unwrap();
+        assert_eq!(page_kinds(&p), [End]);
+        assert_eq!(p.next, None);
+        settle().await;
     }
 }

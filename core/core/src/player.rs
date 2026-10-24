@@ -169,6 +169,24 @@ pub(crate) async fn play(
         .unwrap_or_else(stopped)
 }
 
+/// A radio of the artist's most played track (else the first of its page), played as a
+/// `mix` named after the artist. Offline: `Offline`.
+pub(crate) async fn play_mix(artist_id: String) -> Result<(), CoreError> {
+    let artist = parse_id(&artist_id)?;
+    crate::catalog::online()?;
+    let name = app().db.read(move |c| lib::collection(c, artist)).await?;
+    let name = name.ok_or(CoreError::NotFound)?.title;
+    let seed = crate::home::seed_track(artist).await?;
+    let tracks = radio_tracks(seed.ok_or(CoreError::NotFound)?).await?;
+    let context = PlayContext {
+        kind: "mix".into(),
+        id: Some(artist_id),
+        title: name,
+    };
+    let items = tracks.iter().map(ToString::to_string).collect();
+    play(items, 0, Some(context)).await
+}
+
 /// `send_event`, returning once handled: for tests.
 #[cfg(test)]
 pub(crate) async fn on_event(e: PlayerEvent) {

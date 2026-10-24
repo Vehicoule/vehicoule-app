@@ -4,6 +4,7 @@ import 'dart:io' as io;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:vehicoule/bridge/api/app.dart';
+import 'package:vehicoule/bridge/api/browse.dart';
 import 'package:vehicoule/bridge/api/catalog.dart';
 import 'package:vehicoule/bridge/api/library.dart';
 import 'package:vehicoule/bridge/api/playback.dart';
@@ -66,6 +67,14 @@ void main() {
   });
 
   tearDownAll(() => dir.delete(recursive: true));
+
+  // First: before any plugin is installed.
+  testWidgets('home feed and browse on an empty base', (t) async {
+    final page = await homeFeed(cursor: null);
+    expect(page.shelves.last.kind, ShelfKindView.end);
+    expect(page.next, isNull);
+    await expectLater(browseCategories(), throwsA(isA<CoreError_NoPlugin>()));
+  });
 
   testWidgets('core boots and searches through a local feed', (t) async {
     // Plain http and this key: accepted by debug builds only (release feeds are https).

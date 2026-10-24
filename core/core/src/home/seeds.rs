@@ -2,7 +2,7 @@
 
 use rusqlite::Connection;
 
-use super::assemble::{Candidate, Inputs, folded};
+use super::assemble::{Inputs, Pick, folded};
 use crate::library::catalog::{self, TrackRow};
 use crate::library::plays::{self, TOP_WINDOW_MS};
 use crate::library::{CollectionSort, ItemId, Kind, Page, TrackSort, downloads, likes, playlists};
@@ -70,10 +70,10 @@ pub(super) fn read(c: &Connection, now_ms: i64) -> rusqlite::Result<Local> {
 }
 
 /// The tracks `ids` as discovery candidates; unknown ids skipped.
-pub(super) fn candidates(c: &Connection, ids: &[ItemId]) -> rusqlite::Result<Vec<Candidate>> {
+pub(super) fn candidates(c: &Connection, ids: &[ItemId]) -> rusqlite::Result<Vec<Pick>> {
     Ok(catalog::tracks(c, ids)?
         .into_iter()
-        .map(|t| Candidate {
+        .map(|t| Pick {
             folded: key(&t),
             id: t.id,
             isrc: t.isrc,
