@@ -1,0 +1,18 @@
+{
+  "@@locale": "en",
+  "errorNetwork": "The connection isn't responding. Try again in a moment.",
+  "errorProviderWall": "The service is blocking this request for now. Try again later.",
+  "errorRateLimited": "Too many requests at once. Try again in a minute.",
+  "errorBudgetExceeded": "The source took too long to answer. Try again.",
+  "errorNotFound": "Nothing found. Try different words.",
+  "errorExpired": "This track isn't available right now. Try again in a moment.",
+  "errorInternal": "Something went wrong on our side. Try again, or send a bug report from Settings.",
+  "errorOffline": "Offline · your downloads are still here.",
+  "errorInvalidFeed": "This source link doesn't work. Ask its author for a new one.",
+  "errorNoSourceSearch": "No search source installed. Add a source to search.",
+  "errorNoSourceEntity": "No source can open this page. Add a source to explore.",
+  "errorNoSourcePlay": "No playback source installed. Add a source to play music.",
+  "errorNoSourceLyrics": "No lyrics source installed. Add a source to see lyrics.",
+  "errorNoSourceRadio": "No radio source installed. Add a source to start a radio.",
+  "errorNoSourceBrowse": "No source to explore with. Add a source to discover music."
+}
