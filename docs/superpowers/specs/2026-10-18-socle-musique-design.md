@@ -305,9 +305,11 @@ une API async. Le reste de la spec ne change pas.
   mise à jour d'urgence.
 - Vérification en arrière-plan, jamais au démarrage ; un cache valide est chargé en attendant.
 - **Feed officiel** (préconfiguré, publié par `vehicoule-plugins`) : deezer, itunes, lrclib.
-- **Feeds tiers** (dont `vehicoule-ytmusic`) : l'utilisateur ajoute une URL + une clé
-  publique ; l'app affiche l'empreinte, les domaines déclarés, et demande l'accord avant
-  installation.
+- **Feeds tiers** (dont `vehicoule-ytmusic`) : ils s'ajoutent avec un **lien de source**
+  (`vehicoule://add-source?feed=…&key=…`), qui porte l'URL et la clé publique. L'app montre
+  une seule feuille : nom, ce que la source ajoute, empreinte et domaines sous « Détails ».
+  Toucher « Ajouter » vaut accord avant installation. La clé est retenue au premier ajout ; une
+  mise à jour signée par une autre clé est refusée (spec UI §6.7).
 
 ### 4.5 Plan B si YouTube impose du JavaScript
 
@@ -324,8 +326,9 @@ dans Auqw). Quand YouTube change sa détection, une nouvelle version du plugin s
 1. Écran d'accueil : ce qu'est l'app, et le fait qu'elle est livrée sans source de streaming.
 2. Le feed officiel (deezer, itunes, lrclib) est installé : recherche, pages et paroles
    fonctionnent tout de suite.
-3. Écran « Ajouter un dépôt » : coller une URL + une clé publique, voir l'empreinte et les
-   domaines, accepter. Accessible ensuite depuis les réglages.
+3. Écran « Ajoute une source pour lire » : coller un lien de source (ou toucher ce lien
+   ailleurs), puis une feuille et « Ajouter » (spec UI §6.7). Accessible ensuite depuis les
+   réglages.
 4. Choix de la télémétrie (section 7) : deux boutons, aucun pré-sélectionné.
 5. Tant qu'aucun plugin ne fournit `music.resolve`, le bouton lecture explique pourquoi et
    renvoie vers cet écran.

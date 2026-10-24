@@ -44,6 +44,8 @@ validation finale.
     - rail M3E permanent avec ses épinglés ;
     - à droite, le panneau « en lecture », qui se replie en bande de 76 px : replié par défaut
       sous **1000 dp**, déplié au-delà. Pas de barre de lecture en bas ;
+  - de **600 à 840 dp** → largeur moyenne (spec UI §4.3) : la coque mobile, mais le rail
+    replié à gauche remplace la barre du bas ;
   - sinon mobile : barre de navigation M3E (Accueil, Explorer, Bibliothèque, Réglages), ☰ qui
     ouvre le rail déplié en modal, mini-lecteur flottant au-dessus.
 - Listes : `CustomScrollView` + `SliverAppBar` + `SliverList.builder` (paresseux ; une
@@ -73,7 +75,11 @@ validation finale.
   de stockage.
 - Accessibilité : `Semantics`/`tooltip` sur chaque contrôle sans texte, taille de texte
   système respectée (pas de `textScaler` forcé), contrastes WCAG AA dans les tokens.
-- FR et EN dès le départ (`gen-l10n`, ARB) ; aucun texte en dur dans les widgets.
+- FR et EN dès le départ (`gen-l10n`, ARB) ; aucun texte en dur dans les widgets. Ton et
+  vocabulaire de `docs/voice.md` (spec UI §2.9) : « source » et « lien de source », jamais
+  « plugin » ni « dépôt » à l'écran.
+- **Garde-fous contre l'IA slop** (spec UI §2.8) : chaque tâche les respecte ; le relecteur de
+  tâche reçoit le tableau §2.8 comme grille et compte toute violation comme Important.
 - Télémétrie Dart : pas de `sentry_flutter`. Les erreurs Dart non rattrapées
   (`FlutterError.onError`, `PlatformDispatcher.instance.onError`) passent par
   `reportDartError` du cœur : un seul filtre, testé au plan 4. Limite connue : les
@@ -187,6 +193,23 @@ validation finale.
   - **Menu** : la rangée `quick` en groupe connecté, puis les groupes séparés par un espace.
     L'élément d'origine se soulève.
 
+**Ajouts — 8 sujets (spec UI §2.2, §2.8, §4.3, §4.4) :**
+- `WindowClass { compact, medium, expanded }` et `windowClassOf(width)` (< 600, 600–840,
+  ≥ 840), seule source des points de rupture.
+- Thème clair (spec UI §2.2) : surfaces aux tons 98–92 teintées, jamais `#FFFFFF` ; le test de
+  contraste couvre déjà clair, sombre et noir pur.
+- `VFocusRing` : trait `secondary` 3 px, décalé de 2 px, qui suit la forme ; visible seulement
+  en `FocusHighlightMode.traditional`.
+- Tests des garde-fous §2.8, dans `test/design/guards_test.dart`, qui parcourent `lib/` :
+
+```dart
+test('no raw colors outside design/', ...);          // Color(0x, Colors. interdits hors lib/design
+test('no blur, glass, glow or extra gradients', ...); // BackdropFilter, ImageFilter.blur, BoxShadow, *Gradient hors lib/design
+test('no ad-hoc durations or curves in screens', ...); // Duration(, Curves. interdits dans features/ et shell_*
+test('focus ring follows the shape and only shows on keyboard', ...);
+test('light scheme never uses pure white surfaces', ...);
+```
+
 - [ ] **Step 1 : tests qui échouent**
 
 ```dart
@@ -257,7 +280,16 @@ testWidgets('reduce motion settles in one frame', ...);  // disableAnimations : 
   `String errorMessage(AppLocalizations l, CoreError e)` — un message par variante :
   `network`, `providerWall`, `rateLimited`, `budgetExceeded`, `notFound`, `expired`,
   `internal`, `offline`, `noPlugin(capability)` (pour `resolve` : « Aucune source de
-  lecture installée » + renvoi vers « Ajouter un dépôt », spec 4.6.5).
+  lecture installée » + renvoi vers « Ajoute une source pour lire », spec UI §6.7).
+
+**Ajouts — ton (spec UI §2.9) :** écrire `docs/voice.md` (règles + tableau des messages
+types FR/EN de la maquette « Le ton des messages »), puis :
+
+```dart
+test('arb strings follow voice.md', ...); // aucun « ! », aucun emoji, aucun mot interdit
+                                          // (plugin, dépôt, feed, résolution, oups, oops,
+                                          // veuillez, please, codes HTTP), dans les deux langues
+```
 
 - [ ] **Step 1 : tests qui échouent**
 
@@ -377,6 +409,28 @@ test('first position after a tap reports tap-to-first-sound', ...);
   est `Running` (pas pour `Queued` : hors ligne, la file attend sans service), arrêté sinon ; notification de progression mise à jour au rythme des événements
   (≤ 2/s, déjà limité par Rust).
 
+**Ajouts — 8 sujets (spec UI §6.10, §6.11, §6.7) :**
+- **Écran de démarrage** : Android 12+ par l'API SplashScreen avec une icône animée en vecteur
+  (le Mochi rebondit, la note sort, ≤ 900 ms) ; macOS, Windows et Linux jouent la même séquence
+  dans la fenêtre au premier frame (`SplashOverlay` dans `design/`). Rien au démarrage à chaud ;
+  « réduire les animations » → icône fixe et fondu. Les ressources viennent de
+  `branding/icon/`.
+- **Lien profond** `vehicoule://add-source` : filtre d'intent Android, `CFBundleURLTypes` sur
+  macOS, `app_links` ; il ouvre `AddSourceSheet` (Task 7), jamais un ajout direct.
+- **Notification média** : like en action personnalisée d'audio_service (le cœur se remplit),
+  et × pour arrêter.
+- **Demande de notifications** : `requestNotificationPermission()` (Android 13+), appelée par le
+  premier lancement et au premier téléchargement si `ui.notif_asked` dit « plus tard ».
+- **macOS** : « En cours de lecture » et touches média via audio_service (infos de lecture du
+  système).
+
+```dart
+test('add-source deep link opens the sheet and never adds by itself', ...);
+test('media notification exposes like and stop actions', ...);
+test('notification permission is asked again only at the first download', ...);
+testWidgets('splash is static with reduce motion', ...);
+```
+
 - [ ] **Step 1 : tests qui échouent**
 
 ```dart
@@ -422,7 +476,7 @@ test('downloads service starts on first running download and stops when idle', .
     - barre de navigation M3E à 4 destinations (Accueil, Explorer, Bibliothèque, Réglages) ;
     - une grande app bar qui se replie, par onglet, avec ☰ à gauche ;
     - ☰ ouvre `domain_rail` : le rail déplié en modal, avec le domaine Musique, puis
-      « Dépôts et plugins » (`/settings/plugins`) et « Téléchargements » (`/downloads`) ;
+      « Sources » (`/settings/sources`) et « Téléchargements » (`/downloads`) ;
     - le mini-lecteur flottant est au-dessus de la barre.
   - **Mini-lecteur** (spec UI §5.3) : une toolbar flottante qui contient `VNowPlaying` en
     taille compacte (pochette cookie qui tourne, avec son anneau, titre, artiste, like), et à
@@ -440,7 +494,7 @@ test('downloads service starts on first running download and stops when idle', .
       - ← → (historique go_router, ⌘[ ⌘]) ;
       - le champ de recherche au centre (⌘F). Ses suggestions sont celles de la Task 6, en menu
         déroulant ;
-      - à droite, téléchargements, puis Dépôts et plugins.
+      - à droite, téléchargements, puis Sources.
     - **Rail** permanent, replié ↔ déplié (`ui.rail_expanded`) :
       - les 4 destinations ;
       - « Épinglés » (`pinned.dart`) : ids dans `ui.pinned` (JSON), par défaut Likés et
@@ -487,6 +541,19 @@ test('downloads service starts on first running download and stops when idle', .
   5. après le premier frame : `checkUpdates(force: false)`, jamais bloquant.
 
   Une mise à jour n'est affichée que par `Notice.updateAvailable(UpdateInfo)`.
+
+**Ajouts — 8 sujets (spec UI §4.3, §4.4) :**
+- Largeur moyenne : la coque mobile avec le rail replié à gauche à la place de la barre du
+  bas ; mini-lecteur inchangé.
+- Clavier : ordre de Tab barre de titre → rail → contenu → panneau ; focus itinérant dans les
+  tableaux et grilles (Entrée lit, Espace sélectionne dans une liste, Menu / ⇧F10 ouvre le
+  menu, Échap ferme) ; une ligne focalisée montre ▶.
+
+```dart
+testWidgets('medium width uses the collapsed rail instead of the bottom bar', ...);
+testWidgets('tab order is title bar, rail, content, panel', ...);
+testWidgets('arrow keys move focus inside a track table', ...);
+```
 
 - [ ] **Step 1 : tests qui échouent** (API simulée : `FakeApi`, voir la Task 8)
 
@@ -649,6 +716,17 @@ La Task 6 doit aussi repartir de la page 1 à chaque `LibraryChanged::Home`.
     - bouton lecture sans piste chargée → `queueOp(QueueOp.jumpTo(currentEntry))` ;
     - réordonner la file : `QueueOp.move(entry, after: voisin du dessus)`.
 
+**Ajouts — 8 sujets (spec UI §5.7, §4.3) :**
+- Astuces de gestes, une seule fois chacune (`ui.hint.mini_player`, `ui.hint.row_swipe`) :
+  la tooltip du premier mini-lecteur avec l'esquisse du geste, puis la première ligne qui
+  s'entrouvre. Avec « réduire les animations » : la tooltip seule. Rien sur desktop.
+- Lecteur en deux colonnes en paysage (téléphone) et en largeur moyenne.
+
+```dart
+testWidgets('gesture hints show once and never again', ...);
+testWidgets('landscape player uses two columns', ...);
+```
+
 - [ ] **Step 1 : tests qui échouent**
 
 ```dart
@@ -757,7 +835,8 @@ testWidgets('desktop: hover shows play on the row number', ...);
     1. ce qu'est l'app, livrée sans source de streaming ;
     2. installation du feed officiel (`refreshFeeds`, progression, réessai si hors ligne).
        Après `refreshFeeds`, l'étape décide du réessai par `hasResolver()` ;
-    3. « Ajouter un dépôt », facultatif ;
+    3. **« Ajoute une source pour lire »**, facultatif : une phrase, un champ « Colle un lien
+       de source » qui ouvre `AddSourceSheet`, puis « Passer » ;
     4. **« Choisis au moins 3 artistes »** (spec UI §6.7) :
        - des **bulles** de tailles variées (3 tailles, réparties sans chevauchement, qui
          flottent doucement ; immobiles avec « réduire les animations »), tirées de l'étagère
@@ -768,15 +847,26 @@ testWidgets('desktop: hover shows play on the row number', ...);
          `VHaptics.light()` ;
        - « Continuer · N » s'active à partir de 3 artistes, « Passer » est toujours là ;
        - l'étape est sautée sans `browse` ou hors ligne ;
-    5. télémétrie : deux boutons, **aucun présélectionné**, et on ne peut pas continuer sans
+    5. **« Les notifications »** (Android 13 et plus seulement), spec UI §6.7 : « Plus tard » /
+       « Autoriser » ; après « Plus tard », la demande revient seulement au premier
+       téléchargement (`ui.notif_asked`) ;
+    6. télémétrie : deux boutons, **aucun présélectionné**, et on ne peut pas continuer sans
        choisir.
 
     Les étapes s'enchaînent en shared axis. Chacune a sa grande `VDecor`, qui morphe vers
     celle de l'étape suivante.
-  - **Ajout d'un dépôt** : URL + clé publique → `previewFeed` → empreinte, domaines déclarés
-    et capacités affichés → bouton d'accord explicite → `addFeed`. Ordre des capacités :
-    liste réordonnable par capacité. Sources : `feeds()` (nom, officiel, nombre de plugins,
-    empreinte), et `removeFeed(url)`.
+  - **Ajout d'une source** (spec UI §6.7), une seule feuille `AddSourceSheet` :
+    - entrée : un **lien de source** `vehicoule://add-source?feed=<url>&key=<clé>`, venu du
+      lien profond (Task 4) ou collé ; `parseSourceLink` rejette tout autre texte avec une
+      phrase de `voice.md` ;
+    - `previewFeed(url, key)` → nom, capacités en mots (« Lecture des titres · Paroles »), la
+      phrase de confiance ; empreinte, domaines et version repliés sous « Détails » ;
+    - « Ajouter » → `addFeed` (l'accord explicite), puis snackbar « <nom> ajoutée » ;
+    - jamais d'ajout sans la feuille, ni case à cocher ni champ de clé.
+    - Écran Sources : `feeds()` groupés par origine (Officiel, puis chaque lien) ; une ligne
+      par source avec ce qu'elle fait et un interrupteur ; « Retirer » (`removeFeed`) avec
+      Annuler ; l'ordre par capacité dans « Avancé », replié.
+    - Clé changée à la mise à jour : le message de spec UI §6.7.
   - **Import** : `ImportResult.truncated` → mention « playlist tronquée à 50 pages ».
   - **« Rechercher une mise à jour »** = `checkUpdates(force: true)` :
     - `Ok(None)` → « à jour » ;
@@ -792,6 +882,18 @@ testWidgets('desktop: hover shows play on the row number', ...);
       téléchargée / espace libre) ;
     - un titre en cours affiche `VArtwork(progress: pourcentage)`, avec l'anneau ondulé du
       mini-lecteur.
+
+**Ajouts — 8 sujets (spec UI §6.7, §5.8) :** l'écran Sources, `AddSourceSheet` et les étapes
+« Ajoute une source pour lire » et « Les notifications » (détails ci-dessous). Les feuilles
+et dialogues suivent spec UI §5.8. Le README de `vehicoule-ytmusic` publie son lien de source
+(un commit dans ce dépôt).
+
+```dart
+test('parseSourceLink accepts only vehicoule://add-source with feed and key', ...);
+testWidgets('add source sheet shows name, capabilities and trust line, details folded', ...);
+testWidgets('add source needs the Ajouter tap', ...);
+testWidgets('a changed signing key shows the re-add message', ...);
+```
 
 - [ ] **Step 1 : tests qui échouent**
 
@@ -836,6 +938,10 @@ testWidgets('report never puts data in the issue URL', ...);  // URL ouverte == 
   flutter_rust_bridge, données fictives : 3 titres, 1 album, un fil d'accueil de 12 étagères,
   2 catégories vedettes et 6 catégories, flux de commandes simulés),
   branché par `RustLib.initMock(api: FakeApi())`.
+
+**Ajouts — tests dorés (spec UI §2.8) :** chaque écran en clair et sombre, en largeurs
+compacte, moyenne et étendue, et avec le texte à 200 %, sur la bibliothèque de test (vraies
+données).
 
 - [ ] **Step 1 : tests qui échouent**
 

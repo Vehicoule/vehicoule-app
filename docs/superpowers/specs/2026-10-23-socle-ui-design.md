@@ -49,6 +49,12 @@ pochette mise en avant, sélection) ; le reste est calme.
 - Dégradés : seulement le haut des écrans (`surfaceContainer` → `surface`) et le fond du
   lecteur (un dégradé radial teinté derrière la pochette). Les deux viennent du schéma.
 
+- **Thème clair** : mêmes graines, schéma clair. Surfaces aux tons 98 à 92, légèrement
+  teintées, jamais `#FFFFFF`. `primary` au ton 40, conteneurs au ton 90. Les tuiles de genre
+  gardent leur pastel au ton 90, texte au ton 10. En style Vague, si la pochette est claire, un
+  voile de `surface` passe sous le titre pour garder le contraste. Choix : système (défaut),
+  clair, sombre ; noir pur seulement en sombre.
+
 ### 2.3 Formes
 
 Les formes expressives de M3E, avec retenue : pochette mise en avant, bouton lecture qui morphe,
@@ -87,6 +93,18 @@ Material Symbols Rounded, police variable. Toutes les icônes sont animées :
 - morphs de chemins pour nos cas : téléchargement (flèche → anneau de progression → coche) et
   lecture/pause.
 
+**Icône de l'app** : la mascotte Mochi, dessinée par l'utilisateur. Le maître est
+`branding/icon/mochi_master.svg`, avec deux calques séparés : un fond uni et un premier plan.
+Les exports vivent dans `branding/icon/` :
+
+- **Android adaptative** : premier plan dans la zone sûre de 66 dp, version **monochrome**
+  (silhouette unie, visage en creux) pour les icônes à thème ;
+- **iOS / macOS** : macOS sur la grille Big Sur (tuile de 824 px dans 1024, ombre comprise) ;
+- **Windows / Linux** : tuile arrondie.
+
+Une **variante petite taille** (≤ 48 px) supprime la note et l'ombre au sol et agrandit le
+Mochi. Elle sert aussi de favicon, d'icône de la barre des tâches et de marque du rail.
+
 ### 2.6 Mouvement
 
 - Ressorts M3E (spatial et effets) depuis les tokens. Pas de courbes ad hoc.
@@ -101,6 +119,47 @@ Une seule échelle : 4 · 8 · 12 · 16 · 24 · 32.
 - 24 entre deux sections, 8 entre deux cartes.
 
 Tout vient de `design/tokens.dart`. Aucun nombre magique dans les écrans (vérifié en revue).
+
+### 2.8 Garde-fous contre l'« IA slop »
+
+Une interface générée a des tics reconnaissables. Ils sont interdits ici, et chaque règle a
+son contrôle, automatique ou en revue. En revue, une violation compte comme **Important**.
+
+| Règle | Contrôle |
+|---|---|
+| Couleurs seulement depuis le `ColorScheme` et les tokens ; aucun `Color(0x…)` ni `Colors.*` hors `design/` | test qui parcourt les sources |
+| Pas de flou, de verre, de lueur ni d'ombre décorative : seulement les niveaux d'élévation M3. Dégradés : seulement les deux de §2.2 | test : `BackdropFilter`, `ImageFilter.blur`, `BoxShadow`, `*Gradient` interdits hors `design/` |
+| Durées et courbes seulement depuis `design/motion.dart` | test : `Duration(` et `Curves.` interdits dans `screens/` et `shell/` |
+| Espacements et rayons seulement depuis les tokens (§2.7) | test |
+| Tout le texte passe par les ARB et suit `docs/voice.md` (§2.9) | test sur les ARB : aucun `!`, aucun emoji, aucun mot interdit |
+| Icônes seulement Material Symbols Rounded ; aucune icône « magie » ou « IA » (✨) | revue |
+| Une seule action principale par écran ou feuille ; jamais de carte dans une carte ; pas de pastilles ni de badges décoratifs | revue |
+| Texte aligné à gauche, sauf dans le lecteur et les états vides ; pas d'écrans entièrement centrés | revue |
+| Majuscule seulement en début de phrase, jamais de Title Case | revue |
+| Chaque liste a ses quatre états : chargement (loading indicator M3E, ou squelette aux vraies dimensions, sans scintillement), vide (§6.9), erreur (une phrase et « Réessayer »), hors ligne | test de widget par liste |
+| Données réelles partout : la galerie, les tests dorés et les captures utilisent la bibliothèque de test (vrais titres, vraies pochettes), jamais de lorem ipsum ni de « Artist Name » | revue |
+| Tests dorés par écran : clair et sombre, largeurs compacte, moyenne et étendue, texte à 200 % | test |
+
+Les points de contrôle utilisateur (galerie, coques) comparent le rendu aux maquettes
+validées, pas à une idée générale de « joli ».
+
+### 2.9 Ton des messages
+
+`docs/voice.md` fixe les règles pour les deux langues :
+
+- tutoiement ;
+- une phrase, deux au plus : ce qui se passe, puis ce qu'on peut faire ;
+- jamais la faute de l'utilisateur ;
+- ni code d'erreur ni jargon (pas de « 403 », « plugin », « dépôt », « feed », « résolution ») ;
+- le nom du fournisseur seulement s'il aide (« YouTube bloque ce titre pour l'instant ») ;
+- aucun point d'exclamation ;
+- guillemets français en français, anglais en anglais.
+
+Le vocabulaire visible est fixe : une **source** (ce qui donne la recherche, la lecture ou les
+paroles) et un **lien de source** (ce qui en ajoute). Les mots « plugin » et « dépôt »
+n'apparaissent jamais à l'écran. Le tableau des messages types (hors ligne, mur du
+fournisseur, limite de débit, titre sauté, aucune source, téléchargement raté, arrêt,
+listes vides) est dans `docs/voice.md`.
 
 ## 3. Bibliothèques Flutter
 
@@ -134,7 +193,7 @@ Tout vient de `design/tokens.dart`. Aucun nombre magique dans les écrans (véri
 - **☰ ouvre le rail déplié M3E en modal**. Il remplace le tiroir, qui n'est plus recommandé en
   M3E. Il contient :
   - les domaines : Musique, puis Anime et Manga quand ils existent ;
-  - les sections globales : Dépôts et plugins, Téléchargements.
+  - les sections globales : Sources, Téléchargements.
 
   La barre du bas montre les destinations du domaine courant.
 - **Mini-lecteur** flottant au-dessus de la barre (section 5.3).
@@ -148,7 +207,7 @@ Tout vient de `design/tokens.dart`. Aucun nombre magique dans les écrans (véri
   - ← → pour l'historique de navigation (aussi ⌘[ ⌘]) ;
   - au centre, **la recherche, toujours visible** (⌘F). Taper ouvre les suggestions (mêmes
     règles que 6.2) en menu déroulant sous le champ ; Entrée ouvre les résultats dans Explorer ;
-  - à droite, les téléchargements en cours, puis Dépôts et plugins.
+  - à droite, les téléchargements en cours, puis Sources.
 - **Rail à gauche**, replié (icônes) ↔ déplié :
   - les quatre destinations ;
   - puis **« Épinglés »** : Likés, Téléchargés et les collections que l'utilisateur épingle
@@ -203,6 +262,37 @@ Tout vient de `design/tokens.dart`. Aucun nombre magique dans les écrans (véri
   - fermer la fenêtre **garde la musique** (l'app reste dans le Dock) ; ⌘Q quitte.
 - **Le desktop n'a pas** de bottom sheets, de gestes du mini-lecteur, ni de tirer pour
   rafraîchir.
+
+### 4.3 Tablettes, pliables, paysage
+
+Il y a trois classes de largeur M3 :
+
+- **compacte** (< 600 dp) : la coque téléphone ;
+- **moyenne** (600 à 840 dp : tablette en portrait, pliable ouvert) :
+  - le rail replié à gauche remplace la barre du bas ;
+  - les grilles et les étagères s'élargissent ;
+  - le mini-lecteur reste la toolbar et le FAB du téléphone ;
+  - le lecteur plein écran passe en deux colonnes ;
+- **étendue** (≥ 840 dp) : la coque desktop. Sur une tablette Android, elle n'a pas de barre
+  de titre maison : la recherche est dans l'app bar.
+
+Un téléphone en paysage met le lecteur en deux colonnes, la pochette à gauche et les blocs à
+droite. Les listes restent sur une colonne.
+
+### 4.4 Clavier et focus
+
+Ces règles valent partout où il y a un clavier : desktop, mais aussi tablette avec clavier.
+
+- **Anneau de focus** : un trait `secondary` de 3 px, décalé de 2 px, qui épouse la forme de
+  l'élément (pilule, carte, cookie). Il n'apparaît qu'au clavier, jamais au clic ni au toucher.
+  Il est défini une fois, dans `design/`.
+- **Ordre de Tab** : barre de titre, puis rail, contenu et panneau.
+- **Tableaux et grilles** : Tab y entre une fois, puis les flèches se déplacent (focus
+  itinérant).
+  - Entrée lit.
+  - Dans une liste, Espace sélectionne ; ailleurs, Espace fait lecture / pause.
+  - Menu ou ⇧F10 ouvre le menu expressif, Échap le ferme.
+  - Une ligne qui a le focus montre ▶, comme au survol.
 
 ## 5. Composants partagés
 
@@ -365,6 +455,40 @@ Avec « réduire les animations », tout devient un fondu de 150 ms.
 Les réglages système sont respectés (haptique désactivée → rien). Un seul point d'entrée :
 `design/haptics.dart`.
 
+### 5.7 Faire découvrir les gestes
+
+Tout le monde doit connaître les contrôles cachés. Chaque astuce s'affiche **une seule
+fois**, jamais en boucle, et est retenue dans `ui.hint.*` :
+
+- **Premier mini-lecteur** : une rich tooltip M3 au-dessus, « Glisse ← → pour changer de
+  titre, ↓ pour arrêter », avec « OK ». La toolbar esquisse le geste une fois : un petit
+  va-et-vient, puis un léger rebond vers le bas. « OK » ou n'importe quel geste la ferme pour
+  de bon.
+- **Première liste de titres** : la première ligne s'entrouvre seule vers la droite (« Lire
+  ensuite » apparaît), puis revient en ressort. Cela dure 1 s, sans texte.
+
+Avec « réduire les animations », seule la tooltip s'affiche, sans mouvement. Il n'y a rien sur
+desktop, faute de gestes.
+
+### 5.8 Feuilles et dialogues
+
+Ce sont des feuilles sur mobile, des menus ou des dialogues sur desktop (4.2). Les règles :
+
+- une seule action principale, à droite ;
+- « Annuler » en bouton texte ;
+- jamais de dialogue par-dessus un dialogue ;
+- une action destructrice se fait tout de suite, avec « Annuler » dans un snackbar, plutôt
+  qu'avec une confirmation.
+
+| Flux | Contenu |
+|---|---|
+| Ajouter à une playlist | « Nouvelle playlist » en tête, puis une recherche ; les playlists qui ont déjà le titre portent le cookie + coche (§2.3) |
+| Nouvelle playlist | un nom et l'aperçu de la mosaïque |
+| Importer un lien | la progression ondulée page par page ; l'avertissement de coupe à 50 pages (5 000 titres) avant de commencer ; « Ouvrir » à la fin |
+| Ce n'est pas le bon morceau | les candidats avec leur source et leur durée ; « Lire » pour écouter avant de choisir ; le choix est retenu pour ce titre |
+| Mise à jour disponible | version, taille, notes en trois lignes au plus, « Plus tard » / « Installer » |
+| Ajouter une source | §6.7, une seule feuille |
+
 ## 6. Écrans
 
 ### 6.1 Accueil : ce qui est à toi
@@ -513,14 +637,20 @@ carte). Viennent ensuite les titres populaires, puis les albums en carousel mult
     - Les choix sont des **groupes de boutons connectés**, pas des listes radio.
   - Lecture : radio de fin de file, normalisation.
   - Téléchargements.
-  - Sources : dépôts, ordre des plugins.
+  - Sources : la liste des sources, l'ajout par lien, l'ordre (avancé).
   - Confidentialité : télémétrie, découvertes à partir de l'écoute.
   - À propos : mises à jour, diagnostics, rapport de bug.
 
   Pour une vérification forcée des mises à jour : `Ok(None)` affiche « à jour » ; une mise à
   jour disponible n'apparaît que par la notice.
 - **Premier lancement** : loading indicator M3E, étapes, puis le choix de télémétrie sans option
-  présélectionnée (socle §4.6). Une étape s'ajoute après l'installation des sources :
+  présélectionnée (socle §4.6). Deux étapes changent :
+  - **« Ajoute une source pour lire »** remplace « Ajouter un dépôt ». Elle a une phrase et un
+    champ « Colle un lien de source », qui ouvre la feuille ci-dessous, puis « Passer ».
+  - **« Les notifications »**, juste avant la télémétrie, sur Android 13 et plus : « Pour voir
+    la lecture sur l'écran verrouillé et suivre tes téléchargements. Rien d'autre. »
+    Boutons « Plus tard » et « Autoriser ». Après « Plus tard », la demande ne revient qu'au
+    premier téléchargement. Une étape s'ajoute après l'installation des sources :
   **« Choisis au moins 3 artistes »**.
   - Des **bulles** de tailles variées, qui flottent doucement. Elles sont tirées de l'étagère
     « artists » de la catégorie vedette `chart:0`, avec un champ de recherche au-dessus.
@@ -532,7 +662,32 @@ carte). Viennent ensuite les titres populaires, puis les albums en carousel mult
   - « Continuer » s'active dès 3 artistes ; « Passer » reste toujours possible.
   - Sans plugin `browse`, ou hors ligne, l'étape est sautée.
   - Ces likes servent de graines au fil d'accueil dès la première ouverture (7.2).
-- **Dépôts et plugins**, **Téléchargements** : sections globales, ouvertes depuis le rail.
+- **Sources** :
+  - **Ajouter une source** tient en une feuille. Une source s'ajoute avec un **lien de
+    source** : `vehicoule://add-source?feed=<URL du feed>&key=<clé publique>`. Le lien est
+    publié par l'auteur de la source, sur son site ou son README. L'URL et la clé voyagent
+    ensemble, et l'utilisateur ne voit jamais de clé. Le lien arrive de deux façons :
+    - toucher le lien (lien profond) ouvre la feuille ;
+    - « Coller un lien » dans Réglages › Sources, ou à l'étape du premier lancement.
+  - La feuille montre :
+    - le nom de la source ;
+    - ce qu'elle ajoute, en mots simples (« Lecture des titres · Paroles ») ;
+    - une phrase : « Cette source ne vient pas de Vehicoule. Ajoute-la seulement si tu lui
+      fais confiance. » ;
+    - les boutons « Annuler » et « Ajouter ».
+
+    L'empreinte, les domaines contactés et la version sont repliés sous « Détails ». Toucher
+    « Ajouter » vaut accord explicite (socle §4.4). Il n'y a ni case à cocher ni champ de clé.
+    Un lien ne fait jamais rien sans cette feuille.
+  - Après l'ajout, les sources s'installent seules, et un snackbar dit « Communauté FR
+    ajoutée ».
+  - La clé est retenue à la première fois. Si une mise à jour arrive signée par une autre clé,
+    elle est refusée, avec ce message : « Cette source a changé de signature. Retire-la, puis
+    ajoute-la de nouveau depuis son lien. »
+  - L'écran Sources liste chaque source par origine (Officiel, puis le nom de chaque lien
+    ajouté). Une ligne montre ce que fait la source et un interrupteur ; son menu propose
+    « Retirer », avec Annuler. L'ordre de priorité par capacité vit dans « Avancé », replié.
+- **Sources**, **Téléchargements** : sections globales, ouvertes depuis le rail.
   - Téléchargements : une barre de stockage en tête (musique téléchargée / espace libre). Un
     titre en cours a l'**anneau ondulé** autour de sa pochette, celui du mini-lecteur, qui
     montre le pourcentage.
@@ -570,6 +725,30 @@ logique : ils affichent l'état et envoient des commandes.
   L'état et les commandes passent par un canal de plateforme vers Dart. Le popover vit tant
   que l'app tourne, y compris fenêtre fermée (4.2). Un réglage desktop « Afficher dans la
   barre des menus » est activé par défaut.
+
+### 6.10 Écran de démarrage
+
+- **Fond** : la couleur de fond de l'icône. **Centre** : le Mochi.
+- **Animation**, en 900 ms au plus : le Mochi tombe et rebondit une fois (écrasement puis
+  étirement), la note sort, puis l'accueil arrive en fondu (200 ms).
+- **Android 12 et plus** : l'API SplashScreen, avec une icône animée en vecteur.
+- **macOS, Windows, Linux** : la même séquence dans la fenêtre, au premier frame Flutter.
+- Ni texte, ni spinner, ni logo écrit. Le démarrage n'attend jamais le réseau : l'accueil
+  s'ouvre depuis le cache (7.2).
+- Rien au démarrage à chaud. Avec « réduire les animations » : l'icône fixe, puis le fondu.
+
+### 6.11 Surfaces système
+
+- **Notification média Android**, qui sert aussi à l'écran verrouillé :
+  - la pochette et la progression ;
+  - ⏮ ⏯ ⏭ ;
+  - like en action personnalisée (le cœur se remplit) ;
+  - × pour arrêter.
+
+  Les couleurs sont laissées au système.
+- **Permission de notifications** : §6.7.
+- **macOS** : « En cours de lecture » du Centre de contrôle et touches média, par les infos de
+  lecture du système. Le mini-lecteur de la barre des menus s'y ajoute (6.8).
 
 ## 7. Cœur : ce qui s'ajoute
 
@@ -743,7 +922,9 @@ porte des `TrackView` et la raison de chacun.
   - aucun import de `package:flutter/material.dart`, ni de `material_3_expressive` hors de
     `design/` ;
   - aucun nombre d'espacement hors des tokens ;
-  - aucun écran ni coque qui recrée une des six briques de la règle de réutilisation (§5).
+  - aucun écran ni coque qui recrée une des six briques de la règle de réutilisation (§5) ;
+  - les garde-fous de §2.8, avec leurs tests ;
+  - le vocabulaire et le ton de §2.9 sur les ARB.
 
 ## 10. Impact sur les plans
 
@@ -765,6 +946,19 @@ porte des `TrackView` et la raison de chacun.
   macOS (6.8), après la Task 6.
 - **Plan 7, Task 8 (nouvelle)** : minuterie de sommeil, `artist_latest_release`. Les graines
   issues des artistes likés s'ajoutent à la Task 6 du plan 7.
+
+- **Les 8 sujets** (§2.2 thème clair, 2.5 icône, 2.8, 2.9, 4.3, 4.4, 5.7, 5.8, 6.7 Sources,
+  6.10, 6.11) vont au plan 5 :
+  - Task 1 : les classes de largeur, l'anneau de focus et les tests de garde-fous §2.8 ;
+  - Task 2 : `docs/voice.md` et le test des ARB ;
+  - Task 4 : l'écran de démarrage, le lien profond `vehicoule://add-source`, la notification
+    média avec like, la demande de notifications, « En cours de lecture » sur macOS ;
+  - Task 5 : la largeur moyenne, l'ordre de Tab et le focus itinérant ;
+  - Task 6 : les astuces de gestes, le lecteur en deux colonnes ;
+  - Task 7 : l'écran Sources, la feuille d'ajout et les deux étapes du premier lancement ;
+  - Task 8 : la matrice des tests dorés.
+
+  Le dépôt `vehicoule-ytmusic` publie son lien de source dans son README.
 
 ## 11. Hors de cette spec
 
