@@ -12,7 +12,7 @@ const ARTISTS: usize = 10;
 const MIXES: usize = 6;
 const SHORTCUTS: u32 = 6;
 /// Local shelves' length.
-const ROWS: u32 = 20;
+pub(super) const ROWS: u32 = 20;
 const REDISCOVER_MS: i64 = 60 * 86_400_000;
 
 pub(super) struct Local {

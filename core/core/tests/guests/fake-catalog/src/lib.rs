@@ -14,7 +14,12 @@
 //! two synced lines.
 //! `browse`: categories `chart:0` (featured, with artwork) and `genre:1` (none); a category
 //! has four shelves (`tracks`, `albums`, `artists`, `playlists`) and pages `next` = `1` then
-//! none; `releases` of `ar-<key>`: two albums `rel-<key>-1..2` by that artist, newest first.
+//! none; `releases` of `ar-<key>`: two albums `rel-<key>-1..2` by that artist, newest first
+//! (2026-10-20, 2026-09-01); a key starting with `dup` adds, between them, `rel-<key>-mid`
+//! (2026-10-01), `rel-dup-shared` (2026-09-25, the same album for every such artist) and
+//! `rel-<key>-old` (2026-09-24). kv `chart` = `no-tracks`: `chart:0` has no `tracks` shelf, and
+//! the categories gain a featured `chart:2` after it. `radio` of a seed whose title contains
+//! `echo`: first, another edition of the seed (id `echo-<key>`, same title and artists).
 wit_bindgen::generate!({
     path: ["../../../../contract/wit/host", "../../../../contract/wit/music", "../wit"],
     world: "vehicoule:core-test-guests/fake-catalog",
@@ -41,6 +46,10 @@ use vehicoule_sdk::types::{
 };
 
 struct Fake;
+
+fn no_chart_tracks() -> bool {
+    kv::get("chart").is_some_and(|v| v == b"no-tracks")
+}
 
 fn mode() -> String {
     kv::get("mode")
@@ -308,7 +317,7 @@ impl radio::Guest for Fake {
     fn radio(seed: TrackQuery, _region: String, limit: u32) -> Result<Vec<Track>, Error> {
         check(&seed.title)?;
         let key = key_of(&seed);
-        Ok((1..=limit)
+        let mut out: Vec<Track> = (1..=limit)
             .map(|n| {
                 track(
                     format!("radio-{key}-{n}"),
@@ -316,7 +325,21 @@ impl radio::Guest for Fake {
                     &key,
                 )
             })
-            .collect())
+            .collect();
+        if seed.title.contains("echo") {
+            let artists = seed.artists.iter().map(|name| ArtistRef {
+                id: None,
+                name: name.clone(),
+            });
+            out.insert(
+                0,
+                Track {
+                    artists: artists.collect(),
+                    ..track(format!("echo-{key}"), &seed.title, &key)
+                },
+            );
+        }
+        Ok(out)
     }
 }
 
@@ -348,7 +371,7 @@ impl lyrics::Guest for Fake {
 impl browse::Guest for Fake {
     fn categories(_region: String) -> Result<Vec<Category>, Error> {
         check("categories")?;
-        Ok(vec![
+        let mut all = vec![
             Category {
                 id: "chart:0".into(),
                 title: "Top fake".into(),
@@ -361,7 +384,19 @@ impl browse::Guest for Fake {
                 artwork: vec![],
                 featured: false,
             },
-        ])
+        ];
+        if no_chart_tracks() {
+            all.insert(
+                1,
+                Category {
+                    id: "chart:2".into(),
+                    title: "Top fake 2".into(),
+                    artwork: vec![],
+                    featured: true,
+                },
+            );
+        }
+        Ok(all)
     }
 
     fn fetch_category(
@@ -387,20 +422,24 @@ impl browse::Guest for Fake {
             track_count: None,
             artwork: art(&key),
         };
+        let mut shelves = vec![
+            shelf(
+                "tracks",
+                tracks(&format!("t-{key}"), &key)
+                    .into_iter()
+                    .map(Entity::Track)
+                    .collect(),
+            ),
+            shelf("albums", vec![Entity::Album(album(&key))]),
+            shelf("artists", vec![Entity::Artist(artist(&key))]),
+            shelf("playlists", vec![Entity::Playlist(playlist)]),
+        ];
+        if id == "chart:0" && no_chart_tracks() {
+            shelves.remove(0);
+        }
         Ok(CategoryPage {
             title: format!("Category {id}"),
-            shelves: vec![
-                shelf(
-                    "tracks",
-                    tracks(&format!("t-{key}"), &key)
-                        .into_iter()
-                        .map(Entity::Track)
-                        .collect(),
-                ),
-                shelf("albums", vec![Entity::Album(album(&key))]),
-                shelf("artists", vec![Entity::Artist(artist(&key))]),
-                shelf("playlists", vec![Entity::Playlist(playlist)]),
-            ],
+            shelves,
             next: cursor.is_none().then(|| "1".into()),
         })
     }
@@ -408,15 +447,29 @@ impl browse::Guest for Fake {
     fn releases(artist_id: String, _region: String) -> Result<Vec<Release>, Error> {
         check(&artist_id)?;
         let key = artist_id.strip_prefix("ar-").unwrap_or(&artist_id);
-        let release = |n: u32, date: &str| Release {
-            album: Album {
-                id: format!("rel-{key}-{n}"),
-                title: format!("Release {key} {n}"),
-                ..album(key)
-            },
-            date: date.into(),
+        // `rel-<n>` is `rel-<key>-<n>`, titled `Release <key> <n>`; `shared` is `rel-dup-shared`.
+        let release = |n: &str, date: &str| {
+            let (id, title) = match n {
+                "shared" => ("rel-dup-shared".to_string(), "Release shared".to_string()),
+                n => (format!("rel-{key}-{n}"), format!("Release {key} {n}")),
+            };
+            Release {
+                album: Album {
+                    id,
+                    title,
+                    ..album(key)
+                },
+                date: date.into(),
+            }
         };
-        Ok(vec![release(1, "2026-10-20"), release(2, "2026-09-01")])
+        let mut out = vec![release("1", "2026-10-20")];
+        if key.starts_with("dup") {
+            out.push(release("mid", "2026-10-01"));
+            out.push(release("shared", "2026-09-25"));
+            out.push(release("old", "2026-09-24"));
+        }
+        out.push(release("2", "2026-09-01"));
+        Ok(out)
     }
 }
 

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use assemble::assemble;
 use seeds::TRACK_SEEDS;
 
+use crate::api::browse::CategoryPageView;
 use crate::app::app;
 use crate::browse;
 use crate::catalog::{self as views, CardView, parse_id};
@@ -108,6 +109,12 @@ async fn network(local: &mut seeds::Local, now_ms: i64) -> Result<(), CoreError>
     }
     let inputs = &mut local.inputs;
     inputs.excluded.extend(picked.iter().copied());
+    // Another edition of a seed (other id, same title and artist) stays out too.
+    let ids = picked.clone();
+    let keys = app().db.read(move |c| seeds::candidates(c, &ids)).await?;
+    inputs
+        .folded_excluded
+        .extend(keys.into_iter().map(|k| k.folded));
     for seed in picked {
         let Some(found) = logged("radio", player::radio_tracks(seed).await) else {
             continue;
@@ -133,6 +140,7 @@ async fn network(local: &mut seeds::Local, now_ms: i64) -> Result<(), CoreError>
         .into_iter()
         .map(|r| r.0)
         .filter(|&id| seen.insert(id))
+        .take(seeds::ROWS as usize)
         .collect();
     inputs.chart = chart;
     Ok(())
@@ -144,35 +152,45 @@ async fn first_track(artist: ItemId) -> Option<ItemId> {
     parse_id(&page.tracks.first()?.id).ok()
 }
 
-/// The first track shelf of the featured chart.
+/// The first track shelf of the featured chart: `chart:0`, else (failing, or without tracks)
+/// the first other featured category.
 async fn chart() -> Result<Vec<ItemId>, CoreError> {
-    let page = match browse::category(CHART.into(), None).await {
-        Err(e) if !matches!(e, CoreError::NoPlugin(_) | CoreError::Offline) => {
-            let mut featured = browse::categories().await?.into_iter();
-            match featured.find(|c| c.featured && c.id != CHART) {
-                Some(c) => browse::category(c.id, None).await?,
-                None => return Err(e),
-            }
-        }
-        page => page?,
-    };
+    let main = browse::category(CHART.into(), None).await.map(tracks_of);
+    match main {
+        Ok(ids) if !ids.is_empty() => return Ok(ids),
+        Err(e @ (CoreError::NoPlugin(_) | CoreError::Offline)) => return Err(e),
+        _ => {}
+    }
+    let mut featured = browse::categories().await?.into_iter();
+    match featured.find(|c| c.featured && c.id != CHART) {
+        Some(c) => browse::category(c.id, None).await.map(tracks_of),
+        None => main,
+    }
+}
+
+/// The track ids of the page's first `tracks` shelf.
+fn tracks_of(page: CategoryPageView) -> Vec<ItemId> {
     let Some(shelf) = page.shelves.into_iter().find(|s| s.title == "tracks") else {
-        return Ok(vec![]);
+        return vec![];
     };
     shelf
         .items
         .iter()
         .filter_map(|c| match c {
-            CardView::Track { track, .. } => Some(parse_id(&track.id)),
+            CardView::Track { track, .. } => parse_id(&track.id).ok(),
             CardView::Collection(_) => None,
         })
         .collect()
 }
 
-/// `r`'s value; its error logged.
+/// `r`'s value; its error logged, unless no plugin has the capability (nothing went wrong).
 fn logged<T>(source: &str, r: Result<T, CoreError>) -> Option<T> {
-    r.inspect_err(|e| logs::push("warn", "home", &format!("{source}: {e:?}")))
-        .ok()
+    r.inspect_err(|e| {
+        if !matches!(e, CoreError::NoPlugin(_)) {
+            logs::push("warn", "home", &format!("{source}: {e:?}"));
+        }
+    })
+    .ok()
 }
 
 /// The UTC `YYYY-MM-DD` of a unix ms time (days to civil date, H. Hinnant).
@@ -194,11 +212,13 @@ mod tests {
     use super::*;
     use crate::app::test_app;
     use crate::catalog;
-    use crate::catalog::tests::{calls, setup};
+    use crate::catalog::tests::{calls, set_mode, setup};
     use crate::library::{likes, plays};
     use crate::plugins::now_ms;
 
     const DAY_MS: i64 = 86_400_000;
+    /// 2026-10-25T00:00Z: 30 days back is 2026-09-25.
+    const OCT_25: i64 = 1_792_886_400_000;
 
     /// An empty library: no plays, likes, downloads nor user playlists; no `@core` copy;
     /// `discover` unset.
@@ -388,5 +408,120 @@ mod tests {
             .unwrap();
         let stored: FeedDoc = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(stored, doc);
+    }
+
+    /// Likes the artist of the track a search for `q` stores.
+    async fn liked_artist(q: &str) -> ItemId {
+        let (_, _, artist) = song(q).await;
+        like(artist).await;
+        artist
+    }
+
+    #[tokio::test]
+    async fn new_releases_are_recent_newest_first_and_distinct() {
+        let (_lock, _) = setup().await;
+        wipe().await;
+        let mut dates = std::collections::HashMap::new();
+        for q in ["dup a", "dup b"] {
+            let artist = liked_artist(q).await;
+            for (id, date) in browse::releases(artist).await.unwrap() {
+                dates.insert(id.to_string(), date);
+            }
+        }
+        let doc = build(OCT_25).await.unwrap();
+        let ids = items(&doc, ShelfKind::NewReleases);
+        let got: Vec<&str> = ids.iter().map(|id| dates[id].as_str()).collect();
+        // 2026-09-25 is in (exactly 30 days), 2026-09-24 out; the shared album once.
+        assert_eq!(
+            got,
+            [
+                "2026-10-20",
+                "2026-10-20",
+                "2026-10-01",
+                "2026-10-01",
+                "2026-09-25"
+            ]
+        );
+        assert_eq!(ids.iter().collect::<HashSet<_>>().len(), ids.len());
+    }
+
+    #[tokio::test]
+    async fn new_releases_are_capped_at_20() {
+        let (_lock, _) = setup().await;
+        wipe().await;
+        // 2 recent releases each, plus the shared one: 21.
+        for k in 0..10 {
+            liked_artist(&format!("dup cap {k}")).await;
+        }
+        let doc = build(OCT_25).await.unwrap();
+        assert_eq!(items(&doc, ShelfKind::NewReleases).len(), 20);
+    }
+
+    #[tokio::test]
+    async fn no_plugin_logs_no_warning() {
+        let (_lock, app) = setup().await;
+        wipe().await;
+        liked_artist("home noplugin").await;
+        app.plugins.replace_loaded(vec![]);
+        let start = now_ms();
+        build(now_ms()).await.unwrap();
+        let home: Vec<String> = logs::recent()
+            .into_iter()
+            .filter(|l| l.at_ms >= start && l.source == "home")
+            .map(|l| l.message)
+            .collect();
+        assert_eq!(home, Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn chart_without_tracks_falls_back_to_the_next_featured() {
+        let (_lock, app) = setup().await;
+        wipe().await;
+        app.db
+            .write(|tx| kv::set(tx, "fake", "chart", b"no-tracks"))
+            .await
+            .unwrap();
+        let doc = build(now_ms()).await.unwrap();
+        assert_eq!(items(&doc, ShelfKind::Chart).len(), 2);
+        let chart = HashSet::from(["t-chart-2-p0 1".to_string(), "t-chart-2-p0 2".into()]);
+        assert_eq!(reasons(&doc), chart);
+    }
+
+    #[tokio::test]
+    async fn another_edition_of_a_seed_is_not_discovered() {
+        let (_lock, app) = setup().await;
+        wipe().await;
+        // The seed is the artist's first track, "ar-echo-a 1"; its radio starts with another
+        // edition of it.
+        liked_artist("echo a").await;
+        let doc = build(now_ms()).await.unwrap();
+        assert_eq!(reasons(&doc), HashSet::from(["ar-echo-a 1".to_string()]));
+        let ids: Vec<ItemId> = items(&doc, ShelfKind::Discovery)
+            .iter()
+            .map(|id| parse_id(id).unwrap())
+            .collect();
+        let titles: Vec<String> = app
+            .db
+            .read(move |c| crate::library::catalog::tracks(c, &ids))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.title)
+            .collect();
+        assert!(!titles.contains(&"ar-echo-a 1".to_string()), "{titles:?}");
+        assert_eq!(titles.len(), 25);
+    }
+
+    #[tokio::test]
+    async fn a_failing_radio_empties_only_discovery() {
+        let (_lock, _) = setup().await;
+        wipe().await;
+        // The first build keeps a copy of the chart for 24 h.
+        build(now_ms()).await.unwrap();
+        set_mode("fake", "network").await;
+        set_mode("fake-b", "network").await;
+        let doc = build(now_ms()).await.unwrap();
+        assert_eq!(items(&doc, ShelfKind::Discovery), Vec::<String>::new());
+        assert_eq!(items(&doc, ShelfKind::Chart).len(), 2);
     }
 }
