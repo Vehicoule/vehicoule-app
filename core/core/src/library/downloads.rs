@@ -115,6 +115,13 @@ pub fn list(c: &Connection, state: Option<DownloadState>) -> rusqlite::Result<Ve
     Ok(all)
 }
 
+/// The finished downloads' files: every done row, each edition of a merge group included.
+pub fn done_bytes(c: &Connection) -> rusqlite::Result<u64> {
+    let sql = "SELECT COALESCE(sum(bytes_done), 0) FROM downloads WHERE state = 'done'";
+    c.query_row(sql, [], |r| r.get::<_, i64>(0))
+        .map(|b| b as u64)
+}
+
 /// Downloaded live tracks (a done row in their merge group: the set `list(Done)` gives) in
 /// `sort` order;
 /// `Added` is when the download was queued.

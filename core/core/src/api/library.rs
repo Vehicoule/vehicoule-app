@@ -17,6 +17,7 @@ use crate::library::playlists::{self, EntryId, Place};
 use crate::library::{
     CollectionSort, ItemId, Kind, Page, TrackSort, catalog, likes, plays, search,
 };
+use crate::plugins::now_ms;
 use crate::{home, player};
 
 const LOCAL_HITS: u32 = 50;
@@ -60,6 +61,13 @@ pub struct StorageView {
     pub music_bytes: u64,
     /// Free on the downloads folder's volume.
     pub free_bytes: u64,
+}
+
+/// A Top 50 track and its plays (of 30 s or more): over 90 days, or all time for the
+/// tracks completing the list.
+pub struct TopTrackView {
+    pub plays: u32,
+    pub track: TrackView,
 }
 
 /// A track of the history and when it was last played (unix ms), for grouping by day.
@@ -183,13 +191,22 @@ pub async fn downloaded(
 }
 
 /// The 50 most played tracks (plays of 30 s or more) over 90 days, completed from all time.
-pub async fn top_tracks() -> Result<Vec<TrackView>, CoreError> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64);
+pub async fn top_tracks() -> Result<Vec<TopTrackView>, CoreError> {
+    let now = now_ms();
     Ok(app()
         .db
-        .read(move |c| track_views(c, &plays::top_tracks(c, now)?))
+        .read(move |c| {
+            let mut out = Vec::new();
+            for (id, plays) in plays::top_tracks(c, now)? {
+                if let Some(t) = catalog::track(c, id)? {
+                    out.push(TopTrackView {
+                        plays,
+                        track: track_view(t),
+                    });
+                }
+            }
+            Ok(out)
+        })
         .await?)
 }
 
@@ -368,10 +385,7 @@ pub async fn downloads() -> Result<Vec<DownloadProgress>, CoreError> {
 
 /// The downloads' storage bar: the finished downloads, and the free space of their volume.
 pub async fn download_storage() -> Result<StorageView, CoreError> {
-    let done = app()
-        .db
-        .read(|c| rows::list(c, Some(rows::DownloadState::Done)))
-        .await?;
+    let music_bytes = app().db.read(rows::done_bytes).await?;
     let dir = app().cfg.downloads_dir.clone();
     let free = tokio::task::spawn_blocking(move || {
         std::fs::create_dir_all(&dir)?;
@@ -381,7 +395,7 @@ pub async fn download_storage() -> Result<StorageView, CoreError> {
     .map_err(|e| CoreError::Internal(e.to_string()))?
     .map_err(|e| CoreError::Internal(format!("free space: {e}")))?;
     Ok(StorageView {
-        music_bytes: done.iter().map(|r| r.bytes_done).sum(),
+        music_bytes,
         free_bytes: free,
     })
 }
@@ -517,6 +531,78 @@ mod tests {
             "the running one left out"
         );
         assert!(storage.free_bytes > 0);
+    }
+
+    #[tokio::test]
+    async fn top_tracks_carry_their_play_count() {
+        use crate::home::tests::{play, song, wipe};
+        let (_lock, app) = catalog::tests::setup().await;
+        wipe().await;
+        let (a, _, _) = song("top count a").await;
+        let (b, _, _) = song("top count b").await;
+        let (old, _, _) = song("top count old").await;
+        for _ in 0..3 {
+            play(a, None).await;
+        }
+        play(b, None).await;
+        // Out of the 90 days: completes the list, with its all-time count.
+        let at = crate::plugins::now_ms() - 100 * 86_400_000;
+        app.db
+            .write(move |tx| {
+                for _ in 0..2 {
+                    let p = plays::start(tx, old, "test", None)?;
+                    tx.tx.execute(
+                        "UPDATE plays SET started_at = ?2, listened_ms = 60000 WHERE id = ?1",
+                        rusqlite::params![p.as_bytes().as_slice(), at],
+                    )?;
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let top = top_tracks().await.unwrap();
+        let got: Vec<_> = top.iter().map(|t| (t.track.id.clone(), t.plays)).collect();
+        let want = [(a, 3), (b, 1), (old, 2)].map(|(id, n)| (id.to_string(), n));
+        assert_eq!(got, want);
+        wipe().await;
+    }
+
+    #[tokio::test]
+    async fn download_storage_counts_every_edition_file() {
+        let (_lock, app) = catalog::tests::setup().await;
+        let before = download_storage().await.unwrap().music_bytes;
+        let mut ids = vec![];
+        for q in ["storage edition a", "storage edition b"] {
+            let id = catalog::search(q).await.unwrap().tracks[0].id.clone();
+            ids.push(parse_id(&id).unwrap());
+        }
+        let (a, b) = (ids[0], ids[1]);
+        app.db
+            .write(move |tx| {
+                for (item, bytes) in [(a, 1_000), (b, 2_000)] {
+                    rows::enqueue(tx, item, "normal")?;
+                    rows::update(
+                        tx,
+                        &rows::DownloadRow {
+                            item,
+                            state: rows::DownloadState::Done,
+                            path: Some(format!("/music/{item}.webm")),
+                            quality: "normal".into(),
+                            mime: Some("audio/webm".into()),
+                            loudness_db: None,
+                            bytes_total: Some(bytes),
+                            bytes_done: bytes,
+                            error: None,
+                        },
+                    )?;
+                }
+                // Two editions of one track, both downloaded: two files on disk.
+                crate::library::items::merge(tx, a, b)
+            })
+            .await
+            .unwrap();
+        let storage = download_storage().await.unwrap();
+        assert_eq!(storage.music_bytes - before, 3_000);
     }
 
     #[tokio::test]

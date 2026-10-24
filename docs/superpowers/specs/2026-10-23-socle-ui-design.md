@@ -681,7 +681,7 @@ Un module `home` du cœur, sans nouvelle capacité à part `browse`.
 | `browse_category(id, cursor) -> CategoryPageView` | Page d'une catégorie |
 | `suggest(prefix) -> Vec<SuggestionView { text, from_history }>` | Remplace `Vec<String>` (l'icône dépend de l'origine) |
 | `liked(kind, sort, offset, limit)`, `liked_tracks(sort, …)`, `playlists(sort)`, `downloaded(sort, offset, limit)` | Tri côté cœur (6.3) |
-| `top_tracks() -> Vec<TrackView>` | Top 50 (6.3) |
+| `top_tracks() -> Vec<TopTrackView { plays, track }>` | Top 50 (6.3) : le sous-titre du podium donne `plays` |
 | `history(offset, limit) -> Vec<HistoryEntryView { played_at, track }>` | L'historique groupé par jour a besoin de l'heure |
 | `set_sleep_timer(SleepTimer)` | `Off`, `Minutes(u32)` ou `EndOfTrack`. À l'échéance, le lecteur met en pause (le volume baisse en fondu sur 5 s avant). Le timer ne survit pas à un redémarrage |
 | `NowPlaying.sleep: Option<SleepState>` | `ends_at_ms` ou `end_of_track`, pour l'icône lune et le compte à rebours affichés dans l'en-tête du lecteur |

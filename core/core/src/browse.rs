@@ -242,8 +242,9 @@ pub(crate) fn card(c: &Connection, id: ItemId) -> rusqlite::Result<Option<CardVi
     Ok(catalog::collection(c, id)?.map(|r| CardView::Collection(collection_view(r))))
 }
 
-/// An artist's releases, newest first: the album items and their `YYYY-MM-DD` dates. The
-/// plugins asked are those holding a ref of the artist.
+/// An artist's releases, newest first: the album items and their `YYYY-MM-DD` dates (a
+/// release dated otherwise is left out). The plugins asked are those holding a ref of the
+/// artist.
 pub(crate) async fn releases(artist: ItemId) -> Result<Vec<(ItemId, String)>, CoreError> {
     let key = format!("browse_releases:{artist}");
     let (found, _) = cached(key, || fetch_releases(artist)).await?;
@@ -276,6 +277,7 @@ async fn fetch_releases(artist: ItemId) -> Result<Vec<(Uuid, String)>, CoreError
         .write(move |tx| {
             found
                 .into_iter()
+                .filter(|r| is_date(&r.date))
                 .map(|r| {
                     let album = catalog::upsert_album(tx, &provider, &convert::album(r.album))?;
                     Ok((album.0, r.date))
@@ -283,6 +285,15 @@ async fn fetch_releases(artist: ItemId) -> Result<Vec<(Uuid, String)>, CoreError
                 .collect()
         })
         .await?)
+}
+
+/// `YYYY-MM-DD`, as the contract says: compared as strings, so nothing else gets in.
+fn is_date(s: &str) -> bool {
+    s.len() == 10
+        && s.bytes().enumerate().all(|(i, b)| match i {
+            4 | 7 => b == b'-',
+            _ => b.is_ascii_digit(),
+        })
 }
 
 /// The newest of `releases(artist)`, unless older than 90 days at `now_ms`; errors are
@@ -555,6 +566,18 @@ mod tests {
             releases(ItemId(uuid::Uuid::nil())).await,
             Err(CoreError::NoPlugin(Capability::Browse))
         );
+    }
+
+    #[tokio::test]
+    async fn releases_without_a_plain_date_are_left_out() {
+        let (_lock, _) = setup().await;
+        clear().await;
+        let artist = catalog::search("baddate").await.unwrap().artists[0]
+            .id
+            .clone();
+        let found = releases(parse_id(&artist).unwrap()).await.unwrap();
+        let dates: Vec<_> = found.iter().map(|r| r.1.as_str()).collect();
+        assert_eq!(dates, ["2026-10-05"]);
     }
 
     #[tokio::test]

@@ -3427,6 +3427,20 @@ impl SseDecode for Vec<crate::catalog::SuggestionView> {
     }
 }
 
+impl SseDecode for Vec<crate::api::library::TopTrackView> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::library::TopTrackView>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::catalog::TrackView> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4163,6 +4177,18 @@ impl SseDecode for crate::catalog::SuggestionView {
         return crate::catalog::SuggestionView {
             text: var_text,
             from_history: var_fromHistory,
+        };
+    }
+}
+
+impl SseDecode for crate::api::library::TopTrackView {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_plays = <u32>::sse_decode(deserializer);
+        let mut var_track = <crate::catalog::TrackView>::sse_decode(deserializer);
+        return crate::api::library::TopTrackView {
+            plays: var_plays,
+            track: var_track,
         };
     }
 }
@@ -5543,6 +5569,27 @@ impl flutter_rust_bridge::IntoIntoDart<crate::catalog::SuggestionView>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::library::TopTrackView {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.plays.into_into_dart().into_dart(),
+            self.track.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::library::TopTrackView
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::library::TopTrackView>
+    for crate::api::library::TopTrackView
+{
+    fn into_into_dart(self) -> crate::api::library::TopTrackView {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::library::TrackSort {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
@@ -6212,6 +6259,16 @@ impl SseEncode for Vec<crate::catalog::SuggestionView> {
     }
 }
 
+impl SseEncode for Vec<crate::api::library::TopTrackView> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::library::TopTrackView>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::catalog::TrackView> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6833,6 +6890,14 @@ impl SseEncode for crate::catalog::SuggestionView {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.text, serializer);
         <bool>::sse_encode(self.from_history, serializer);
+    }
+}
+
+impl SseEncode for crate::api::library::TopTrackView {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.plays, serializer);
+        <crate::catalog::TrackView>::sse_encode(self.track, serializer);
     }
 }
 

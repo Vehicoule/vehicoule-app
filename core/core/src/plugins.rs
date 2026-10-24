@@ -539,7 +539,7 @@ impl Plugins {
     /// failure → `Network`.
     async fn get(&self, url: &Url, max: usize) -> Result<Vec<u8>, CoreError> {
         let network = |e: reqwest::Error| {
-            logs::push("warn", "feeds", &e.to_string());
+            logs::push("warn", "feeds", &e.without_url().to_string());
             CoreError::Network
         };
         let mut resp = self.http.get(url.clone()).send().await.map_err(network)?;

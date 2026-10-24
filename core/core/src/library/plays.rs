@@ -98,10 +98,10 @@ pub fn top_items(
 ) -> rusqlite::Result<Vec<ItemId>> {
     let counted = counted();
     let sql = match kind {
-        Kind::Track => format!(
-            "SELECT r.id {PLAYED} WHERE {counted} AND r.kind = 'track' AND r.deleted_at IS NULL
-             GROUP BY r.id ORDER BY count(*) DESC, max(p.started_at) DESC, r.id DESC LIMIT ?2"
-        ),
+        Kind::Track => {
+            let top = counted_tracks(c, since_ms, limit)?;
+            return Ok(top.into_iter().map(|t| t.0).collect());
+        }
         Kind::Artist => format!(
             "SELECT ar.id {PLAYED} JOIN music_track_artists ta ON ta.track_id = r.id
              JOIN items a ON a.id = ta.artist_id
@@ -117,13 +117,29 @@ pub fn top_items(
         .collect()
 }
 
-/// The Top 50: the 90-day top, completed from the all-time top without duplicates.
-pub fn top_tracks(c: &Connection, now_ms: i64) -> rusqlite::Result<Vec<ItemId>> {
-    let mut top = top_items(c, Kind::Track, now_ms - TOP_WINDOW_MS, TOP_TRACKS)?;
+/// The most played tracks since `since_ms`, each with its counted plays.
+fn counted_tracks(
+    c: &Connection,
+    since_ms: i64,
+    limit: u32,
+) -> rusqlite::Result<Vec<(ItemId, u32)>> {
+    let mut st = c.prepare(&format!(
+        "SELECT r.id, count(*) {PLAYED} WHERE {} AND r.kind = 'track' AND r.deleted_at IS NULL
+         GROUP BY r.id ORDER BY count(*) DESC, max(p.started_at) DESC, r.id DESC LIMIT ?2",
+        counted()
+    ))?;
+    st.query_map(params![since_ms, limit], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect()
+}
+
+/// The Top 50: the 90-day top, completed from the all-time top without duplicates. Each
+/// with the plays it ranks by: over 90 days, or all time for the ones completing the list.
+pub fn top_tracks(c: &Connection, now_ms: i64) -> rusqlite::Result<Vec<(ItemId, u32)>> {
+    let mut top = counted_tracks(c, now_ms - TOP_WINDOW_MS, TOP_TRACKS)?;
     if top.len() < TOP_TRACKS as usize {
-        for id in top_items(c, Kind::Track, 0, TOP_TRACKS)? {
-            if !top.contains(&id) {
-                top.push(id);
+        for (id, n) in counted_tracks(c, 0, TOP_TRACKS)? {
+            if !top.iter().any(|t| t.0 == id) {
+                top.push((id, n));
             }
         }
         top.truncate(TOP_TRACKS as usize);
@@ -337,7 +353,7 @@ pub(crate) mod tests {
         }
         let top = db.read_blocking(move |c| top_tracks(c, now)).unwrap();
         // The window's tracks first, then the all-time ones, without duplicates.
-        assert_eq!(top, vec![recent, old]);
+        assert_eq!(top, vec![(recent, 1), (old, 3)]);
     }
 
     #[test]
@@ -584,7 +600,12 @@ pub(crate) mod tests {
         // Played more, but too long ago.
         let old = played_tracks(&db, "o", 1, now - 100 * DAY)[0];
         play_at(&db, old, now - 100 * DAY, 60_000, None);
-        let top = db.read_blocking(move |c| top_tracks(c, now)).unwrap();
+        let top: Vec<ItemId> = db
+            .read_blocking(move |c| top_tracks(c, now))
+            .unwrap()
+            .into_iter()
+            .map(|t| t.0)
+            .collect();
         assert_eq!(top.len(), 50);
         assert!(!top.contains(&old));
         assert_eq!(top[0], recent[49], "latest play first among equals");
@@ -601,7 +622,12 @@ pub(crate) mod tests {
         for &t in &old {
             play_at(&db, t, now - 101 * DAY, 60_000, None);
         }
-        let top = db.read_blocking(move |c| top_tracks(c, now)).unwrap();
+        let top: Vec<ItemId> = db
+            .read_blocking(move |c| top_tracks(c, now))
+            .unwrap()
+            .into_iter()
+            .map(|t| t.0)
+            .collect();
         assert_eq!(top.len(), 50);
         let want: Vec<ItemId> = recent
             .iter()

@@ -72,7 +72,7 @@ Future<List<TrackView>> downloaded({
 );
 
 /// The 50 most played tracks (plays of 30 s or more) over 90 days, completed from all time.
-Future<List<TrackView>> topTracks() =>
+Future<List<TopTrackView>> topTracks() =>
     RustLib.instance.api.crateApiLibraryTopTracks();
 
 /// Tracks by latest play, each with that play's start.
@@ -259,4 +259,24 @@ class StorageView {
           runtimeType == other.runtimeType &&
           musicBytes == other.musicBytes &&
           freeBytes == other.freeBytes;
+}
+
+/// A Top 50 track and its plays (of 30 s or more): over 90 days, or all time for the
+/// tracks completing the list.
+class TopTrackView {
+  final int plays;
+  final TrackView track;
+
+  const TopTrackView({required this.plays, required this.track});
+
+  @override
+  int get hashCode => plays.hashCode ^ track.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TopTrackView &&
+          runtimeType == other.runtimeType &&
+          plays == other.plays &&
+          track == other.track;
 }

@@ -305,7 +305,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<List<SuggestionView>> crateApiCatalogSuggest({required String prefix});
 
-  Future<List<TrackView>> crateApiLibraryTopTracks();
+  Future<List<TopTrackView>> crateApiLibraryTopTracks();
 
   Future<List<TrackView>> crateApiLibraryTracks({required List<String> ids});
 
@@ -2381,7 +2381,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "suggest", argNames: ["prefix"]);
 
   @override
-  Future<List<TrackView>> crateApiLibraryTopTracks() {
+  Future<List<TopTrackView>> crateApiLibraryTopTracks() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -2394,7 +2394,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_list_track_view,
+          decodeSuccessData: sse_decode_list_top_track_view,
           decodeErrorData: sse_decode_core_error,
         ),
         constMeta: kCrateApiLibraryTopTracksConstMeta,
@@ -3100,6 +3100,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<TopTrackView> dco_decode_list_top_track_view(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_top_track_view).toList();
+  }
+
+  @protected
   List<TrackView> dco_decode_list_track_view(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_track_view).toList();
@@ -3607,6 +3613,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return SuggestionView(
       text: dco_decode_String(arr[0]),
       fromHistory: dco_decode_bool(arr[1]),
+    );
+  }
+
+  @protected
+  TopTrackView dco_decode_top_track_view(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return TopTrackView(
+      plays: dco_decode_u_32(arr[0]),
+      track: dco_decode_track_view(arr[1]),
     );
   }
 
@@ -4443,6 +4461,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<TopTrackView> sse_decode_list_top_track_view(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <TopTrackView>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_top_track_view(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<TrackView> sse_decode_list_track_view(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -5043,6 +5075,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_text = sse_decode_String(deserializer);
     var var_fromHistory = sse_decode_bool(deserializer);
     return SuggestionView(text: var_text, fromHistory: var_fromHistory);
+  }
+
+  @protected
+  TopTrackView sse_decode_top_track_view(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_plays = sse_decode_u_32(deserializer);
+    var var_track = sse_decode_track_view(deserializer);
+    return TopTrackView(plays: var_plays, track: var_track);
   }
 
   @protected
@@ -5884,6 +5924,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_top_track_view(
+    List<TopTrackView> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_top_track_view(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_track_view(
     List<TrackView> self,
     SseSerializer serializer,
@@ -6397,6 +6449,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.text, serializer);
     sse_encode_bool(self.fromHistory, serializer);
+  }
+
+  @protected
+  void sse_encode_top_track_view(TopTrackView self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.plays, serializer);
+    sse_encode_track_view(self.track, serializer);
   }
 
   @protected

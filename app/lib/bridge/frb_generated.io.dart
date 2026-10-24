@@ -265,6 +265,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<SuggestionView> dco_decode_list_suggestion_view(dynamic raw);
 
   @protected
+  List<TopTrackView> dco_decode_list_top_track_view(dynamic raw);
+
+  @protected
   List<TrackView> dco_decode_list_track_view(dynamic raw);
 
   @protected
@@ -392,6 +395,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SuggestionView dco_decode_suggestion_view(dynamic raw);
+
+  @protected
+  TopTrackView dco_decode_top_track_view(dynamic raw);
 
   @protected
   TrackSort dco_decode_track_sort(dynamic raw);
@@ -671,6 +677,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<TopTrackView> sse_decode_list_top_track_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<TrackView> sse_decode_list_track_view(SseDeserializer deserializer);
 
   @protected
@@ -816,6 +827,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SuggestionView sse_decode_suggestion_view(SseDeserializer deserializer);
+
+  @protected
+  TopTrackView sse_decode_top_track_view(SseDeserializer deserializer);
 
   @protected
   TrackSort sse_decode_track_sort(SseDeserializer deserializer);
@@ -1184,6 +1198,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_top_track_view(
+    List<TopTrackView> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_track_view(
     List<TrackView> self,
     SseSerializer serializer,
@@ -1347,6 +1367,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     SuggestionView self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_top_track_view(TopTrackView self, SseSerializer serializer);
 
   @protected
   void sse_encode_track_sort(TrackSort self, SseSerializer serializer);

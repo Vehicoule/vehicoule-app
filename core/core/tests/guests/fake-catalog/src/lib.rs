@@ -17,7 +17,8 @@
 //! none; `releases` of `ar-<key>`: two albums `rel-<key>-1..2` by that artist, newest first
 //! (2026-10-20, 2026-09-01); a key starting with `dup` adds, between them, `rel-<key>-mid`
 //! (2026-10-01), `rel-dup-shared` (2026-09-25, the same album for every such artist) and
-//! `rel-<key>-old` (2026-09-24). kv `chart` = `no-tracks`: `chart:0` has no `tracks` shelf, and
+//! `rel-<key>-old` (2026-09-24); a key starting with `baddate` gets four releases dated
+//! `2026-10-20T08:00:00Z`, `2026-10-05`, `2026-10` and `2026`. kv `chart` = `no-tracks`: `chart:0` has no `tracks` shelf, and
 //! the categories gain a featured `chart:2` after it. `radio` of a seed whose title contains
 //! `echo`: first, another edition of the seed (id `echo-<key>`, same title and artists).
 wit_bindgen::generate!({
@@ -462,6 +463,14 @@ impl browse::Guest for Fake {
                 date: date.into(),
             }
         };
+        if key.starts_with("baddate") {
+            return Ok(vec![
+                release("iso", "2026-10-20T08:00:00Z"),
+                release("ok", "2026-10-05"),
+                release("month", "2026-10"),
+                release("year", "2026"),
+            ]);
+        }
         let mut out = vec![release("1", "2026-10-20")];
         if key.starts_with("dup") {
             out.push(release("mid", "2026-10-01"));
