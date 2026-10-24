@@ -1381,3 +1381,64 @@ async fn off_after_end_of_track_preloads_again() {
     let (again, _) = enqueued(t.cmds.recv().await.unwrap());
     assert_eq!(again, b);
 }
+
+#[tokio::test(start_paused = true)]
+async fn end_of_track_keeps_queue_edits_after_an_empty_preload() {
+    let mut t = setup().await;
+    play(vec![track("eot last").await], 0, None).await.unwrap();
+    let (a, ..) = played(now(&mut t.cmds));
+    started(&a, 30_000).await;
+    // The preload ran (at 10 s) and found nothing: radio off.
+    quiet_for(&mut t.cmds, 15_000).await;
+    set_sleep_timer(SleepTimer::EndOfTrack).await.unwrap();
+    nothing(&mut t.cmds);
+    let x = track("eot added").await;
+    edit(QueueOp::EnqueueNext(vec![x.clone()])).await.unwrap();
+    nothing(&mut t.cmds);
+    let view = last_queue(&mut t.queue);
+    let upcoming: Vec<_> = view.upcoming.iter().map(|i| i.track.id.as_str()).collect();
+    assert_eq!(upcoming, [x.as_str()]);
+    let json = test_app().db.read(saved::load).await.unwrap().unwrap();
+    let saved: crate::queue::QueueState = serde_json::from_str(&json).unwrap();
+    assert!(saved.entries.iter().any(|e| e.item == x), "saved too");
+}
+
+#[tokio::test(start_paused = true)]
+async fn end_of_track_on_the_last_entry_stops_at_its_end() {
+    let mut t = setup().await;
+    let mut np = test_app().events.now_playing.subscribe();
+    play(vec![track("eot only").await], 0, None).await.unwrap();
+    let (a, ..) = played(now(&mut t.cmds));
+    started(&a, 30_000).await;
+    set_sleep_timer(SleepTimer::EndOfTrack).await.unwrap();
+    quiet_for(&mut t.cmds, 60_000).await;
+    on_event(PlayerEvent::Ended { entry: a }).await;
+    assert_eq!(now(&mut t.cmds), PlayerCommand::Stop);
+    nothing(&mut t.cmds);
+    assert_eq!(last_sleep(&mut np), None, "the timer is gone");
+}
+
+#[tokio::test(start_paused = true)]
+async fn end_of_track_replaced_by_minutes_preloads_and_pauses() {
+    let mut t = setup().await;
+    play(
+        vec![track("eot min a").await, track("eot min b").await],
+        0,
+        None,
+    )
+    .await
+    .unwrap();
+    let (a, ..) = played(now(&mut t.cmds));
+    let t0 = Instant::now();
+    started(&a, 180_000).await;
+    set_sleep_timer(SleepTimer::EndOfTrack).await.unwrap();
+    quiet_for(&mut t.cmds, 30_000).await;
+    set_sleep_timer(SleepTimer::Minutes(1)).await.unwrap();
+    let t1 = Instant::now();
+    let cmd = t.cmds.recv().await.unwrap();
+    assert_eq!(cmd, PlayerCommand::Pause { fade_ms: 5000 });
+    about(t1.elapsed(), 60_000);
+    // Preloading again: 20 s before the end.
+    enqueued(t.cmds.recv().await.unwrap());
+    about(t0.elapsed(), 160_000);
+}

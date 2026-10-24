@@ -1078,8 +1078,11 @@ impl Player {
             self.next = None;
             self.preloaded = false;
             if std::mem::take(&mut self.held) {
+                // Started by the player before this arrives: its crossed `TrackStarted` makes
+                // it current, and it pauses at its end (a track late, as the UI shows; on purpose).
                 send(PlayerCommand::ClearNext);
             }
+            self.queue_changed().await;
             return;
         }
         self.preloaded = true;
