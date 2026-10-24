@@ -21,7 +21,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 Future<HomeFeedPage> homeFeed({String? cursor}) =>
     RustLib.instance.api.crateApiLibraryHomeFeed(cursor: cursor);
 
-/// Rebuilds the feed now (pull to refresh); `LibraryChanged::Home` follows.
+/// Rebuilds the feed now (pull to refresh), or waits for the build running;
+/// `LibraryChanged::Home` follows. Offline: `Offline` (the last feed is kept).
 Future<void> refreshHome() => RustLib.instance.api.crateApiLibraryRefreshHome();
 
 /// Plays a radio of the artist's most played track (else the first of its page).

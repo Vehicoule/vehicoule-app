@@ -15,10 +15,16 @@ pub fn device_get(c: &Connection, key: &str) -> rusqlite::Result<Option<String>>
 }
 
 /// `device_id` and `hlc_last` are reserved by `Db`: refused.
-pub fn device_set(tx: &Tx, key: &str, value: &str) -> rusqlite::Result<()> {
-    if matches!(key, "device_id" | "hlc_last") {
-        return Err(invalid(format!("settings: {key} is reserved")));
+fn writable(key: &str) -> rusqlite::Result<()> {
+    match key {
+        "device_id" | "hlc_last" => Err(invalid(format!("settings: {key} is reserved"))),
+        _ => Ok(()),
     }
+}
+
+/// A reserved key is refused (`writable`).
+pub fn device_set(tx: &Tx, key: &str, value: &str) -> rusqlite::Result<()> {
+    writable(key)?;
     tx.tx.execute(
         "INSERT INTO settings_device (key, value) VALUES (?1, ?2)
          ON CONFLICT (key) DO UPDATE SET value = excluded.value",
@@ -27,7 +33,9 @@ pub fn device_set(tx: &Tx, key: &str, value: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// A reserved key is refused (`writable`).
 pub fn device_delete(tx: &Tx, key: &str) -> rusqlite::Result<()> {
+    writable(key)?;
     tx.tx
         .execute("DELETE FROM settings_device WHERE key = ?1", [key])?;
     Ok(())
@@ -83,6 +91,8 @@ mod tests {
             let err = db
                 .write_blocking(|tx| device_set(tx, key, "0"))
                 .unwrap_err();
+            assert!(matches!(err, DbError::Invalid(_)), "{key}: {err:?}");
+            let err = db.write_blocking(|tx| device_delete(tx, key)).unwrap_err();
             assert!(matches!(err, DbError::Invalid(_)), "{key}: {err:?}");
         }
         assert_eq!(

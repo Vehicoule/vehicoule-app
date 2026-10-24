@@ -9,7 +9,6 @@ mod assemble;
 mod seeds;
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -45,8 +44,8 @@ const STALE_MS: i64 = 24 * 3600 * 1000;
 /// "Because you listened": albums and artists.
 const BECAUSE_ITEMS: usize = 12;
 
-/// A background build is running.
-static BUILDING: AtomicBool = AtomicBool::new(false);
+/// Held by the running build: one at a time.
+static BUILD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// Stored as is: the bridge's kind is the doc's.
 pub(crate) use crate::api::library::ShelfKindView as ShelfKind;
@@ -74,6 +73,9 @@ pub(crate) struct StoredShelf {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct FeedDoc {
     pub built_at_ms: i64,
+    /// Built without asking the plugins (offline, `discover` off, or the local first doc).
+    #[serde(default)]
+    pub offline: bool,
     pub shelves: Vec<StoredShelf>,
 }
 
@@ -88,11 +90,13 @@ async fn build_doc(now_ms: i64, ask: bool) -> Result<FeedDoc, CoreError> {
     let app = app();
     let discover = app.db.read(discover_on).await?;
     let mut local = app.db.read(move |c| seeds::read(c, now_ms)).await?;
-    if ask && discover && app.is_online() {
+    let ask = ask && discover && app.is_online();
+    if ask {
         network(&mut local, now_ms).await?;
     }
     let doc = FeedDoc {
         built_at_ms: now_ms,
+        offline: !ask,
         shelves: assemble(local.inputs, discover),
     };
     let bytes = serde_json::to_vec(&doc).map_err(|e| CoreError::Internal(e.to_string()))?;
@@ -105,27 +109,34 @@ fn discover_on(c: &Connection) -> rusqlite::Result<bool> {
     Ok(settings::device_get(c, DISCOVER)?.as_deref() != Some("false"))
 }
 
-/// `build`, then `LibraryChanged::Home`.
-pub(crate) async fn rebuild() -> Result<(), CoreError> {
+/// `build`, then `LibraryChanged::Home`. Offline: `Offline`, so the last copy built with
+/// the network is kept.
+async fn rebuild() -> Result<(), CoreError> {
+    views::online()?;
     build(now_ms()).await?;
     let _ = app().events.library.send(LibraryChanged::Home);
     Ok(())
 }
 
-/// `rebuild` on the app's runtime, unless one is running already.
-fn in_background() {
-    /// Clears `BUILDING`, a panic included.
-    struct Done;
-    impl Drop for Done {
-        fn drop(&mut self) {
-            BUILDING.store(false, Ordering::SeqCst);
+/// `rebuild` now; when a build is already running, waits for it instead (it sends `Home`).
+pub(crate) async fn refresh() -> Result<(), CoreError> {
+    views::online()?;
+    match BUILD.try_lock() {
+        Ok(_one) => rebuild().await,
+        Err(_) => {
+            drop(BUILD.lock().await);
+            Ok(())
         }
     }
-    if BUILDING.swap(true, Ordering::SeqCst) {
+}
+
+/// `rebuild` on the app's runtime, unless one is running already.
+fn in_background() {
+    let Ok(one) = BUILD.try_lock() else {
         return;
-    }
-    app().rt.spawn(async {
-        let _done = Done;
+    };
+    app().rt.spawn(async move {
+        let _one = one;
         logged("build", rebuild().await);
     });
 }
@@ -139,29 +150,39 @@ async fn read_doc() -> Result<Option<FeedDoc>, CoreError> {
     }))
 }
 
-fn stale(doc: Option<&FeedDoc>, now_ms: i64) -> bool {
-    doc.is_none_or(|d| now_ms - d.built_at_ms >= STALE_MS)
+/// Missing, over 24 h old, or built without the network while it could now be asked
+/// (`network`: online with `discover` on).
+fn stale(doc: Option<&FeedDoc>, now_ms: i64, network: bool) -> bool {
+    doc.is_none_or(|d| now_ms - d.built_at_ms >= STALE_MS || (d.offline && network))
 }
 
-/// Back online: a doc over 24 h old is rebuilt in the background.
+/// Back online: a stale doc is rebuilt in the background.
 pub(crate) async fn on_online() {
-    if let Some(doc) = logged("doc", read_doc().await)
-        && stale(doc.as_ref(), now_ms())
-    {
+    let Some(doc) = logged("doc", read_doc().await) else {
+        return;
+    };
+    let Some(discover) = logged("doc", app().db.read(discover_on).await.map_err(Into::into)) else {
+        return;
+    };
+    if stale(doc.as_ref(), now_ms(), discover && app().is_online()) {
         in_background();
     }
 }
 
-/// Up to `PAGE` shelves from the shelf index `cursor`. The first page of a missing or stale
-/// doc starts a background build; a missing doc is first built locally (no plugin call).
+/// Up to `PAGE` shelves from the shelf index `cursor`. Online, the first page of a stale doc
+/// starts a background build (offline, the last copy is kept: `on_online` rebuilds it). A
+/// missing doc is first built locally (no plugin call).
 pub(crate) async fn page(cursor: Option<String>) -> Result<HomeFeedPage, CoreError> {
     let start = match &cursor {
         Some(c) => c.parse::<usize>().map_err(|_| CoreError::NotFound)?,
         None => 0,
     };
     let now = now_ms();
+    let discover = app().db.read(discover_on).await?;
+    let online = app().is_online();
+    let ask = discover && online;
     let doc = read_doc().await?;
-    let rebuild = cursor.is_none() && stale(doc.as_ref(), now);
+    let rebuild = cursor.is_none() && online && stale(doc.as_ref(), now, ask);
     let doc = match doc {
         Some(d) => d,
         None => build_doc(now, false).await?,
@@ -169,8 +190,6 @@ pub(crate) async fn page(cursor: Option<String>) -> Result<HomeFeedPage, CoreErr
     if rebuild {
         in_background();
     }
-    let discover = app().db.read(discover_on).await?;
-    let ask = discover && app().is_online();
     let mut out = HomeFeedPage {
         shelves: vec![],
         next: None,
@@ -205,7 +224,8 @@ pub(crate) async fn page(cursor: Option<String>) -> Result<HomeFeedPage, CoreErr
         }
     }
     if !loaded.is_empty() {
-        store_loaded(doc.built_at_ms, loaded).await?;
+        // Not stored: loaded again on a later read.
+        logged("because", store_loaded(doc.built_at_ms, loaded).await);
     }
     Ok(out)
 }
@@ -776,10 +796,15 @@ pub(crate) mod tests {
 
     /// Stores a doc of these shelves, built at `at`.
     async fn store(at: i64, shelves: Vec<StoredShelf>) {
-        let doc = FeedDoc {
+        store_doc(FeedDoc {
             built_at_ms: at,
+            offline: false,
             shelves,
-        };
+        })
+        .await;
+    }
+
+    async fn store_doc(doc: FeedDoc) {
         let bytes = serde_json::to_vec(&doc).unwrap();
         test_app()
             .db
@@ -813,13 +838,17 @@ pub(crate) mod tests {
 
     /// Waits for a background build to end.
     async fn settle() {
-        for _ in 0..1000 {
-            if !BUILDING.load(Ordering::SeqCst) {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let wait = tokio::time::timeout(std::time::Duration::from_secs(10), BUILD.lock());
+        drop(wait.await.expect("background build still running"));
+    }
+
+    /// The `Home` events received so far.
+    fn homes(rx: &mut tokio::sync::broadcast::Receiver<LibraryChanged>) -> usize {
+        let mut n = 0;
+        while let Ok(c) = rx.try_recv() {
+            n += usize::from(c == LibraryChanged::Home);
         }
-        panic!("background build still running");
+        n
     }
 
     #[tokio::test]
@@ -940,11 +969,7 @@ pub(crate) mod tests {
         assert_eq!(page_kinds(&a), [Recent, End]);
         assert_eq!(page_kinds(&b), [Recent, End]);
         settle().await;
-        let mut homes = 0;
-        while let Ok(c) = rx.try_recv() {
-            homes += usize::from(c == LibraryChanged::Home);
-        }
-        assert_eq!(homes, 1);
+        assert_eq!(homes(&mut rx), 1);
         assert!(stored_doc().await.built_at_ms > old);
     }
 
@@ -958,5 +983,97 @@ pub(crate) mod tests {
         assert_eq!(page_kinds(&p), [End]);
         assert_eq!(p.next, None);
         settle().await;
+    }
+
+    #[tokio::test]
+    async fn offline_doc_is_rebuilt_back_online() {
+        use ShelfKind::*;
+        let (_lock, app) = setup().await;
+        wipe().await;
+        let (t, _, _) = song("home offline doc").await;
+        store_doc(FeedDoc {
+            built_at_ms: now_ms(),
+            offline: true,
+            shelves: vec![stored(Recent, false, &[t]), stored(End, false, &[])],
+        })
+        .await;
+        let mut rx = app.events.library.subscribe();
+        on_online().await;
+        settle().await;
+        assert_eq!(homes(&mut rx), 1);
+        assert!(!stored_doc().await.offline);
+        // Built offline: marked so.
+        app.set_online(false);
+        build(now_ms()).await.unwrap();
+        app.set_online(true);
+        assert!(stored_doc().await.offline);
+        wipe().await;
+    }
+
+    #[tokio::test]
+    async fn offline_keeps_the_last_network_copy() {
+        use ShelfKind::*;
+        let (_lock, app) = setup().await;
+        wipe().await;
+        let (t, _, _) = song("home keep chart").await;
+        let old = now_ms() - 25 * 3600 * 1000;
+        let shelves = vec![stored(Chart, true, &[t]), stored(End, false, &[])];
+        store(old, shelves).await;
+        let bytes = raw_doc().await;
+        app.set_online(false);
+        let p = page(None).await.unwrap();
+        settle().await;
+        assert_eq!(page_kinds(&p), [Chart, End]);
+        assert_eq!(raw_doc().await, bytes);
+        let refresh = crate::api::library::refresh_home().await;
+        app.set_online(true);
+        assert_eq!(refresh, Err(CoreError::Offline));
+        assert_eq!(raw_doc().await, bytes);
+    }
+
+    #[tokio::test]
+    async fn refresh_waits_for_a_running_build() {
+        let (_lock, app) = setup().await;
+        wipe().await;
+        store(now_ms(), vec![stored(ShelfKind::End, false, &[])]).await;
+        let mut rx = app.events.library.subscribe();
+        let running = BUILD.try_lock().unwrap();
+        let refresh = tokio::spawn(crate::api::library::refresh_home());
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!refresh.is_finished());
+        drop(running);
+        refresh.await.unwrap().unwrap();
+        // The running build's own event, not a second build.
+        assert_eq!(homes(&mut rx), 0);
+    }
+
+    #[tokio::test]
+    async fn a_failed_write_back_still_serves_the_page() {
+        use ShelfKind::*;
+        let (_lock, app) = setup().await;
+        wipe().await;
+        let (t, album, artist) = song("home byl nowrite").await;
+        play(t, None).await;
+        let name = "Artist home-byl-nowrite";
+        store(
+            now_ms(),
+            vec![because(artist, name), stored(End, false, &[])],
+        )
+        .await;
+        let block = "CREATE TEMP TRIGGER no_feed BEFORE INSERT ON plugin_kv
+                     WHEN NEW.key = 'home_feed' BEGIN SELECT RAISE(ABORT, 'disk full'); END;";
+        app.db
+            .write(move |tx| tx.tx.execute_batch(block))
+            .await
+            .unwrap();
+        let p = page(None).await;
+        app.db
+            .write(|tx| tx.tx.execute_batch("DROP TRIGGER no_feed;"))
+            .await
+            .unwrap();
+        let p = p.unwrap();
+        assert_eq!(page_kinds(&p), [BecauseYouListened, End]);
+        assert_eq!(card_ids(&p.shelves[0]), [album.to_string()]);
+        assert!(!stored_doc().await.shelves[0].loaded);
     }
 }

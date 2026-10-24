@@ -84,9 +84,10 @@ pub async fn home_feed(cursor: Option<String>) -> Result<HomeFeedPage, CoreError
     home::page(cursor).await
 }
 
-/// Rebuilds the feed now (pull to refresh); `LibraryChanged::Home` follows.
+/// Rebuilds the feed now (pull to refresh), or waits for the build running;
+/// `LibraryChanged::Home` follows. Offline: `Offline` (the last feed is kept).
 pub async fn refresh_home() -> Result<(), CoreError> {
-    home::rebuild().await
+    home::refresh().await
 }
 
 /// Plays a radio of the artist's most played track (else the first of its page).
