@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::browse::{BrowseShelfView, CategoryPageView, CategoryView};
+use crate::api::catalog::ReleaseView;
 use crate::app::app;
 use crate::catalog::{CardView, collection_view, online, track_view};
 use crate::convert;
@@ -28,6 +29,8 @@ use crate::router;
 /// The core's kv namespace: not a valid plugin id, so no plugin can read it.
 const NS: &str = "@core";
 const TTL_MS: i64 = 24 * 3600 * 1000;
+/// An artist's latest release shows up to 90 days after it came out.
+const LATEST_MS: i64 = 90 * TTL_MS;
 
 #[derive(Serialize, Deserialize)]
 struct Copy<T> {
@@ -282,6 +285,35 @@ async fn fetch_releases(artist: ItemId) -> Result<Vec<(Uuid, String)>, CoreError
         .await?)
 }
 
+/// The newest of `releases(artist)`, unless older than 90 days at `now_ms`; errors are
+/// logged (no `browse` plugin is not one) and give `None`.
+pub(crate) async fn latest_release(artist: ItemId, now_ms: i64) -> Option<ReleaseView> {
+    let found = async {
+        let since = crate::home::date(now_ms - LATEST_MS);
+        let newest = releases(artist)
+            .await?
+            .into_iter()
+            .max_by(|a, b| a.1.cmp(&b.1));
+        let Some((album, date)) = newest.filter(|r| r.1 >= since) else {
+            return Ok(None);
+        };
+        let row = app()
+            .db
+            .read(move |c| catalog::collection(c, album))
+            .await?;
+        Ok(row.map(|r| ReleaseView {
+            album: collection_view(r),
+            date,
+        }))
+    };
+    found.await.unwrap_or_else(|e: CoreError| {
+        if !matches!(e, CoreError::NoPlugin(_)) {
+            logs::push("warn", "browse", &format!("latest release: {e:?}"));
+        }
+        None
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use plugin_host::Capability;
@@ -523,6 +555,39 @@ mod tests {
             releases(ItemId(uuid::Uuid::nil())).await,
             Err(CoreError::NoPlugin(Capability::Browse))
         );
+    }
+
+    #[tokio::test]
+    async fn latest_release_within_90_days_or_none() {
+        let (_lock, app) = setup().await;
+        clear().await;
+        let artist = catalog::search("relartist").await.unwrap().artists[0]
+            .id
+            .clone();
+        let artist = parse_id(&artist).unwrap();
+        // Its newest release is out on 2026-10-20 (midnight UTC).
+        const OCT_20: i64 = 1_792_454_400_000;
+        let before = calls().await;
+        let latest = latest_release(artist, OCT_20 + 10 * DAY_MS).await.unwrap();
+        assert_eq!(latest.date, "2026-10-20");
+        assert_eq!(
+            (latest.album.kind, latest.album.title.as_str()),
+            (ItemKind::Album, "Release relartist 1")
+        );
+        // From the 24 h copy; exactly 90 days is in, 91 out.
+        let at_90 = latest_release(artist, OCT_20 + 90 * DAY_MS).await;
+        assert_eq!(at_90.map(|r| r.date).as_deref(), Some("2026-10-20"));
+        assert_eq!(latest_release(artist, OCT_20 + 91 * DAY_MS).await, None);
+        assert_eq!(latest_release(artist, OCT_20 + 120 * DAY_MS).await, None);
+        assert_eq!(calls().await, before + 1);
+        // No browse plugin, or an error: none, never an error.
+        assert_eq!(
+            latest_release(ItemId(uuid::Uuid::nil()), OCT_20).await,
+            None
+        );
+        clear().await;
+        app.plugins.replace_loaded(vec![]);
+        assert_eq!(latest_release(artist, OCT_20).await, None);
     }
 
     #[tokio::test]

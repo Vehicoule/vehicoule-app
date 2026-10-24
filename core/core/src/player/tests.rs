@@ -204,6 +204,7 @@ fn player_futures_are_send() {
     send(restore());
     send(stop());
     send(undo_stop());
+    send(set_sleep_timer(SleepTimer::Off));
 }
 
 #[tokio::test(start_paused = true)]
@@ -1228,4 +1229,155 @@ async fn user_actions_start_the_failure_count_over() {
     play(ids, 0, None).await.unwrap();
     let e = played(now(&mut t.cmds)).0;
     fails(&mut t, &e).await;
+}
+
+/// The `sleep` of the last `NowPlaying` sent.
+fn last_sleep(np: &mut Receiver<NowPlaying>) -> Option<SleepState> {
+    std::iter::from_fn(|| np.try_recv().ok())
+        .last()
+        .expect("a now playing")
+        .sleep
+}
+
+/// Nothing sent for `ms` (paused clock).
+async fn quiet_for(rx: &mut Receiver<PlayerCommand>, ms: u64) {
+    let got = timeout(Duration::from_millis(ms), rx.recv()).await;
+    assert!(got.is_err(), "no command expected, got {got:?}");
+}
+
+fn about(at: Duration, ms: u64) {
+    let ms = Duration::from_millis(ms);
+    let margin = Duration::from_millis(100);
+    assert!(at + margin >= ms && at <= ms + margin, "{at:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn sleep_minutes_pauses_with_fade_at_deadline() {
+    let mut t = setup().await;
+    let mut np = test_app().events.now_playing.subscribe();
+    play(vec![track("sleep a").await], 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 600_000).await;
+    set_sleep_timer(SleepTimer::Minutes(1)).await.unwrap();
+    let t0 = Instant::now();
+    quiet_for(&mut t.cmds, 59_800).await;
+    let cmd = t.cmds.recv().await.unwrap();
+    assert_eq!(cmd, PlayerCommand::Pause { fade_ms: 5000 });
+    about(t0.elapsed(), 60_000);
+    assert_eq!(last_sleep(&mut np), None, "the timer is gone");
+    quiet_for(&mut t.cmds, 120_000).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn new_timer_replaces_old_and_off_cancels() {
+    let mut t = setup().await;
+    play(vec![track("sleep b").await], 0, None).await.unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 3_600_000).await;
+    set_sleep_timer(SleepTimer::Minutes(1)).await.unwrap();
+    quiet_for(&mut t.cmds, 30_000).await;
+    set_sleep_timer(SleepTimer::Minutes(2)).await.unwrap();
+    let t0 = Instant::now();
+    quiet_for(&mut t.cmds, 119_800).await;
+    let cmd = t.cmds.recv().await.unwrap();
+    assert_eq!(cmd, PlayerCommand::Pause { fade_ms: 5000 });
+    about(t0.elapsed(), 120_000);
+    set_sleep_timer(SleepTimer::Minutes(1)).await.unwrap();
+    set_sleep_timer(SleepTimer::Off).await.unwrap();
+    quiet_for(&mut t.cmds, 600_000).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn end_of_track_holds_no_next_and_loads_next_paused() {
+    let mut t = setup().await;
+    let mut np = test_app().events.now_playing.subscribe();
+    let ids = vec![
+        track("eot a").await,
+        track("eot b").await,
+        track("eot c").await,
+    ];
+    play(ids, 0, None).await.unwrap();
+    let (a, ..) = played(now(&mut t.cmds));
+    started(&a, 30_000).await;
+    let (b, _) = enqueued(t.cmds.recv().await.unwrap());
+    set_sleep_timer(SleepTimer::EndOfTrack).await.unwrap();
+    assert_eq!(now(&mut t.cmds), PlayerCommand::ClearNext);
+    assert_eq!(last_sleep(&mut np), Some(SleepState::EndOfTrack));
+    // No preload while it holds: a queue edit neither.
+    edit(QueueOp::EnqueueNext(vec![track("eot x").await]))
+        .await
+        .unwrap();
+    quiet_for(&mut t.cmds, 60_000).await;
+    edit(QueueOp::Remove(
+        last_queue(&mut t.queue).upcoming[0].entry.clone(),
+    ))
+    .await
+    .unwrap();
+    nothing(&mut t.cmds);
+
+    on_event(PlayerEvent::Ended { entry: a }).await;
+    let (entry, _, position, autoplay) = played(now(&mut t.cmds));
+    assert_eq!((entry.as_str(), position, autoplay), (b.as_str(), 0, false));
+    assert_eq!(last_sleep(&mut np), None, "the timer is gone");
+    // Preloading again.
+    started(&b, 30_000).await;
+    enqueued(t.cmds.recv().await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn stop_cancels_the_timer() {
+    let mut t = setup().await;
+    let mut np = test_app().events.now_playing.subscribe();
+    play(vec![track("sleep stop").await], 0, None)
+        .await
+        .unwrap();
+    let (entry, ..) = played(now(&mut t.cmds));
+    started(&entry, 600_000).await;
+    set_sleep_timer(SleepTimer::Minutes(1)).await.unwrap();
+    stop().await;
+    assert_eq!(now(&mut t.cmds), PlayerCommand::Stop);
+    assert_eq!(last_sleep(&mut np), None);
+    undo_stop().await;
+    played(now(&mut t.cmds));
+    quiet_for(&mut t.cmds, 120_000).await;
+}
+
+#[tokio::test]
+async fn now_playing_carries_sleep_state() {
+    let _t = setup().await;
+    let mut np = test_app().events.now_playing.subscribe();
+    set_sleep_timer(SleepTimer::Minutes(15)).await.unwrap();
+    let Some(SleepState::EndsAt { ends_at_ms }) = last_sleep(&mut np) else {
+        panic!("a deadline expected");
+    };
+    let left = ends_at_ms - crate::plugins::now_ms();
+    assert!((899_000..=900_000).contains(&left), "{left}");
+    set_sleep_timer(SleepTimer::EndOfTrack).await.unwrap();
+    assert_eq!(last_sleep(&mut np), Some(SleepState::EndOfTrack));
+    // A new subscriber gets it with the state.
+    send_state();
+    let again = timeout(Duration::from_secs(5), np.recv()).await.unwrap();
+    assert_eq!(again.unwrap().sleep, Some(SleepState::EndOfTrack));
+    set_sleep_timer(SleepTimer::Off).await.unwrap();
+    assert_eq!(last_sleep(&mut np), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn off_after_end_of_track_preloads_again() {
+    let mut t = setup().await;
+    play(
+        vec![track("eot off a").await, track("eot off b").await],
+        0,
+        None,
+    )
+    .await
+    .unwrap();
+    let (a, ..) = played(now(&mut t.cmds));
+    started(&a, 30_000).await;
+    let (b, _) = enqueued(t.cmds.recv().await.unwrap());
+    set_sleep_timer(SleepTimer::EndOfTrack).await.unwrap();
+    assert_eq!(now(&mut t.cmds), PlayerCommand::ClearNext);
+    set_sleep_timer(SleepTimer::Off).await.unwrap();
+    let (again, _) = enqueued(t.cmds.recv().await.unwrap());
+    assert_eq!(again, b);
 }

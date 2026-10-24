@@ -92,6 +92,8 @@ void main() {
     // Nothing queued: both are no-ops, not errors.
     await stop();
     await undoStop();
+    // No timer running: cancelling one is a no-op too.
+    await setSleepTimer(timer: const SleepTimer.off());
   });
 
   testWidgets('player events are sync and fire-and-forget', (t) async {

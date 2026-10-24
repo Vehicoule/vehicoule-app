@@ -26,6 +26,8 @@ flutter_rust_bridge = "=2.13.0"
 sentry = { version = "0.49", default-features = false, features = ["backtrace", "debug-images", "panic", "metrics", "reqwest", "rustls"] }
 semver = "1"
 sha2 = "0.10"
+# The free space of the downloads volume (`download_storage`).
+fs4 = { version = "1", default-features = false }
 
 # Android: rustls-platform-verifier needs the app's context, handed over by JNI (android.rs).
 [target.'cfg(target_os = "android")'.dependencies]

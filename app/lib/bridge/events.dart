@@ -10,6 +10,7 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 
+import 'player.dart';
 import 'queue.dart';
 import 'updates.dart';
 part 'events.freezed.dart';
@@ -55,12 +56,16 @@ class NowPlaying {
   final String? source;
   final String? mime;
 
+  /// The running sleep timer.
+  final SleepState? sleep;
+
   const NowPlaying({
     this.track,
     this.artworkPath,
     this.durationMs,
     this.source,
     this.mime,
+    this.sleep,
   });
 
   @override
@@ -69,7 +74,8 @@ class NowPlaying {
       artworkPath.hashCode ^
       durationMs.hashCode ^
       source.hashCode ^
-      mime.hashCode;
+      mime.hashCode ^
+      sleep.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -80,7 +86,8 @@ class NowPlaying {
           artworkPath == other.artworkPath &&
           durationMs == other.durationMs &&
           source == other.source &&
-          mime == other.mime;
+          mime == other.mime &&
+          sleep == other.sleep;
 }
 
 /// One queue entry: its id is what `QueueOp::Remove`, `Move` and `JumpTo` take.

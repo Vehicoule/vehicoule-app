@@ -433,7 +433,7 @@ fn logged<T>(source: &str, r: Result<T, CoreError>) -> Option<T> {
 }
 
 /// The UTC `YYYY-MM-DD` of a unix ms time (days to civil date, H. Hinnant).
-fn date(ms: i64) -> String {
+pub(crate) fn date(ms: i64) -> String {
     let z = ms.div_euclid(86_400_000) + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;

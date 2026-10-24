@@ -53,6 +53,15 @@ pub struct HomeFeedPage {
     pub next: Option<String>,
 }
 
+/// The downloads' storage bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StorageView {
+    /// The finished downloads' files.
+    pub music_bytes: u64,
+    /// Free on the downloads folder's volume.
+    pub free_bytes: u64,
+}
+
 /// A track of the history and when it was last played (unix ms), for grouping by day.
 pub struct HistoryEntryView {
     pub played_at_ms: i64,
@@ -357,6 +366,26 @@ pub async fn downloads() -> Result<Vec<DownloadProgress>, CoreError> {
         .collect())
 }
 
+/// The downloads' storage bar: the finished downloads, and the free space of their volume.
+pub async fn download_storage() -> Result<StorageView, CoreError> {
+    let done = app()
+        .db
+        .read(|c| rows::list(c, Some(rows::DownloadState::Done)))
+        .await?;
+    let dir = app().cfg.downloads_dir.clone();
+    let free = tokio::task::spawn_blocking(move || {
+        std::fs::create_dir_all(&dir)?;
+        fs4::available_space(&dir)
+    })
+    .await
+    .map_err(|e| CoreError::Internal(e.to_string()))?
+    .map_err(|e| CoreError::Internal(format!("free space: {e}")))?;
+    Ok(StorageView {
+        music_bytes: done.iter().map(|r| r.bytes_done).sum(),
+        free_bytes: free,
+    })
+}
+
 pub fn library_changes(sink: StreamSink<LibraryChanged>) {
     forward(app().events.library.subscribe(), move |v| {
         sink.add(v).is_ok()
@@ -439,6 +468,55 @@ mod tests {
         let mine = all.iter().find(|e| e.track.id == id).unwrap();
         assert_eq!(mine.played_at_ms, at);
         assert_eq!(mine.track.title, "history at");
+    }
+
+    #[tokio::test]
+    async fn download_storage_sums_done_files() {
+        let (_lock, app) = catalog::tests::setup().await;
+        let before = download_storage().await.unwrap().music_bytes;
+        let mut ids = vec![];
+        for q in ["storage a", "storage b", "storage c"] {
+            let id = catalog::search(q).await.unwrap().tracks[0].id.clone();
+            ids.push(parse_id(&id).unwrap());
+        }
+        let sizes = [
+            (1_000, rows::DownloadState::Done),
+            (2_345, rows::DownloadState::Done),
+        ];
+        let sizes = sizes
+            .into_iter()
+            .chain([(500, rows::DownloadState::Running)]);
+        let wanted: Vec<_> = ids.into_iter().zip(sizes).collect();
+        app.db
+            .write(move |tx| {
+                for (item, (bytes, state)) in wanted {
+                    rows::enqueue(tx, item, "normal")?;
+                    rows::update(
+                        tx,
+                        &rows::DownloadRow {
+                            item,
+                            state,
+                            path: Some(format!("/music/{item}.webm")),
+                            quality: "normal".into(),
+                            mime: Some("audio/webm".into()),
+                            loudness_db: None,
+                            bytes_total: Some(bytes),
+                            bytes_done: bytes,
+                            error: None,
+                        },
+                    )?;
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let storage = download_storage().await.unwrap();
+        assert_eq!(
+            storage.music_bytes - before,
+            3_345,
+            "the running one left out"
+        );
+        assert!(storage.free_bytes > 0);
     }
 
     #[tokio::test]

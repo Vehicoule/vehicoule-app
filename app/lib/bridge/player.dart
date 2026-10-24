@@ -68,6 +68,11 @@ sealed class PlayerCommand with _$PlayerCommand {
     required double gainDb,
   }) = PlayerCommand_ReplaceNext;
   const factory PlayerCommand.clearNext() = PlayerCommand_ClearNext;
+
+  /// Fades the volume down to 0 over `fade_ms`, pauses, puts the volume back, then reports
+  /// `Paused` (a system pause): the sleep timer.
+  const factory PlayerCommand.pause({required int fadeMs}) =
+      PlayerCommand_Pause;
   const factory PlayerCommand.stop() = PlayerCommand_Stop;
 }
 
@@ -124,6 +129,27 @@ sealed class QueueOp with _$QueueOp {
   const factory QueueOp.shuffle(bool field0) = QueueOp_Shuffle;
   const factory QueueOp.repeat(Repeat field0) = QueueOp_Repeat;
   const factory QueueOp.jumpTo(String field0) = QueueOp_JumpTo;
+}
+
+@freezed
+sealed class SleepState with _$SleepState {
+  const SleepState._();
+
+  /// Unix ms.
+  const factory SleepState.endsAt({required PlatformInt64 endsAtMs}) =
+      SleepState_EndsAt;
+  const factory SleepState.endOfTrack() = SleepState_EndOfTrack;
+}
+
+@freezed
+sealed class SleepTimer with _$SleepTimer {
+  const SleepTimer._();
+
+  const factory SleepTimer.off() = SleepTimer_Off;
+  const factory SleepTimer.minutes(int field0) = SleepTimer_Minutes;
+
+  /// Pauses at the end of the current track: the next entry is loaded paused.
+  const factory SleepTimer.endOfTrack() = SleepTimer_EndOfTrack;
 }
 
 /// An http(s) URL or a file path.

@@ -8,7 +8,7 @@ use tokio::sync::broadcast;
 use crate::catalog::TrackView;
 use crate::downloads::DownloadProgress;
 use crate::error::CoreError;
-use crate::player::PlayerCommand;
+use crate::player::{PlayerCommand, SleepState};
 use crate::queue::{PlayContext, Repeat};
 use crate::updates::UpdateInfo;
 
@@ -41,6 +41,8 @@ pub struct NowPlaying {
     /// The plugin id that resolved it, or `download`; `None` while nothing is loaded.
     pub source: Option<String>,
     pub mime: Option<String>,
+    /// The running sleep timer.
+    pub sleep: Option<SleepState>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

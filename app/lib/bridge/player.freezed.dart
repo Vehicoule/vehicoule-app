@@ -56,14 +56,15 @@ extension PlayerCommandPatterns on PlayerCommand {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PlayerCommand_Play value)?  play,TResult Function( PlayerCommand_EnqueueNext value)?  enqueueNext,TResult Function( PlayerCommand_ReplaceNext value)?  replaceNext,TResult Function( PlayerCommand_ClearNext value)?  clearNext,TResult Function( PlayerCommand_Stop value)?  stop,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PlayerCommand_Play value)?  play,TResult Function( PlayerCommand_EnqueueNext value)?  enqueueNext,TResult Function( PlayerCommand_ReplaceNext value)?  replaceNext,TResult Function( PlayerCommand_ClearNext value)?  clearNext,TResult Function( PlayerCommand_Pause value)?  pause,TResult Function( PlayerCommand_Stop value)?  stop,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case PlayerCommand_Play() when play != null:
 return play(_that);case PlayerCommand_EnqueueNext() when enqueueNext != null:
 return enqueueNext(_that);case PlayerCommand_ReplaceNext() when replaceNext != null:
 return replaceNext(_that);case PlayerCommand_ClearNext() when clearNext != null:
-return clearNext(_that);case PlayerCommand_Stop() when stop != null:
+return clearNext(_that);case PlayerCommand_Pause() when pause != null:
+return pause(_that);case PlayerCommand_Stop() when stop != null:
 return stop(_that);case _:
   return orElse();
 
@@ -82,14 +83,15 @@ return stop(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PlayerCommand_Play value)  play,required TResult Function( PlayerCommand_EnqueueNext value)  enqueueNext,required TResult Function( PlayerCommand_ReplaceNext value)  replaceNext,required TResult Function( PlayerCommand_ClearNext value)  clearNext,required TResult Function( PlayerCommand_Stop value)  stop,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PlayerCommand_Play value)  play,required TResult Function( PlayerCommand_EnqueueNext value)  enqueueNext,required TResult Function( PlayerCommand_ReplaceNext value)  replaceNext,required TResult Function( PlayerCommand_ClearNext value)  clearNext,required TResult Function( PlayerCommand_Pause value)  pause,required TResult Function( PlayerCommand_Stop value)  stop,}){
 final _that = this;
 switch (_that) {
 case PlayerCommand_Play():
 return play(_that);case PlayerCommand_EnqueueNext():
 return enqueueNext(_that);case PlayerCommand_ReplaceNext():
 return replaceNext(_that);case PlayerCommand_ClearNext():
-return clearNext(_that);case PlayerCommand_Stop():
+return clearNext(_that);case PlayerCommand_Pause():
+return pause(_that);case PlayerCommand_Stop():
 return stop(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
@@ -104,14 +106,15 @@ return stop(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PlayerCommand_Play value)?  play,TResult? Function( PlayerCommand_EnqueueNext value)?  enqueueNext,TResult? Function( PlayerCommand_ReplaceNext value)?  replaceNext,TResult? Function( PlayerCommand_ClearNext value)?  clearNext,TResult? Function( PlayerCommand_Stop value)?  stop,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PlayerCommand_Play value)?  play,TResult? Function( PlayerCommand_EnqueueNext value)?  enqueueNext,TResult? Function( PlayerCommand_ReplaceNext value)?  replaceNext,TResult? Function( PlayerCommand_ClearNext value)?  clearNext,TResult? Function( PlayerCommand_Pause value)?  pause,TResult? Function( PlayerCommand_Stop value)?  stop,}){
 final _that = this;
 switch (_that) {
 case PlayerCommand_Play() when play != null:
 return play(_that);case PlayerCommand_EnqueueNext() when enqueueNext != null:
 return enqueueNext(_that);case PlayerCommand_ReplaceNext() when replaceNext != null:
 return replaceNext(_that);case PlayerCommand_ClearNext() when clearNext != null:
-return clearNext(_that);case PlayerCommand_Stop() when stop != null:
+return clearNext(_that);case PlayerCommand_Pause() when pause != null:
+return pause(_that);case PlayerCommand_Stop() when stop != null:
 return stop(_that);case _:
   return null;
 
@@ -129,13 +132,14 @@ return stop(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String entry,  Source source,  BigInt positionMs,  bool autoplay,  double gainDb)?  play,TResult Function( String entry,  Source source,  double gainDb)?  enqueueNext,TResult Function( String entry,  Source source,  double gainDb)?  replaceNext,TResult Function()?  clearNext,TResult Function()?  stop,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String entry,  Source source,  BigInt positionMs,  bool autoplay,  double gainDb)?  play,TResult Function( String entry,  Source source,  double gainDb)?  enqueueNext,TResult Function( String entry,  Source source,  double gainDb)?  replaceNext,TResult Function()?  clearNext,TResult Function( int fadeMs)?  pause,TResult Function()?  stop,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case PlayerCommand_Play() when play != null:
 return play(_that.entry,_that.source,_that.positionMs,_that.autoplay,_that.gainDb);case PlayerCommand_EnqueueNext() when enqueueNext != null:
 return enqueueNext(_that.entry,_that.source,_that.gainDb);case PlayerCommand_ReplaceNext() when replaceNext != null:
 return replaceNext(_that.entry,_that.source,_that.gainDb);case PlayerCommand_ClearNext() when clearNext != null:
-return clearNext();case PlayerCommand_Stop() when stop != null:
+return clearNext();case PlayerCommand_Pause() when pause != null:
+return pause(_that.fadeMs);case PlayerCommand_Stop() when stop != null:
 return stop();case _:
   return orElse();
 
@@ -154,13 +158,14 @@ return stop();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String entry,  Source source,  BigInt positionMs,  bool autoplay,  double gainDb)  play,required TResult Function( String entry,  Source source,  double gainDb)  enqueueNext,required TResult Function( String entry,  Source source,  double gainDb)  replaceNext,required TResult Function()  clearNext,required TResult Function()  stop,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String entry,  Source source,  BigInt positionMs,  bool autoplay,  double gainDb)  play,required TResult Function( String entry,  Source source,  double gainDb)  enqueueNext,required TResult Function( String entry,  Source source,  double gainDb)  replaceNext,required TResult Function()  clearNext,required TResult Function( int fadeMs)  pause,required TResult Function()  stop,}) {final _that = this;
 switch (_that) {
 case PlayerCommand_Play():
 return play(_that.entry,_that.source,_that.positionMs,_that.autoplay,_that.gainDb);case PlayerCommand_EnqueueNext():
 return enqueueNext(_that.entry,_that.source,_that.gainDb);case PlayerCommand_ReplaceNext():
 return replaceNext(_that.entry,_that.source,_that.gainDb);case PlayerCommand_ClearNext():
-return clearNext();case PlayerCommand_Stop():
+return clearNext();case PlayerCommand_Pause():
+return pause(_that.fadeMs);case PlayerCommand_Stop():
 return stop();}
 }
 /// A variant of `when` that fallback to returning `null`
@@ -175,13 +180,14 @@ return stop();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String entry,  Source source,  BigInt positionMs,  bool autoplay,  double gainDb)?  play,TResult? Function( String entry,  Source source,  double gainDb)?  enqueueNext,TResult? Function( String entry,  Source source,  double gainDb)?  replaceNext,TResult? Function()?  clearNext,TResult? Function()?  stop,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String entry,  Source source,  BigInt positionMs,  bool autoplay,  double gainDb)?  play,TResult? Function( String entry,  Source source,  double gainDb)?  enqueueNext,TResult? Function( String entry,  Source source,  double gainDb)?  replaceNext,TResult? Function()?  clearNext,TResult? Function( int fadeMs)?  pause,TResult? Function()?  stop,}) {final _that = this;
 switch (_that) {
 case PlayerCommand_Play() when play != null:
 return play(_that.entry,_that.source,_that.positionMs,_that.autoplay,_that.gainDb);case PlayerCommand_EnqueueNext() when enqueueNext != null:
 return enqueueNext(_that.entry,_that.source,_that.gainDb);case PlayerCommand_ReplaceNext() when replaceNext != null:
 return replaceNext(_that.entry,_that.source,_that.gainDb);case PlayerCommand_ClearNext() when clearNext != null:
-return clearNext();case PlayerCommand_Stop() when stop != null:
+return clearNext();case PlayerCommand_Pause() when pause != null:
+return pause(_that.fadeMs);case PlayerCommand_Stop() when stop != null:
 return stop();case _:
   return null;
 
@@ -441,6 +447,74 @@ String toString() {
 
 
 
+
+/// @nodoc
+
+
+class PlayerCommand_Pause extends PlayerCommand {
+  const PlayerCommand_Pause({required this.fadeMs}): super._();
+  
+
+ final  int fadeMs;
+
+/// Create a copy of PlayerCommand
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PlayerCommand_PauseCopyWith<PlayerCommand_Pause> get copyWith => _$PlayerCommand_PauseCopyWithImpl<PlayerCommand_Pause>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is PlayerCommand_Pause&&(identical(other.fadeMs, fadeMs) || other.fadeMs == fadeMs));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,fadeMs);
+}
+
+@override
+String toString() {
+    return 'PlayerCommand.pause(fadeMs: $fadeMs)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PlayerCommand_PauseCopyWith<$Res> implements $PlayerCommandCopyWith<$Res> {
+  factory $PlayerCommand_PauseCopyWith(PlayerCommand_Pause value, $Res Function(PlayerCommand_Pause) _then) = _$PlayerCommand_PauseCopyWithImpl;
+@useResult
+$Res call({
+ int fadeMs
+});
+
+
+
+
+}
+/// @nodoc
+class _$PlayerCommand_PauseCopyWithImpl<$Res>
+    implements $PlayerCommand_PauseCopyWith<$Res> {
+  _$PlayerCommand_PauseCopyWithImpl(this._self, this._then);
+
+  final PlayerCommand_Pause _self;
+  final $Res Function(PlayerCommand_Pause) _then;
+
+/// Create a copy of PlayerCommand
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? fadeMs = null,}) {
+  return _then(PlayerCommand_Pause(
+fadeMs: null == fadeMs ? _self.fadeMs : fadeMs // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
 
 /// @nodoc
 
@@ -1943,5 +2017,563 @@ as String,
 
 
 }
+
+/// @nodoc
+mixin _$SleepState {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is SleepState);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'SleepState()';
+}
+
+
+}
+
+/// @nodoc
+class $SleepStateCopyWith<$Res>  {
+$SleepStateCopyWith(SleepState _, $Res Function(SleepState) __);
+}
+
+
+/// Adds pattern-matching-related methods to [SleepState].
+extension SleepStatePatterns on SleepState {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SleepState_EndsAt value)?  endsAt,TResult Function( SleepState_EndOfTrack value)?  endOfTrack,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case SleepState_EndsAt() when endsAt != null:
+return endsAt(_that);case SleepState_EndOfTrack() when endOfTrack != null:
+return endOfTrack(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SleepState_EndsAt value)  endsAt,required TResult Function( SleepState_EndOfTrack value)  endOfTrack,}){
+final _that = this;
+switch (_that) {
+case SleepState_EndsAt():
+return endsAt(_that);case SleepState_EndOfTrack():
+return endOfTrack(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SleepState_EndsAt value)?  endsAt,TResult? Function( SleepState_EndOfTrack value)?  endOfTrack,}){
+final _that = this;
+switch (_that) {
+case SleepState_EndsAt() when endsAt != null:
+return endsAt(_that);case SleepState_EndOfTrack() when endOfTrack != null:
+return endOfTrack(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( PlatformInt64 endsAtMs)?  endsAt,TResult Function()?  endOfTrack,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case SleepState_EndsAt() when endsAt != null:
+return endsAt(_that.endsAtMs);case SleepState_EndOfTrack() when endOfTrack != null:
+return endOfTrack();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( PlatformInt64 endsAtMs)  endsAt,required TResult Function()  endOfTrack,}) {final _that = this;
+switch (_that) {
+case SleepState_EndsAt():
+return endsAt(_that.endsAtMs);case SleepState_EndOfTrack():
+return endOfTrack();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( PlatformInt64 endsAtMs)?  endsAt,TResult? Function()?  endOfTrack,}) {final _that = this;
+switch (_that) {
+case SleepState_EndsAt() when endsAt != null:
+return endsAt(_that.endsAtMs);case SleepState_EndOfTrack() when endOfTrack != null:
+return endOfTrack();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class SleepState_EndsAt extends SleepState {
+  const SleepState_EndsAt({required this.endsAtMs}): super._();
+  
+
+ final  PlatformInt64 endsAtMs;
+
+/// Create a copy of SleepState
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SleepState_EndsAtCopyWith<SleepState_EndsAt> get copyWith => _$SleepState_EndsAtCopyWithImpl<SleepState_EndsAt>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is SleepState_EndsAt&&(identical(other.endsAtMs, endsAtMs) || other.endsAtMs == endsAtMs));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,endsAtMs);
+}
+
+@override
+String toString() {
+    return 'SleepState.endsAt(endsAtMs: $endsAtMs)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SleepState_EndsAtCopyWith<$Res> implements $SleepStateCopyWith<$Res> {
+  factory $SleepState_EndsAtCopyWith(SleepState_EndsAt value, $Res Function(SleepState_EndsAt) _then) = _$SleepState_EndsAtCopyWithImpl;
+@useResult
+$Res call({
+ PlatformInt64 endsAtMs
+});
+
+
+
+
+}
+/// @nodoc
+class _$SleepState_EndsAtCopyWithImpl<$Res>
+    implements $SleepState_EndsAtCopyWith<$Res> {
+  _$SleepState_EndsAtCopyWithImpl(this._self, this._then);
+
+  final SleepState_EndsAt _self;
+  final $Res Function(SleepState_EndsAt) _then;
+
+/// Create a copy of SleepState
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? endsAtMs = null,}) {
+  return _then(SleepState_EndsAt(
+endsAtMs: null == endsAtMs ? _self.endsAtMs : endsAtMs // ignore: cast_nullable_to_non_nullable
+as PlatformInt64,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SleepState_EndOfTrack extends SleepState {
+  const SleepState_EndOfTrack(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is SleepState_EndOfTrack);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'SleepState.endOfTrack()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+mixin _$SleepTimer {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is SleepTimer);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'SleepTimer()';
+}
+
+
+}
+
+/// @nodoc
+class $SleepTimerCopyWith<$Res>  {
+$SleepTimerCopyWith(SleepTimer _, $Res Function(SleepTimer) __);
+}
+
+
+/// Adds pattern-matching-related methods to [SleepTimer].
+extension SleepTimerPatterns on SleepTimer {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SleepTimer_Off value)?  off,TResult Function( SleepTimer_Minutes value)?  minutes,TResult Function( SleepTimer_EndOfTrack value)?  endOfTrack,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case SleepTimer_Off() when off != null:
+return off(_that);case SleepTimer_Minutes() when minutes != null:
+return minutes(_that);case SleepTimer_EndOfTrack() when endOfTrack != null:
+return endOfTrack(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SleepTimer_Off value)  off,required TResult Function( SleepTimer_Minutes value)  minutes,required TResult Function( SleepTimer_EndOfTrack value)  endOfTrack,}){
+final _that = this;
+switch (_that) {
+case SleepTimer_Off():
+return off(_that);case SleepTimer_Minutes():
+return minutes(_that);case SleepTimer_EndOfTrack():
+return endOfTrack(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SleepTimer_Off value)?  off,TResult? Function( SleepTimer_Minutes value)?  minutes,TResult? Function( SleepTimer_EndOfTrack value)?  endOfTrack,}){
+final _that = this;
+switch (_that) {
+case SleepTimer_Off() when off != null:
+return off(_that);case SleepTimer_Minutes() when minutes != null:
+return minutes(_that);case SleepTimer_EndOfTrack() when endOfTrack != null:
+return endOfTrack(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  off,TResult Function( int field0)?  minutes,TResult Function()?  endOfTrack,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case SleepTimer_Off() when off != null:
+return off();case SleepTimer_Minutes() when minutes != null:
+return minutes(_that.field0);case SleepTimer_EndOfTrack() when endOfTrack != null:
+return endOfTrack();case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  off,required TResult Function( int field0)  minutes,required TResult Function()  endOfTrack,}) {final _that = this;
+switch (_that) {
+case SleepTimer_Off():
+return off();case SleepTimer_Minutes():
+return minutes(_that.field0);case SleepTimer_EndOfTrack():
+return endOfTrack();}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  off,TResult? Function( int field0)?  minutes,TResult? Function()?  endOfTrack,}) {final _that = this;
+switch (_that) {
+case SleepTimer_Off() when off != null:
+return off();case SleepTimer_Minutes() when minutes != null:
+return minutes(_that.field0);case SleepTimer_EndOfTrack() when endOfTrack != null:
+return endOfTrack();case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class SleepTimer_Off extends SleepTimer {
+  const SleepTimer_Off(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is SleepTimer_Off);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'SleepTimer.off()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class SleepTimer_Minutes extends SleepTimer {
+  const SleepTimer_Minutes(this.field0): super._();
+  
+
+ final  int field0;
+
+/// Create a copy of SleepTimer
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SleepTimer_MinutesCopyWith<SleepTimer_Minutes> get copyWith => _$SleepTimer_MinutesCopyWithImpl<SleepTimer_Minutes>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is SleepTimer_Minutes&&(identical(other.field0, field0) || other.field0 == field0));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,field0);
+}
+
+@override
+String toString() {
+    return 'SleepTimer.minutes(field0: $field0)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SleepTimer_MinutesCopyWith<$Res> implements $SleepTimerCopyWith<$Res> {
+  factory $SleepTimer_MinutesCopyWith(SleepTimer_Minutes value, $Res Function(SleepTimer_Minutes) _then) = _$SleepTimer_MinutesCopyWithImpl;
+@useResult
+$Res call({
+ int field0
+});
+
+
+
+
+}
+/// @nodoc
+class _$SleepTimer_MinutesCopyWithImpl<$Res>
+    implements $SleepTimer_MinutesCopyWith<$Res> {
+  _$SleepTimer_MinutesCopyWithImpl(this._self, this._then);
+
+  final SleepTimer_Minutes _self;
+  final $Res Function(SleepTimer_Minutes) _then;
+
+/// Create a copy of SleepTimer
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? field0 = null,}) {
+  return _then(SleepTimer_Minutes(
+null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SleepTimer_EndOfTrack extends SleepTimer {
+  const SleepTimer_EndOfTrack(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is SleepTimer_EndOfTrack);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'SleepTimer.endOfTrack()';
+}
+
+
+}
+
+
+
 
 // dart format on

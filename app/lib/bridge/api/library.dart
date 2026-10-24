@@ -13,7 +13,7 @@ import '../library.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `changed`, `entry_id`, `page`, `playlist_changed`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Up to 4 shelves from `cursor` (`None`: the first page; else the previous `next`). A feed
 /// over 24 h old (or none yet) is served as is and rebuilt in the background;
@@ -132,6 +132,10 @@ Future<void> cancelDownload({required String id}) =>
 Future<List<DownloadProgress>> downloads() =>
     RustLib.instance.api.crateApiLibraryDownloads();
 
+/// The downloads' storage bar: the finished downloads, and the free space of their volume.
+Future<StorageView> downloadStorage() =>
+    RustLib.instance.api.crateApiLibraryDownloadStorage();
+
 Stream<LibraryChanged> libraryChanges() =>
     RustLib.instance.api.crateApiLibraryLibraryChanges();
 
@@ -233,4 +237,26 @@ class ShelfView {
           kind == other.kind &&
           seed == other.seed &&
           items == other.items;
+}
+
+/// The downloads' storage bar.
+class StorageView {
+  /// The finished downloads' files.
+  final BigInt musicBytes;
+
+  /// Free on the downloads folder's volume.
+  final BigInt freeBytes;
+
+  const StorageView({required this.musicBytes, required this.freeBytes});
+
+  @override
+  int get hashCode => musicBytes.hashCode ^ freeBytes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StorageView &&
+          runtimeType == other.runtimeType &&
+          musicBytes == other.musicBytes &&
+          freeBytes == other.freeBytes;
 }

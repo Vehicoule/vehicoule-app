@@ -9,7 +9,7 @@ use crate::error::CoreError;
 use crate::events::{Notice, NowPlaying, QueueView};
 use crate::frb_generated::StreamSink;
 pub use crate::player::QueueOp;
-use crate::player::{self, Candidate, PlayerCommand, PlayerEvent};
+use crate::player::{self, Candidate, PlayerCommand, PlayerEvent, SleepTimer};
 use crate::queue::PlayContext;
 
 /// Replaces the queue with `items` and plays `items[start]`.
@@ -48,6 +48,12 @@ pub async fn stop() {
 /// The queue `stop` emptied, playing where it was; forgotten by any other queue change.
 pub async fn undo_stop() {
     player::undo_stop().await
+}
+
+/// At its end the player pauses, the volume faded over 5 s; `EndOfTrack`: the next entry is
+/// loaded paused. A restart or `stop` cancels it; `NowPlaying.sleep` tells it.
+pub async fn set_sleep_timer(timer: SleepTimer) -> Result<(), CoreError> {
+    player::set_sleep_timer(timer).await
 }
 
 pub async fn fix_match(id: String) -> Result<Vec<Candidate>, CoreError> {

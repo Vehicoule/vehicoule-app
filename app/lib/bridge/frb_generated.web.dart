@@ -114,7 +114,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   QueueOp dco_decode_box_autoadd_queue_op(dynamic raw);
 
   @protected
+  ReleaseView dco_decode_box_autoadd_release_view(dynamic raw);
+
+  @protected
   Settings dco_decode_box_autoadd_settings(dynamic raw);
+
+  @protected
+  SleepState dco_decode_box_autoadd_sleep_state(dynamic raw);
+
+  @protected
+  SleepTimer dco_decode_box_autoadd_sleep_timer(dynamic raw);
 
   @protected
   Source dco_decode_box_autoadd_source(dynamic raw);
@@ -294,6 +303,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlayContext? dco_decode_opt_box_autoadd_play_context(dynamic raw);
 
   @protected
+  ReleaseView? dco_decode_opt_box_autoadd_release_view(dynamic raw);
+
+  @protected
+  SleepState? dco_decode_opt_box_autoadd_sleep_state(dynamic raw);
+
+  @protected
   TrackView? dco_decode_opt_box_autoadd_track_view(dynamic raw);
 
   @protected
@@ -348,6 +363,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   (String, String) dco_decode_record_string_string(dynamic raw);
 
   @protected
+  ReleaseView dco_decode_release_view(dynamic raw);
+
+  @protected
   Repeat dco_decode_repeat(dynamic raw);
 
   @protected
@@ -363,7 +381,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ShelfView dco_decode_shelf_view(dynamic raw);
 
   @protected
+  SleepState dco_decode_sleep_state(dynamic raw);
+
+  @protected
+  SleepTimer dco_decode_sleep_timer(dynamic raw);
+
+  @protected
   Source dco_decode_source(dynamic raw);
+
+  @protected
+  StorageView dco_decode_storage_view(dynamic raw);
 
   @protected
   SuggestionView dco_decode_suggestion_view(dynamic raw);
@@ -469,7 +496,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   QueueOp sse_decode_box_autoadd_queue_op(SseDeserializer deserializer);
 
   @protected
+  ReleaseView sse_decode_box_autoadd_release_view(SseDeserializer deserializer);
+
+  @protected
   Settings sse_decode_box_autoadd_settings(SseDeserializer deserializer);
+
+  @protected
+  SleepState sse_decode_box_autoadd_sleep_state(SseDeserializer deserializer);
+
+  @protected
+  SleepTimer sse_decode_box_autoadd_sleep_timer(SseDeserializer deserializer);
 
   @protected
   Source sse_decode_box_autoadd_source(SseDeserializer deserializer);
@@ -679,6 +715,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  ReleaseView? sse_decode_opt_box_autoadd_release_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SleepState? sse_decode_opt_box_autoadd_sleep_state(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   TrackView? sse_decode_opt_box_autoadd_track_view(
     SseDeserializer deserializer,
   );
@@ -741,6 +787,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  ReleaseView sse_decode_release_view(SseDeserializer deserializer);
+
+  @protected
   Repeat sse_decode_repeat(SseDeserializer deserializer);
 
   @protected
@@ -756,7 +805,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ShelfView sse_decode_shelf_view(SseDeserializer deserializer);
 
   @protected
+  SleepState sse_decode_sleep_state(SseDeserializer deserializer);
+
+  @protected
+  SleepTimer sse_decode_sleep_timer(SseDeserializer deserializer);
+
+  @protected
   Source sse_decode_source(SseDeserializer deserializer);
+
+  @protected
+  StorageView sse_decode_storage_view(SseDeserializer deserializer);
 
   @protected
   SuggestionView sse_decode_suggestion_view(SseDeserializer deserializer);
@@ -888,7 +946,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_queue_op(QueueOp self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_release_view(
+    ReleaseView self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_settings(Settings self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_sleep_state(
+    SleepState self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_sleep_timer(
+    SleepTimer self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_source(Source self, SseSerializer serializer);
@@ -1158,6 +1234,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_release_view(
+    ReleaseView? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_sleep_state(
+    SleepState? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_track_view(
     TrackView? self,
     SseSerializer serializer,
@@ -1227,6 +1315,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_release_view(ReleaseView self, SseSerializer serializer);
+
+  @protected
   void sse_encode_repeat(Repeat self, SseSerializer serializer);
 
   @protected
@@ -1242,7 +1333,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_shelf_view(ShelfView self, SseSerializer serializer);
 
   @protected
+  void sse_encode_sleep_state(SleepState self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sleep_timer(SleepTimer self, SseSerializer serializer);
+
+  @protected
   void sse_encode_source(Source self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_storage_view(StorageView self, SseSerializer serializer);
 
   @protected
   void sse_encode_suggestion_view(

@@ -45,6 +45,11 @@ Future<void> stop() => RustLib.instance.api.crateApiPlaybackStop();
 /// The queue `stop` emptied, playing where it was; forgotten by any other queue change.
 Future<void> undoStop() => RustLib.instance.api.crateApiPlaybackUndoStop();
 
+/// At its end the player pauses, the volume faded over 5 s; `EndOfTrack`: the next entry is
+/// loaded paused. A restart or `stop` cancels it; `NowPlaying.sleep` tells it.
+Future<void> setSleepTimer({required SleepTimer timer}) =>
+    RustLib.instance.api.crateApiPlaybackSetSleepTimer(timer: timer);
+
 Future<List<Candidate>> fixMatch({required String id}) =>
     RustLib.instance.api.crateApiPlaybackFixMatch(id: id);
 

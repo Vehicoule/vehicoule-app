@@ -10,6 +10,8 @@ import '../lyrics.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `eq`, `fmt`
+
 Future<SearchView> search({required String query}) =>
     RustLib.instance.api.crateApiCatalogSearch(query: query);
 
@@ -31,3 +33,29 @@ Future<String?> artworkFile({required String id, required int size}) =>
 
 Future<LyricsView?> lyrics({required String id}) =>
     RustLib.instance.api.crateApiCatalogLyrics(id: id);
+
+/// The artist's newest release, from the 24 h copy of its releases; `None` when older than
+/// 90 days, without a `browse` plugin, or on an error (logged, never raised).
+Future<ReleaseView?> artistLatestRelease({required String artistId}) =>
+    RustLib.instance.api.crateApiCatalogArtistLatestRelease(artistId: artistId);
+
+/// An artist's latest release: the "Latest release" card.
+class ReleaseView {
+  final CollectionView album;
+
+  /// `YYYY-MM-DD`.
+  final String date;
+
+  const ReleaseView({required this.album, required this.date});
+
+  @override
+  int get hashCode => album.hashCode ^ date.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReleaseView &&
+          runtimeType == other.runtimeType &&
+          album == other.album &&
+          date == other.date;
+}

@@ -42,6 +42,8 @@ const RADIO_EXCLUDE: u32 = 50;
 // ponytail: the view lists the first 500 upcoming tracks; page it if longer queues matter
 const VIEW_UPCOMING: usize = 500;
 const ARTWORK_SIZE: u32 = 600;
+/// The sleep timer's fade before it pauses.
+const SLEEP_FADE_MS: u32 = 5_000;
 
 /// An http(s) URL or a file path.
 #[derive(Debug, Clone, PartialEq)]
@@ -70,7 +72,31 @@ pub enum PlayerCommand {
         gain_db: f32,
     },
     ClearNext,
+    /// Fades the volume down to 0 over `fade_ms`, pauses, puts the volume back, then reports
+    /// `Paused` (a system pause): the sleep timer.
+    Pause {
+        fade_ms: u32,
+    },
     Stop,
+}
+
+/// `set_sleep_timer`: a new timer replaces the running one, `Off` cancels it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SleepTimer {
+    Off,
+    Minutes(u32),
+    /// Pauses at the end of the current track: the next entry is loaded paused.
+    EndOfTrack,
+}
+
+/// A running sleep timer, for the moon and the countdown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SleepState {
+    /// Unix ms.
+    EndsAt {
+        ends_at_ms: i64,
+    },
+    EndOfTrack,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -231,6 +257,11 @@ pub(crate) async fn choose_match(item: &str, candidate_id: &str) -> Result<(), C
     ask(|r| Msg::ChooseMatch(item, candidate, r))
         .await
         .unwrap_or_else(stopped)
+}
+
+/// Replaces the sleep timer. It lives in the actor only: a restart or `stop` forgets it.
+pub(crate) async fn set_sleep_timer(timer: SleepTimer) -> Result<(), CoreError> {
+    ask(|r| Msg::Sleep(timer, r)).await.map_or_else(stopped, Ok)
 }
 
 /// At startup: the saved queue, its current track loaded paused at the saved position.
@@ -550,6 +581,7 @@ enum Msg {
     Restore(Reply<()>),
     Stop(Reply<()>),
     UndoStop(Reply<()>),
+    Sleep(SleepTimer, Reply<()>),
     SendState,
     Refresh,
     Online,
@@ -589,11 +621,15 @@ async fn ask<T>(msg: impl FnOnce(Reply<T>) -> Msg) -> Option<T> {
 async fn run(mut rx: mpsc::UnboundedReceiver<Msg>) {
     let mut p = Player::new();
     loop {
-        let msg = match p.deadline {
+        let sleep_at = match p.sleep {
+            Some(Sleep::At(at, _)) => Some(at),
+            _ => None,
+        };
+        let msg = match p.deadline.into_iter().chain(sleep_at).min() {
             Some(d) => match tokio::time::timeout_at(d, rx.recv()).await {
                 Ok(msg) => msg,
                 Err(_) => {
-                    p.preload().await;
+                    p.wake().await;
                     continue;
                 }
             },
@@ -602,6 +638,14 @@ async fn run(mut rx: mpsc::UnboundedReceiver<Msg>) {
         let Some(msg) = msg else { break };
         p.handle(msg).await;
     }
+}
+
+/// The running sleep timer.
+#[derive(Clone, Copy, PartialEq)]
+enum Sleep {
+    /// When it pauses, and the same as unix ms (for `SleepState`).
+    At(Instant, i64),
+    EndOfTrack,
 }
 
 /// What the player was handed for an entry.
@@ -657,6 +701,8 @@ struct Player {
     candidates: HashMap<ItemId, (String, Vec<Candidate>)>,
     /// The queue `stop` emptied, until another queue change.
     undo: Option<QueueState>,
+    /// Lives in the actor only: a restart forgets it.
+    sleep: Option<Sleep>,
 }
 
 fn send(cmd: PlayerCommand) {
@@ -689,6 +735,7 @@ impl Player {
             resume: None,
             candidates: HashMap::new(),
             undo: None,
+            sleep: None,
         }
     }
 
@@ -699,6 +746,7 @@ impl Player {
             Msg::Event(..)
                 | Msg::FixMatch(..)
                 | Msg::UndoStop(_)
+                | Msg::Sleep(..)
                 | Msg::SendState
                 | Msg::Refresh
                 | Msg::Online
@@ -758,6 +806,10 @@ impl Player {
                 self.undo_stop().await;
                 let _ = r.send(());
             }
+            Msg::Sleep(timer, r) => {
+                self.set_sleep(timer).await;
+                let _ = r.send(());
+            }
             Msg::SendState => {
                 self.emit_queue().await;
                 self.now_playing();
@@ -786,6 +838,44 @@ impl Player {
                     self.now_playing();
                 }
             }
+        }
+    }
+
+    /// A deadline passed: the sleep timer's, the preload's, or both.
+    async fn wake(&mut self) {
+        let now = Instant::now();
+        if let Some(Sleep::At(at, _)) = self.sleep
+            && at <= now
+        {
+            send(PlayerCommand::Pause {
+                fade_ms: SLEEP_FADE_MS,
+            });
+            self.sleep = None;
+            self.now_playing();
+        }
+        if self.deadline.is_some_and(|d| d <= now) {
+            self.preload().await;
+        }
+    }
+
+    async fn set_sleep(&mut self, timer: SleepTimer) {
+        self.sleep = match timer {
+            SleepTimer::Off => None,
+            SleepTimer::Minutes(n) => {
+                let ms = u64::from(n) * 60_000;
+                let at = Instant::now() + Duration::from_millis(ms);
+                Some(Sleep::At(at, crate::plugins::now_ms() + ms as i64))
+            }
+            SleepTimer::EndOfTrack => Some(Sleep::EndOfTrack),
+        };
+        self.now_playing();
+        if self.sleep == Some(Sleep::EndOfTrack) {
+            if self.held || self.next.is_some() {
+                self.preload().await; // drops the held next
+            }
+            self.deadline = None;
+        } else {
+            self.arm();
         }
     }
 
@@ -982,6 +1072,16 @@ impl Player {
     /// cleared). At the end of the queue, a radio extends it.
     async fn preload(&mut self) {
         self.deadline = None;
+        if self.sleep == Some(Sleep::EndOfTrack) {
+            // Pauses at the end of this one: the player holds nothing after it. Not
+            // `preloaded`: cancelled, the timer lets `arm` preload again.
+            self.next = None;
+            self.preloaded = false;
+            if std::mem::take(&mut self.held) {
+                send(PlayerCommand::ClearNext);
+            }
+            return;
+        }
         self.preloaded = true;
         self.next = None;
         let held = self.held;
@@ -1019,7 +1119,7 @@ impl Player {
     /// Arms the preload timer: `PRELOAD_LEAD_MS` before the end, while playing.
     fn arm(&mut self) {
         self.deadline = None;
-        if self.preloaded || !self.playing {
+        if self.preloaded || !self.playing || self.sleep == Some(Sleep::EndOfTrack) {
             return;
         }
         let catalogue = self.track.as_ref().and_then(|t| t.duration_ms);
@@ -1210,7 +1310,13 @@ impl Player {
             return; // The player goes on with it.
         }
         let entries = self.following_or_radio(RepeatOne::Honor).await;
-        let _ = self.start(entries, 0, true).await;
+        // The sleep timer at the end of the track: the next one loaded paused, then it is gone.
+        let end_of_track = self.sleep == Some(Sleep::EndOfTrack);
+        let _ = self.start(entries, 0, !end_of_track).await;
+        if end_of_track {
+            self.sleep = None;
+            self.now_playing();
+        }
     }
 
     /// The player stopped on an error, at `position_ms`; 0 (a player that reset it on open)
@@ -1470,6 +1576,7 @@ impl Player {
         self.stop();
         (self.play, self.listened_ms) = (None, 0);
         (self.track, self.artwork, self.duration_ms) = (None, None, None);
+        self.sleep = None;
         self.now_playing();
         self.queue_changed().await;
     }
@@ -1631,6 +1738,10 @@ impl Player {
             duration_ms: self.duration_ms.or(catalogue.map(u64::from)),
             source: res.map(|r| r.plugin.clone().unwrap_or_else(|| "download".into())),
             mime: res.and_then(|r| r.mime.clone()),
+            sleep: self.sleep.map(|s| match s {
+                Sleep::At(_, ends_at_ms) => SleepState::EndsAt { ends_at_ms },
+                Sleep::EndOfTrack => SleepState::EndOfTrack,
+            }),
         });
     }
 }
