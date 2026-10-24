@@ -1,6 +1,8 @@
 /// The design gallery: every component of `design/` in its states, to validate the system
-/// against the mockups (plan 5, Task 1). Debug only; no core and no fake API — the test
-/// library's real titles, artwork from generated swatches.
+/// against the mockups (plan 5, Task 1). Debug only, no fake API: the test library's real
+/// titles and artists, and their real covers looked up through the core when a source
+/// answers (online, official source installed). Otherwise every artwork shows the
+/// missing-cover look.
 ///
 /// `flutter run -d macos -t lib/design/gallery.dart` (the shell also opens it at
 /// `/debug/gallery` in debug builds).
@@ -9,17 +11,93 @@ library;
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../bridge/api/app.dart' as core;
+import '../bridge/api/catalog.dart' as core;
+import '../bridge/api/plugins.dart' as core;
+import '../bridge/app.dart' as core show AppConfig, Platform;
 import '../bridge/downloads.dart';
+import '../bridge/frb_generated.dart';
 import '../bridge/error.dart';
 import '../bridge/queue.dart';
 import '../debug/library.dart';
 import '../l10n/app_localizations.dart';
 import 'design.dart';
 
-void main() => runApp(const GalleryApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(GalleryApp(covers: await GalleryCovers.start()));
+}
+
+/// Real covers through the core: each sample id is searched once ([sampleQuery]) and its
+/// first hit's artwork comes from `artworkFile`, like in the app.
+class GalleryCovers {
+  GalleryCovers._();
+
+  final _ids = <String, Future<String?>>{};
+
+  /// Null when the core can't start; the gallery then shows missing covers.
+  static Future<GalleryCovers?> start() async {
+    try {
+      await RustLib.init();
+      final base = '${Directory.systemTemp.path}/vehicoule_gallery';
+      await core.initApp(
+        cfg: core.AppConfig(
+          dataDir: '$base/data',
+          cacheDir: '$base/cache',
+          downloadsDir: '$base/downloads',
+          appVersion: 'gallery',
+          region: 'FR',
+          platform: Platform.isMacOS
+              ? core.Platform.macOs
+              : Platform.isAndroid
+              ? core.Platform.android
+              : Platform.isWindows
+              ? core.Platform.windows
+              : core.Platform.linux,
+          osVersion: Platform.operatingSystemVersion,
+          deviceModel: 'design gallery',
+        ),
+      );
+      await core.start();
+      await core.setOnline(online: true);
+      await core.refreshFeeds();
+      return GalleryCovers._();
+    } on Object catch (e) {
+      debugPrint('gallery: no core ($e), covers stay missing');
+      return null;
+    }
+  }
+
+  Future<String?> _lookup(String id) async {
+    final q = sampleQuery(id);
+    if (q == null) return null;
+    try {
+      final r = await core.search(query: q);
+      final hits = id.startsWith('track:')
+          ? r.tracks.map((t) => t.id)
+          : id.startsWith('album:')
+          ? r.albums.map((a) => a.id)
+          : r.artists.map((a) => a.id);
+      return hits.firstOrNull;
+    } on Object catch (e) {
+      debugPrint('gallery: no cover for $id ($e)');
+      return null;
+    }
+  }
+
+  /// The cover file of a sample id at [px] pixels.
+  Future<String?> file(String id, int px) async {
+    final real = await (_ids[id] ??= _lookup(id));
+    return real == null ? null : core.artworkFile(id: real, size: px);
+  }
+
+  Future<ImageProvider?> resolve(String id, int px) async {
+    final path = await file(id, px);
+    return path == null ? null : FileImage(File(path));
+  }
+}
 
 enum _Brightness { light, dark, black }
 
@@ -43,7 +121,10 @@ class _Preset extends _Source {
 }
 
 class GalleryApp extends StatefulWidget {
-  const GalleryApp({super.key});
+  const GalleryApp({super.key, this.covers});
+
+  /// Null in tests and without a core: missing covers everywhere.
+  final GalleryCovers? covers;
 
   @override
   State<GalleryApp> createState() => _GalleryAppState();
@@ -72,14 +153,10 @@ class _GalleryAppState extends State<GalleryApp> {
     if (mounted && seed != null && _source == s) setState(() => _seed = seed);
   }
 
-  /// seedFromArtwork reads a file, as the app's 112 px artwork cache does.
+  /// The seed of sample track [n]'s cover: the 112 px file, as for what's playing.
   Future<Color?> _artSeed(int n) async {
-    final bytes = await rootBundle.load('assets/gallery/art_$n.png');
-    final file = File(
-      '${Directory.systemTemp.path}/vehicoule_gallery_art_$n.png',
-    );
-    await file.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
-    return seedFromArtwork(file.path);
+    final path = await widget.covers?.file(sampleTracks[n - 1].id, 112);
+    return path == null ? null : seedFromArtwork(path);
   }
 
   @override
@@ -100,7 +177,7 @@ class _GalleryAppState extends State<GalleryApp> {
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(disableAnimations: _reduce),
         child: ArtworkResolver(
-          resolve: (id, px) async => AssetImage(sampleArtwork(id)),
+          resolve: widget.covers?.resolve ?? (id, px) async => null,
           child: vAppBuilder(context, child),
         ),
       ),

@@ -605,7 +605,7 @@ class VDecor extends StatelessWidget {
 }
 
 /// A user playlist without a picture: its first distinct tracks in 2×2 (1 → full,
-/// 2–3 → 2×2 repeating), an icon when it is empty.
+/// 2–3 → 2×2 repeating), the missing-cover look when it is empty.
 class VMosaicArtwork extends StatelessWidget {
   const VMosaicArtwork({super.key, required this.itemIds, required this.size});
 
@@ -618,23 +618,14 @@ class VMosaicArtwork extends StatelessWidget {
     if (ids.length == 1) {
       return VArtwork(itemId: ids.first, size: size, playing: false);
     }
-    final scheme = Theme.of(context).colorScheme;
     final half = size / 2;
     return ClipRRect(
       borderRadius: BorderRadius.circular(_cornerFor(size)),
       child: SizedBox.square(
         dimension: size,
         child: ids.isEmpty
-            ? ColoredBox(
-                color: scheme.secondaryContainer,
-                child: Center(
-                  child: VSymbol(
-                    VIcons.queue,
-                    size: half,
-                    color: scheme.onSecondaryContainer,
-                  ),
-                ),
-              )
+            // An empty playlist has the missing-cover look.
+            ? _Picture(image: null, kind: ArtKind.item, size: size)
             : Wrap(
                 children: [
                   // Two tracks sit on the diagonal; three repeat the first last.

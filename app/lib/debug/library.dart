@@ -1,6 +1,7 @@
 /// The test library: real titles and artists (metadata only, no cover art), shared by the
 /// design gallery, the design tests and, later, the debug fake API (preflight C11, S33).
-/// Artwork comes from `assets/gallery/` (generated swatches) through [sampleArtwork].
+/// No artwork is committed: the gallery looks real covers up through the core when a
+/// source answers ([sampleQuery]); otherwise artwork shows the missing-cover look.
 library;
 
 import '../bridge/catalog.dart';
@@ -77,11 +78,14 @@ const sampleCollections = <(String, String, String)>[
   ('album:Demon Days', 'Demon Days', 'Gorillaz'),
 ];
 
-/// One of the generated swatches for any id (stable).
-String sampleArtwork(String id) {
-  var h = 0;
-  for (final u in id.codeUnits) {
-    h = (h * 31 + u) & 0x7fffffff;
+/// What to search for to find the real item behind a sample id: a track's title and first
+/// artist, an album's title and artist, an artist's name.
+String? sampleQuery(String id) {
+  for (final t in sampleTracks) {
+    if (t.id == id) return '${t.title} ${t.artists.first.name}';
   }
-  return 'assets/gallery/art_${h % 8 + 1}.png';
+  for (final (cid, title, artist) in sampleCollections) {
+    if (cid == id) return '$title $artist';
+  }
+  return id.startsWith('artist:') ? id.substring('artist:'.length) : null;
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_color_utilities/material_color_utilities.dart';
@@ -22,8 +23,25 @@ void main() {
   });
 
   testWidgets('seedFromArtwork caches by path', (tester) async {
-    final path = File('assets/gallery/art_1.png').absolute.path;
     await tester.runAsync(() async {
+      // A generated two-color picture (no cover art in the repo).
+      final rec = ui.PictureRecorder();
+      ui.Canvas(rec)
+        ..drawRect(
+          const Rect.fromLTWH(0, 0, 112, 112),
+          Paint()..color = const Color(0xFF2F5D9E),
+        )
+        ..drawCircle(
+          const Offset(56, 56),
+          30,
+          Paint()..color = const Color(0xFFF6D38B),
+        );
+      final image = await rec.endRecording().toImage(112, 112);
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      final dir = await Directory.systemTemp.createTemp('seed');
+      final path = '${dir.path}/cover.png';
+      await File(path).writeAsBytes(png!.buffer.asUint8List());
+
       final before = debugQuantizations;
       final a = await seedFromArtwork(path);
       final b = await seedFromArtwork(path);

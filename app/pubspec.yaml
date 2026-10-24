@@ -70,10 +70,6 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # Neutral generated artwork for the design gallery and its tests (no real covers).
-  assets:
-    - assets/gallery/
-
   # Licences and how the files were made: assets/fonts/README.md.
   fonts:
     - family: GoogleSansFlex

@@ -160,7 +160,7 @@ void main() {
     expect(pictures(), 4, reason: 'first four distinct');
     await show([]);
     expect(pictures(), 0);
-    expect(find.byIcon(VIcons.queue), findsOneWidget);
+    expect(find.byIcon(VIcons.musicNote), findsOneWidget);
   });
 
   testWidgets('disc ring and wave edge seek like a slider', (tester) async {
