@@ -96,10 +96,7 @@ void main() {
       unicode: true,
     );
     // English only: « repos » is a French word (au repos).
-    final bannedEn = RegExp(
-      r'\brepo(sitor(y|ies))?s?\b',
-      caseSensitive: false,
-    );
+    final bannedEn = RegExp(r'\brepo(sitor(y|ies))?s?\b', caseSensitive: false);
     expect(bannedEn.hasMatch('the repository'), isTrue);
     expect(banned.hasMatch('au repos'), isFalse);
     for (final lang in ['fr', 'en']) {
