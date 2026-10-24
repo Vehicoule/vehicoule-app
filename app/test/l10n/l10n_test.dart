@@ -90,17 +90,27 @@ void main() {
       unicode: true,
     );
     final banned = RegExp(
-      r'\b(plug-?ins?|repo(sitor(y|ies))?s?|feeds?|oups|oops|veuillez|please|vous)\b'
+      r'\b(plug-?ins?|feeds?|oups|oops|veuillez|please|vous)\b'
       r'|d[ée]p[ôo]ts?|r[ée]solutions?|\b[1-5]\d\d\b',
       caseSensitive: false,
       unicode: true,
     );
+    // English only: « repos » is a French word (au repos).
+    final bannedEn = RegExp(
+      r'\brepo(sitor(y|ies))?s?\b',
+      caseSensitive: false,
+    );
+    expect(bannedEn.hasMatch('the repository'), isTrue);
+    expect(banned.hasMatch('au repos'), isFalse);
     for (final lang in ['fr', 'en']) {
       for (final MapEntry(:key, :value) in _strings(lang).entries) {
         final where = '$lang.$key: $value';
         expect(value, isNot(contains('!')), reason: where);
         expect(emoji.hasMatch(value), isFalse, reason: where);
         expect(banned.hasMatch(value), isFalse, reason: where);
+        if (lang == 'en') {
+          expect(bannedEn.hasMatch(value), isFalse, reason: where);
+        }
         expect(
           value,
           isNot(contains('"')),

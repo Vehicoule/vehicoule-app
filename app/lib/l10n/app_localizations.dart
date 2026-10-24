@@ -193,6 +193,420 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Ajouter une source'**
   String get actionAddSource;
+
+  /// No description provided for @nowPlaying.
+  ///
+  /// In fr, this message translates to:
+  /// **'En lecture'**
+  String get nowPlaying;
+
+  /// No description provided for @offlineChip.
+  ///
+  /// In fr, this message translates to:
+  /// **'Hors ligne · tes téléchargements restent là'**
+  String get offlineChip;
+
+  /// No description provided for @offlineTrack.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ce titre n\'est pas téléchargé. Il revient dès que tu es en ligne.'**
+  String get offlineTrack;
+
+  /// No description provided for @playbackStopped.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lecture arrêtée'**
+  String get playbackStopped;
+
+  /// No description provided for @playingFrom.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lecture depuis {source}'**
+  String playingFrom(String source);
+
+  /// No description provided for @viewPlayer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lecteur'**
+  String get viewPlayer;
+
+  /// No description provided for @viewLyrics.
+  ///
+  /// In fr, this message translates to:
+  /// **'Paroles'**
+  String get viewLyrics;
+
+  /// No description provided for @viewQueue.
+  ///
+  /// In fr, this message translates to:
+  /// **'File'**
+  String get viewQueue;
+
+  /// No description provided for @actionPlay.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lire'**
+  String get actionPlay;
+
+  /// No description provided for @actionPause.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mettre en pause'**
+  String get actionPause;
+
+  /// No description provided for @actionNext.
+  ///
+  /// In fr, this message translates to:
+  /// **'Titre suivant'**
+  String get actionNext;
+
+  /// No description provided for @actionPrevious.
+  ///
+  /// In fr, this message translates to:
+  /// **'Titre précédent'**
+  String get actionPrevious;
+
+  /// No description provided for @actionShuffle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lecture aléatoire'**
+  String get actionShuffle;
+
+  /// No description provided for @actionRepeat.
+  ///
+  /// In fr, this message translates to:
+  /// **'Répéter'**
+  String get actionRepeat;
+
+  /// No description provided for @actionLike.
+  ///
+  /// In fr, this message translates to:
+  /// **'J\'aime'**
+  String get actionLike;
+
+  /// No description provided for @actionAddToPlaylist.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter à une playlist'**
+  String get actionAddToPlaylist;
+
+  /// No description provided for @actionDownload.
+  ///
+  /// In fr, this message translates to:
+  /// **'Télécharger'**
+  String get actionDownload;
+
+  /// No description provided for @actionPlayNext.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lire ensuite'**
+  String get actionPlayNext;
+
+  /// No description provided for @actionAddToQueue.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter à la file'**
+  String get actionAddToQueue;
+
+  /// No description provided for @actionRemove.
+  ///
+  /// In fr, this message translates to:
+  /// **'Retirer'**
+  String get actionRemove;
+
+  /// No description provided for @actionRetry.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réessayer'**
+  String get actionRetry;
+
+  /// No description provided for @actionUndo.
+  ///
+  /// In fr, this message translates to:
+  /// **'Annuler'**
+  String get actionUndo;
+
+  /// No description provided for @actionSeeAll.
+  ///
+  /// In fr, this message translates to:
+  /// **'Tout voir'**
+  String get actionSeeAll;
+
+  /// No description provided for @actionReorder.
+  ///
+  /// In fr, this message translates to:
+  /// **'Déplacer'**
+  String get actionReorder;
+
+  /// No description provided for @actionCollapse.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réduire'**
+  String get actionCollapse;
+
+  /// No description provided for @actionOutput.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sortie audio'**
+  String get actionOutput;
+
+  /// No description provided for @actionImmersive.
+  ///
+  /// In fr, this message translates to:
+  /// **'Plein écran'**
+  String get actionImmersive;
+
+  /// No description provided for @actionMore.
+  ///
+  /// In fr, this message translates to:
+  /// **'Plus d\'options'**
+  String get actionMore;
+
+  /// No description provided for @downloaded.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargé'**
+  String get downloaded;
+
+  /// No description provided for @downloading.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargement en cours'**
+  String get downloading;
+
+  /// No description provided for @explicitLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Explicite'**
+  String get explicitLabel;
+
+  /// No description provided for @selectedLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sélectionné'**
+  String get selectedLabel;
+
+  /// No description provided for @loading.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chargement'**
+  String get loading;
+
+  /// No description provided for @seekLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Position de lecture'**
+  String get seekLabel;
+
+  /// No description provided for @volumeLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Volume'**
+  String get volumeLabel;
+
+  /// No description provided for @sleepEndOfTrack.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fin du titre'**
+  String get sleepEndOfTrack;
+
+  /// No description provided for @sleepMinutesLeft.
+  ///
+  /// In fr, this message translates to:
+  /// **'{minutes} min'**
+  String sleepMinutesLeft(int minutes);
+
+  /// No description provided for @themeLight.
+  ///
+  /// In fr, this message translates to:
+  /// **'Clair'**
+  String get themeLight;
+
+  /// No description provided for @themeDark.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sombre'**
+  String get themeDark;
+
+  /// No description provided for @themePureBlack.
+  ///
+  /// In fr, this message translates to:
+  /// **'Noir pur'**
+  String get themePureBlack;
+
+  /// No description provided for @colorSourceSystem.
+  ///
+  /// In fr, this message translates to:
+  /// **'Système'**
+  String get colorSourceSystem;
+
+  /// No description provided for @colorSourcePreset.
+  ///
+  /// In fr, this message translates to:
+  /// **'Préréglage {number}'**
+  String colorSourcePreset(int number);
+
+  /// No description provided for @colorSourceArtwork.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pochette {number}'**
+  String colorSourceArtwork(int number);
+
+  /// No description provided for @reduceMotion.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réduire les animations'**
+  String get reduceMotion;
+
+  /// No description provided for @playerStyleDisc.
+  ///
+  /// In fr, this message translates to:
+  /// **'Disque'**
+  String get playerStyleDisc;
+
+  /// No description provided for @playerStyleWave.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vague'**
+  String get playerStyleWave;
+
+  /// No description provided for @galleryTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Galerie du design'**
+  String get galleryTitle;
+
+  /// No description provided for @galleryArtwork.
+  ///
+  /// In fr, this message translates to:
+  /// **'Pochettes et formes'**
+  String get galleryArtwork;
+
+  /// No description provided for @galleryTrackRows.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lignes de titre'**
+  String get galleryTrackRows;
+
+  /// No description provided for @galleryPlayer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lecteur'**
+  String get galleryPlayer;
+
+  /// No description provided for @galleryButtons.
+  ///
+  /// In fr, this message translates to:
+  /// **'Boutons'**
+  String get galleryButtons;
+
+  /// No description provided for @galleryShelf.
+  ///
+  /// In fr, this message translates to:
+  /// **'Étagère et carte héros'**
+  String get galleryShelf;
+
+  /// No description provided for @galleryTransitions.
+  ///
+  /// In fr, this message translates to:
+  /// **'Transitions de page'**
+  String get galleryTransitions;
+
+  /// No description provided for @galleryFeedback.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chargement, messages et feuille latérale'**
+  String get galleryFeedback;
+
+  /// No description provided for @galleryListStates.
+  ///
+  /// In fr, this message translates to:
+  /// **'États des listes'**
+  String get galleryListStates;
+
+  /// No description provided for @galleryTypography.
+  ///
+  /// In fr, this message translates to:
+  /// **'Typographie'**
+  String get galleryTypography;
+
+  /// No description provided for @gallerySpacing.
+  ///
+  /// In fr, this message translates to:
+  /// **'Espacements'**
+  String get gallerySpacing;
+
+  /// No description provided for @galleryReplay.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rejouer'**
+  String get galleryReplay;
+
+  /// No description provided for @galleryShowSnack.
+  ///
+  /// In fr, this message translates to:
+  /// **'Afficher un message'**
+  String get galleryShowSnack;
+
+  /// No description provided for @galleryToggleSheet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ouvrir ou fermer la feuille'**
+  String get galleryToggleSheet;
+
+  /// No description provided for @galleryOpenMenu.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ouvrir le menu'**
+  String get galleryOpenMenu;
+
+  /// No description provided for @transitionContainer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Carte vers page'**
+  String get transitionContainer;
+
+  /// No description provided for @transitionFadeThrough.
+  ///
+  /// In fr, this message translates to:
+  /// **'Changement de destination'**
+  String get transitionFadeThrough;
+
+  /// No description provided for @transitionSharedAxis.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vues du lecteur'**
+  String get transitionSharedAxis;
+
+  /// No description provided for @emptyLikes.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rien de liké pour l\'instant. Touche le cœur d\'un titre pour le retrouver ici.'**
+  String get emptyLikes;
+
+  /// No description provided for @shelfTracks.
+  ///
+  /// In fr, this message translates to:
+  /// **'Titres'**
+  String get shelfTracks;
+
+  /// No description provided for @shelfAlbums.
+  ///
+  /// In fr, this message translates to:
+  /// **'Albums'**
+  String get shelfAlbums;
+
+  /// No description provided for @shelfArtists.
+  ///
+  /// In fr, this message translates to:
+  /// **'Artistes'**
+  String get shelfArtists;
+
+  /// No description provided for @shelfPlaylists.
+  ///
+  /// In fr, this message translates to:
+  /// **'Playlists'**
+  String get shelfPlaylists;
 }
 
 class _AppLocalizationsDelegate

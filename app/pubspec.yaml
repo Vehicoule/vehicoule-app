@@ -31,9 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: 1.0.9
   vehicoule_core:
     path: rust_builder
   flutter_rust_bridge: 2.13.0
@@ -41,6 +38,10 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   intl: 0.20.3
+  material_ui: 1.8.0
+  material_3_expressive: 1.2.0
+  material_color_utilities: 0.13.0
+  dynamic_color: 2.1.0
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +69,22 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Neutral generated artwork for the design gallery and its tests (no real covers).
+  assets:
+    - assets/gallery/
+
+  # Licences and how the files were made: assets/fonts/README.md.
+  fonts:
+    - family: GoogleSansFlex
+      fonts:
+        - asset: assets/fonts/google_sans_flex/GoogleSansFlex.ttf
+    - family: NotoSansJP
+      fonts:
+        - asset: assets/fonts/noto_sans_jp/NotoSansJP.ttf
+    - family: MaterialSymbolsRounded
+      fonts:
+        - asset: assets/fonts/material_symbols_rounded/MaterialSymbolsRounded.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

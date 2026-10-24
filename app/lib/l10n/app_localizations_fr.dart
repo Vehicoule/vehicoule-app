@@ -65,4 +65,221 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get actionAddSource => 'Ajouter une source';
+
+  @override
+  String get nowPlaying => 'En lecture';
+
+  @override
+  String get offlineChip => 'Hors ligne · tes téléchargements restent là';
+
+  @override
+  String get offlineTrack =>
+      'Ce titre n\'est pas téléchargé. Il revient dès que tu es en ligne.';
+
+  @override
+  String get playbackStopped => 'Lecture arrêtée';
+
+  @override
+  String playingFrom(String source) {
+    return 'Lecture depuis $source';
+  }
+
+  @override
+  String get viewPlayer => 'Lecteur';
+
+  @override
+  String get viewLyrics => 'Paroles';
+
+  @override
+  String get viewQueue => 'File';
+
+  @override
+  String get actionPlay => 'Lire';
+
+  @override
+  String get actionPause => 'Mettre en pause';
+
+  @override
+  String get actionNext => 'Titre suivant';
+
+  @override
+  String get actionPrevious => 'Titre précédent';
+
+  @override
+  String get actionShuffle => 'Lecture aléatoire';
+
+  @override
+  String get actionRepeat => 'Répéter';
+
+  @override
+  String get actionLike => 'J\'aime';
+
+  @override
+  String get actionAddToPlaylist => 'Ajouter à une playlist';
+
+  @override
+  String get actionDownload => 'Télécharger';
+
+  @override
+  String get actionPlayNext => 'Lire ensuite';
+
+  @override
+  String get actionAddToQueue => 'Ajouter à la file';
+
+  @override
+  String get actionRemove => 'Retirer';
+
+  @override
+  String get actionRetry => 'Réessayer';
+
+  @override
+  String get actionUndo => 'Annuler';
+
+  @override
+  String get actionSeeAll => 'Tout voir';
+
+  @override
+  String get actionReorder => 'Déplacer';
+
+  @override
+  String get actionCollapse => 'Réduire';
+
+  @override
+  String get actionOutput => 'Sortie audio';
+
+  @override
+  String get actionImmersive => 'Plein écran';
+
+  @override
+  String get actionMore => 'Plus d\'options';
+
+  @override
+  String get downloaded => 'Téléchargé';
+
+  @override
+  String get downloading => 'Téléchargement en cours';
+
+  @override
+  String get explicitLabel => 'Explicite';
+
+  @override
+  String get selectedLabel => 'Sélectionné';
+
+  @override
+  String get loading => 'Chargement';
+
+  @override
+  String get seekLabel => 'Position de lecture';
+
+  @override
+  String get volumeLabel => 'Volume';
+
+  @override
+  String get sleepEndOfTrack => 'Fin du titre';
+
+  @override
+  String sleepMinutesLeft(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String get themeLight => 'Clair';
+
+  @override
+  String get themeDark => 'Sombre';
+
+  @override
+  String get themePureBlack => 'Noir pur';
+
+  @override
+  String get colorSourceSystem => 'Système';
+
+  @override
+  String colorSourcePreset(int number) {
+    return 'Préréglage $number';
+  }
+
+  @override
+  String colorSourceArtwork(int number) {
+    return 'Pochette $number';
+  }
+
+  @override
+  String get reduceMotion => 'Réduire les animations';
+
+  @override
+  String get playerStyleDisc => 'Disque';
+
+  @override
+  String get playerStyleWave => 'Vague';
+
+  @override
+  String get galleryTitle => 'Galerie du design';
+
+  @override
+  String get galleryArtwork => 'Pochettes et formes';
+
+  @override
+  String get galleryTrackRows => 'Lignes de titre';
+
+  @override
+  String get galleryPlayer => 'Lecteur';
+
+  @override
+  String get galleryButtons => 'Boutons';
+
+  @override
+  String get galleryShelf => 'Étagère et carte héros';
+
+  @override
+  String get galleryTransitions => 'Transitions de page';
+
+  @override
+  String get galleryFeedback => 'Chargement, messages et feuille latérale';
+
+  @override
+  String get galleryListStates => 'États des listes';
+
+  @override
+  String get galleryTypography => 'Typographie';
+
+  @override
+  String get gallerySpacing => 'Espacements';
+
+  @override
+  String get galleryReplay => 'Rejouer';
+
+  @override
+  String get galleryShowSnack => 'Afficher un message';
+
+  @override
+  String get galleryToggleSheet => 'Ouvrir ou fermer la feuille';
+
+  @override
+  String get galleryOpenMenu => 'Ouvrir le menu';
+
+  @override
+  String get transitionContainer => 'Carte vers page';
+
+  @override
+  String get transitionFadeThrough => 'Changement de destination';
+
+  @override
+  String get transitionSharedAxis => 'Vues du lecteur';
+
+  @override
+  String get emptyLikes =>
+      'Rien de liké pour l\'instant. Touche le cœur d\'un titre pour le retrouver ici.';
+
+  @override
+  String get shelfTracks => 'Titres';
+
+  @override
+  String get shelfAlbums => 'Albums';
+
+  @override
+  String get shelfArtists => 'Artistes';
+
+  @override
+  String get shelfPlaylists => 'Playlists';
 }

@@ -15,5 +15,102 @@
   "errorNoSourceLyrics": "Il te faut une source pour voir les paroles.",
   "errorNoSourceRadio": "Il te faut une source pour lancer une radio.",
   "errorNoSourceBrowse": "Il te faut une source pour explorer.",
-  "actionAddSource": "Ajouter une source"
+  "actionAddSource": "Ajouter une source",
+  "nowPlaying": "En lecture",
+  "offlineChip": "Hors ligne · tes téléchargements restent là",
+  "offlineTrack": "Ce titre n'est pas téléchargé. Il revient dès que tu es en ligne.",
+  "playbackStopped": "Lecture arrêtée",
+  "playingFrom": "Lecture depuis {source}",
+  "@playingFrom": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "viewPlayer": "Lecteur",
+  "viewLyrics": "Paroles",
+  "viewQueue": "File",
+  "actionPlay": "Lire",
+  "actionPause": "Mettre en pause",
+  "actionNext": "Titre suivant",
+  "actionPrevious": "Titre précédent",
+  "actionShuffle": "Lecture aléatoire",
+  "actionRepeat": "Répéter",
+  "actionLike": "J'aime",
+  "actionAddToPlaylist": "Ajouter à une playlist",
+  "actionDownload": "Télécharger",
+  "actionPlayNext": "Lire ensuite",
+  "actionAddToQueue": "Ajouter à la file",
+  "actionRemove": "Retirer",
+  "actionRetry": "Réessayer",
+  "actionUndo": "Annuler",
+  "actionSeeAll": "Tout voir",
+  "actionReorder": "Déplacer",
+  "actionCollapse": "Réduire",
+  "actionOutput": "Sortie audio",
+  "actionImmersive": "Plein écran",
+  "actionMore": "Plus d'options",
+  "downloaded": "Téléchargé",
+  "downloading": "Téléchargement en cours",
+  "explicitLabel": "Explicite",
+  "selectedLabel": "Sélectionné",
+  "loading": "Chargement",
+  "seekLabel": "Position de lecture",
+  "volumeLabel": "Volume",
+  "sleepEndOfTrack": "Fin du titre",
+  "sleepMinutesLeft": "{minutes} min",
+  "@sleepMinutesLeft": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "themeLight": "Clair",
+  "themeDark": "Sombre",
+  "themePureBlack": "Noir pur",
+  "colorSourceSystem": "Système",
+  "colorSourcePreset": "Préréglage {number}",
+  "@colorSourcePreset": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "colorSourceArtwork": "Pochette {number}",
+  "@colorSourceArtwork": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "reduceMotion": "Réduire les animations",
+  "playerStyleDisc": "Disque",
+  "playerStyleWave": "Vague",
+  "galleryTitle": "Galerie du design",
+  "galleryArtwork": "Pochettes et formes",
+  "galleryTrackRows": "Lignes de titre",
+  "galleryPlayer": "Lecteur",
+  "galleryButtons": "Boutons",
+  "galleryShelf": "Étagère et carte héros",
+  "galleryTransitions": "Transitions de page",
+  "galleryFeedback": "Chargement, messages et feuille latérale",
+  "galleryListStates": "États des listes",
+  "galleryTypography": "Typographie",
+  "gallerySpacing": "Espacements",
+  "galleryReplay": "Rejouer",
+  "galleryShowSnack": "Afficher un message",
+  "galleryToggleSheet": "Ouvrir ou fermer la feuille",
+  "galleryOpenMenu": "Ouvrir le menu",
+  "transitionContainer": "Carte vers page",
+  "transitionFadeThrough": "Changement de destination",
+  "transitionSharedAxis": "Vues du lecteur",
+  "emptyLikes": "Rien de liké pour l'instant. Touche le cœur d'un titre pour le retrouver ici.",
+  "shelfTracks": "Titres",
+  "shelfAlbums": "Albums",
+  "shelfArtists": "Artistes",
+  "shelfPlaylists": "Playlists"
 }
