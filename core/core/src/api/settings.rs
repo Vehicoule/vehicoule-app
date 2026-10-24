@@ -5,6 +5,7 @@
 use crate::api::app::{TELEMETRY, set_telemetry};
 use crate::app::app;
 use crate::error::CoreError;
+use crate::events::LibraryChanged;
 use crate::library::settings as rows;
 
 /// Device setting, on unless `false`: the home feed reads it too.
@@ -77,8 +78,9 @@ pub async fn settings() -> Result<Settings, CoreError> {
 /// Telemetry is stored, and starts or stops, only when it changes: an unchosen one stays
 /// unchosen (`onboarding().telemetry == None`) until turned on or onboarding chooses.
 pub async fn set_settings(s: Settings) -> Result<(), CoreError> {
-    let was = settings().await?.telemetry;
-    let on = s.telemetry;
+    let was = settings().await?;
+    let home = s.discover != was.discover;
+    let (on, was) = (s.telemetry, was.telemetry);
     app()
         .db
         .write(move |tx| {
@@ -94,6 +96,10 @@ pub async fn set_settings(s: Settings) -> Result<(), CoreError> {
         .await?;
     if on != was {
         set_telemetry(on);
+    }
+    // The home shows or hides its network shelves.
+    if home {
+        let _ = app().events.library.send(LibraryChanged::Home);
     }
     Ok(())
 }
@@ -179,6 +185,36 @@ mod tests {
             .unwrap();
         assert_eq!(crate::api::app::onboarding().unwrap().telemetry, None);
         forget(app).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn toggling_discover_sends_home() {
+        use crate::events::LibraryChanged;
+        let (_turn, app) = crate::catalog::tests::setup().await;
+        let on = stored(None, None, None, None, None);
+        set_settings(on.clone()).await.unwrap();
+        let mut rx = app.events.library.subscribe();
+        let mut sent = move || {
+            let mut got = vec![];
+            while let Ok(c) = rx.try_recv() {
+                got.push(c);
+            }
+            got
+        };
+        let off = Settings {
+            discover: false,
+            ..on.clone()
+        };
+        set_settings(off.clone()).await.unwrap();
+        assert_eq!(sent(), [LibraryChanged::Home]);
+        let quality = Settings {
+            quality: Quality::High,
+            ..off
+        };
+        set_settings(quality).await.unwrap();
+        assert_eq!(sent(), []);
+        set_settings(on).await.unwrap();
+        assert_eq!(sent(), [LibraryChanged::Home]);
     }
 
     #[test]

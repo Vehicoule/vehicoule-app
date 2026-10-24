@@ -2,8 +2,11 @@
 //! from their radios, shelves assembled in a fixed order and stored in kv `@core`/`home_feed`.
 //! The core produces no text: a shelf is a kind and, for some, a seed's name.
 //!
-//! Read by pages of 4 shelves; a "because you listened" shelf loads on its first read.
-//! Rebuilt in the background when over 24 h old (first page, back online), or on demand.
+//! Read by pages of 4 shelves. The local shelves (shortcuts, rediscover, recent, playlists,
+//! downloads) are read when served; the first "because you listened" shelf is loaded by the
+//! build, the others on their first read past the first page.
+//! Rebuilt in the background when over 24 h old (first page, back online), when the plugins
+//! change, or on demand.
 
 mod assemble;
 mod seeds;
@@ -44,8 +47,8 @@ const STALE_MS: i64 = 24 * 3600 * 1000;
 /// "Because you listened": albums and artists.
 const BECAUSE_ITEMS: usize = 12;
 
-/// Held by the running build: one at a time.
-static BUILD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// Held by the running build: one at a time. Holds the last build's error.
+static BUILD: tokio::sync::Mutex<Option<CoreError>> = tokio::sync::Mutex::const_new(None);
 
 /// Stored as is: the bridge's kind is the doc's.
 pub(crate) use crate::api::library::ShelfKindView as ShelfKind;
@@ -67,6 +70,7 @@ pub(crate) struct StoredShelf {
     pub network: bool,
     /// `false`: to load on demand (Task 7), `items` empty until then.
     pub loaded: bool,
+    /// Empty for a local shelf: read when served.
     pub items: Vec<StoredItem>,
 }
 
@@ -81,6 +85,10 @@ pub(crate) struct FeedDoc {
 
 /// Reads the seeds, asks the plugins when `discover` is on and online (a failing source is
 /// left empty and logged), assembles the shelves and stores the doc.
+///
+/// When every radio asked failed (or, without seeds, the chart), or the device went offline
+/// meanwhile, the build counts as offline: a stored doc is kept (`Offline`), else the doc is
+/// stored flagged `offline`.
 pub(crate) async fn build(now_ms: i64) -> Result<FeedDoc, CoreError> {
     build_doc(now_ms, true).await
 }
@@ -91,12 +99,17 @@ async fn build_doc(now_ms: i64, ask: bool) -> Result<FeedDoc, CoreError> {
     let discover = app.db.read(discover_on).await?;
     let mut local = app.db.read(move |c| seeds::read(c, now_ms)).await?;
     let ask = ask && discover && app.is_online();
-    if ask {
-        network(&mut local, now_ms).await?;
+    let failed = match ask {
+        true => network(&mut local, now_ms).await? || !app.is_online(),
+        false => false,
+    };
+    // A captive portal or a provider down: the last copy is worth more than an empty one.
+    if failed && read_doc().await?.is_some() {
+        return Err(CoreError::Offline);
     }
     let doc = FeedDoc {
         built_at_ms: now_ms,
-        offline: !ask,
+        offline: !ask || failed,
         shelves: assemble(local.inputs, discover),
     };
     let bytes = serde_json::to_vec(&doc).map_err(|e| CoreError::Internal(e.to_string()))?;
@@ -118,27 +131,44 @@ async fn rebuild() -> Result<(), CoreError> {
     Ok(())
 }
 
-/// `rebuild` now; when a build is already running, waits for it instead (it sends `Home`).
+/// `rebuild` now; when a build is already running, waits for it instead (it sends `Home`)
+/// and returns its outcome.
 pub(crate) async fn refresh() -> Result<(), CoreError> {
     views::online()?;
     match BUILD.try_lock() {
-        Ok(_one) => rebuild().await,
-        Err(_) => {
-            drop(BUILD.lock().await);
-            Ok(())
+        Ok(mut last) => {
+            let built = rebuild().await;
+            *last = built.clone().err();
+            built
         }
+        Err(_) => BUILD.lock().await.clone().map_or(Ok(()), Err),
     }
 }
 
 /// `rebuild` on the app's runtime, unless one is running already.
 fn in_background() {
-    let Ok(one) = BUILD.try_lock() else {
+    let Ok(mut last) = BUILD.try_lock() else {
         return;
     };
     app().rt.spawn(async move {
-        let _one = one;
-        logged("build", rebuild().await);
+        let built = rebuild().await;
+        *last = built.clone().err();
+        logged("build", built);
     });
+}
+
+/// The plugins changed (installed, updated, removed): online with `discover` on, the feed is
+/// rebuilt in the background, whatever its age.
+pub(crate) async fn on_plugins_changed() {
+    let Some(discover) = logged(
+        "discover",
+        app().db.read(discover_on).await.map_err(Into::into),
+    ) else {
+        return;
+    };
+    if discover && app().is_online() {
+        in_background();
+    }
 }
 
 /// The stored doc; an unreadable one counts as none.
@@ -171,7 +201,8 @@ pub(crate) async fn on_online() {
 
 /// Up to `PAGE` shelves from the shelf index `cursor`. Online, the first page of a stale doc
 /// starts a background build (offline, the last copy is kept: `on_online` rebuilds it). A
-/// missing doc is first built locally (no plugin call).
+/// missing doc is first built locally (no plugin call). The first page never calls a plugin:
+/// an unloaded "because you listened" shelf is loaded only on a later page.
 pub(crate) async fn page(cursor: Option<String>) -> Result<HomeFeedPage, CoreError> {
     let start = match &cursor {
         Some(c) => c.parse::<usize>().map_err(|_| CoreError::NotFound)?,
@@ -203,16 +234,21 @@ pub(crate) async fn page(cursor: Option<String>) -> Result<HomeFeedPage, CoreErr
         if shelf.network && !discover {
             continue;
         }
-        let items = match (&shelf.seed_id, shelf.loaded) {
-            (Some(artist), false) if ask => {
+        let live = match shelf.network {
+            false => live(shelf.kind, now).await?,
+            true => None,
+        };
+        let items = match (&live, &shelf.seed_id, shelf.loaded) {
+            (Some(items), _, _) => items,
+            (None, Some(artist), false) if ask && cursor.is_some() => {
                 let Some(items) = logged("because", load_because(artist).await) else {
                     continue;
                 };
                 loaded.push((i, items));
                 &loaded[loaded.len() - 1].1
             }
-            (_, false) => continue,
-            (_, true) => &shelf.items,
+            (None, _, false) => continue,
+            (None, _, true) => &shelf.items,
         };
         let view = view_of(shelf, items).await?;
         if view.kind == ShelfKind::End {
@@ -228,6 +264,24 @@ pub(crate) async fn page(cursor: Option<String>) -> Result<HomeFeedPage, CoreErr
         logged("because", store_loaded(doc.built_at_ms, loaded).await);
     }
     Ok(out)
+}
+
+/// A local shelf's items, read now; `None` for any other kind.
+async fn live(kind: ShelfKind, now_ms: i64) -> Result<Option<Vec<StoredItem>>, CoreError> {
+    let ids = app()
+        .db
+        .read(move |c| seeds::local_items(c, kind, now_ms))
+        .await?;
+    Ok(ids.map(stored_items))
+}
+
+fn stored_items(ids: Vec<ItemId>) -> Vec<StoredItem> {
+    ids.into_iter()
+        .map(|id| StoredItem {
+            id: id.to_string(),
+            reason: None,
+        })
+        .collect()
 }
 
 /// The shelf as cards; items gone from the catalogue left out.
@@ -295,7 +349,10 @@ async fn store_loaded(
 /// left out: at most 12.
 async fn load_because(artist: &str) -> Result<Vec<StoredItem>, CoreError> {
     let artist = parse_id(artist)?;
-    let seed = seed_track(artist).await?.ok_or(CoreError::NotFound)?;
+    // No track to start a radio from: nothing to show.
+    let Some(seed) = seed_track(artist).await? else {
+        return Ok(vec![]);
+    };
     let found = player::radio_tracks(seed).await?;
     let tracks = app().db.read(move |c| catalog::tracks(c, &found)).await?;
     let mut ids = vec![];
@@ -308,13 +365,7 @@ async fn load_because(artist: &str) -> Result<Vec<StoredItem>, CoreError> {
         }
     }
     ids.truncate(BECAUSE_ITEMS);
-    Ok(ids
-        .into_iter()
-        .map(|id| StoredItem {
-            id: id.to_string(),
-            reason: None,
-        })
-        .collect())
+    Ok(stored_items(ids))
 }
 
 /// The artist's most played track (all time), else the first of its `entity` page.
@@ -329,8 +380,10 @@ pub(crate) async fn seed_track(artist: ItemId) -> Result<Option<ItemId>, CoreErr
     })
 }
 
-/// Fills the network inputs: discovery, releases, chart.
-async fn network(local: &mut seeds::Local, now_ms: i64) -> Result<(), CoreError> {
+/// Fills the network inputs: discovery, the first "because you listened" shelf, releases,
+/// chart. `true`: every network source failed, judged by the radios asked (the chart may be
+/// a copy served as a success), else, without seeds, by the chart.
+async fn network(local: &mut seeds::Local, now_ms: i64) -> Result<bool, CoreError> {
     let mut picked = std::mem::take(&mut local.track_seeds);
     for &(artist, top) in &local.liked_artists {
         if picked.len() >= TRACK_SEEDS {
@@ -342,10 +395,14 @@ async fn network(local: &mut seeds::Local, now_ms: i64) -> Result<(), CoreError>
         };
         seeds::push_new(&mut picked, track, TRACK_SEEDS);
     }
-    let chart = logged("chart", chart().await).unwrap_or_default();
+    let chart = chart().await;
+    let chart_failed = failure(&chart);
+    let chart = logged("chart", chart).unwrap_or_default();
     if picked.is_empty() {
         picked = chart.iter().copied().take(TRACK_SEEDS).collect();
     }
+    // Then cleared by any radio that answers.
+    let mut failed = !picked.is_empty() || chart_failed;
     let inputs = &mut local.inputs;
     inputs.excluded.extend(picked.iter().copied());
     // Another edition of a seed (other id, same title and artist) stays out too.
@@ -355,7 +412,9 @@ async fn network(local: &mut seeds::Local, now_ms: i64) -> Result<(), CoreError>
         .folded_excluded
         .extend(keys.into_iter().map(|k| k.folded));
     for seed in picked {
-        let Some(found) = logged("radio", player::radio_tracks(seed).await) else {
+        let found = player::radio_tracks(seed).await;
+        failed &= failure(&found);
+        let Some(found) = logged("radio", found) else {
             continue;
         };
         let (title, candidates) = app()
@@ -367,9 +426,13 @@ async fn network(local: &mut seeds::Local, now_ms: i64) -> Result<(), CoreError>
             .await?;
         inputs.discovery.push((title, candidates));
     }
+    if let Some(&(artist, _)) = inputs.top_artists.first() {
+        let found = load_because(&artist.to_string()).await;
+        inputs.because = logged("because", found);
+    }
     let since = date(now_ms - RELEASES_MS);
     let mut releases = Vec::new();
-    for &(artist, _) in &local.liked_artists {
+    for &artist in &local.release_artists {
         let found = logged("releases", browse::releases(artist).await).unwrap_or_default();
         releases.extend(found.into_iter().filter(|r| r.1 >= since));
     }
@@ -382,7 +445,12 @@ async fn network(local: &mut seeds::Local, now_ms: i64) -> Result<(), CoreError>
         .take(seeds::ROWS as usize)
         .collect();
     inputs.chart = chart;
-    Ok(())
+    Ok(failed)
+}
+
+/// Failed for another reason than no plugin having the capability.
+fn failure<T>(r: &Result<T, CoreError>) -> bool {
+    matches!(r, Err(e) if !matches!(e, CoreError::NoPlugin(_)))
 }
 
 /// The first track of the artist's `entity` page.
@@ -452,7 +520,7 @@ pub(crate) mod tests {
     use crate::app::test_app;
     use crate::catalog;
     use crate::catalog::tests::{calls, set_mode, setup};
-    use crate::library::{likes, plays};
+    use crate::library::{likes, playlists, plays};
     use crate::plugins::now_ms;
 
     const DAY_MS: i64 = 86_400_000;
@@ -557,7 +625,6 @@ pub(crate) mod tests {
         app.set_online(false);
         let before = calls().await;
         let doc = build(now_ms()).await.unwrap();
-        assert_eq!(calls().await, before);
         assert_eq!(
             kinds(&doc),
             [
@@ -566,12 +633,19 @@ pub(crate) mod tests {
                 BecauseYouListened,
                 Rediscover,
                 Recent,
+                Playlists,
+                Downloads,
                 End
             ]
         );
-        assert_eq!(items(&doc, Shortcuts), [album.to_string()]);
-        assert_eq!(items(&doc, Recent), [t.to_string()]);
-        assert_eq!(items(&doc, Rediscover), [u.to_string()]);
+        // The unloaded "because you listened" one is skipped.
+        let p = page(None).await.unwrap();
+        app.set_online(true);
+        assert_eq!(calls().await, before);
+        assert_eq!(page_kinds(&p), [Shortcuts, Mixes, Rediscover, Recent]);
+        assert_eq!(card_ids(&p.shelves[0]), [album.to_string()]);
+        assert_eq!(card_ids(&p.shelves[2]), [u.to_string()]);
+        assert_eq!(card_ids(&p.shelves[3]), [t.to_string()]);
     }
 
     #[tokio::test]
@@ -583,11 +657,11 @@ pub(crate) mod tests {
         let chart = HashSet::from(["t-chart-0-p0 1".to_string(), "t-chart-0-p0 2".into()]);
         assert_eq!(reasons(&doc), chart);
         assert_eq!(items(&doc, ShelfKind::Chart).len(), 2);
-        // Without a browse plugin (nor any other): only the end.
+        // Without a browse plugin (nor any other): only the local shelves.
         wipe().await;
         app.plugins.replace_loaded(vec![]);
         let doc = build(now_ms()).await.unwrap();
-        assert_eq!(kinds(&doc), [ShelfKind::End]);
+        assert!(doc.shelves.iter().all(|s| !s.network));
     }
 
     #[tokio::test]
@@ -625,7 +699,10 @@ pub(crate) mod tests {
         let before = calls().await;
         let doc = build(now_ms()).await.unwrap();
         assert_eq!(calls().await, before);
-        assert_eq!(kinds(&doc), [Shortcuts, Rediscover, Recent, End]);
+        assert_eq!(
+            kinds(&doc),
+            [Shortcuts, Rediscover, Recent, Playlists, Downloads, End]
+        );
         assert!(doc.shelves.iter().all(|s| !s.network));
         wipe().await;
     }
@@ -752,16 +829,104 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn a_failing_radio_empties_only_discovery() {
+    async fn a_build_whose_radios_all_fail_keeps_the_last_copy() {
+        let (_lock, app) = setup().await;
+        wipe().await;
+        // The first build fills Discovery and keeps a copy of the chart for 24 h.
+        let first = build(now_ms()).await.unwrap();
+        assert_eq!(items(&first, ShelfKind::Discovery).len(), 30);
+        let bytes = raw_doc().await;
+        // Still online, but every radio fails (the chart's copy is served as a success).
+        set_mode("fake", "network").await;
+        set_mode("fake-b", "network").await;
+        let mut rx = app.events.library.subscribe();
+        assert_eq!(refresh().await, Err(CoreError::Offline));
+        assert_eq!(raw_doc().await, bytes);
+        assert_eq!(homes(&mut rx), 0);
+        // No doc yet: one is written, flagged offline, the chart's copy in it.
+        app.db.write(|tx| kv::delete(tx, NS, KEY)).await.unwrap();
+        let doc = build(now_ms()).await.unwrap();
+        assert!(doc.offline);
+        assert_eq!(items(&doc, ShelfKind::Discovery), Vec::<String>::new());
+        assert_eq!(items(&doc, ShelfKind::Chart).len(), 2);
+    }
+
+    #[tokio::test]
+    async fn first_page_of_a_fresh_doc_calls_no_plugin() {
+        use ShelfKind::*;
         let (_lock, _) = setup().await;
         wipe().await;
-        // The first build keeps a copy of the chart for 24 h.
+        // The radio of "home first page" is by its own artist, on its own album.
+        let (t, album, _) = song("home first page").await;
+        play(t, None).await;
+        build(now_ms()).await.unwrap();
+        let before = calls().await;
+        let p = page(None).await.unwrap();
+        assert_eq!(calls().await, before);
+        // The first "because you listened" shelf is filled by the build.
+        let byl = p.shelves.iter().find(|s| s.kind == BecauseYouListened);
+        assert_eq!(byl.map(card_ids), Some(vec![album.to_string()]), "{p:?}");
+    }
+
+    #[tokio::test]
+    async fn local_shelves_are_read_when_served() {
+        use ShelfKind::*;
+        let (_lock, app) = setup().await;
+        wipe().await;
+        let (t, album, _) = song("home live a").await;
+        app.set_online(false);
+        build(now_ms()).await.unwrap();
+        let bytes = raw_doc().await;
+        // Kept in the doc though empty, and not served.
+        assert_eq!(
+            kinds(&stored_doc().await),
+            [Shortcuts, Rediscover, Recent, Playlists, Downloads, End]
+        );
+        assert_eq!(page_kinds(&page(None).await.unwrap()), [End]);
+        // A new user's first plays and a playlist made since: served without a rebuild.
+        play(t, Some(album)).await;
+        let mine = app
+            .db
+            .write(|tx| playlists::create(tx, "home live", None))
+            .await
+            .unwrap();
+        let p = page(None).await.unwrap();
+        app.set_online(true);
+        assert_eq!(page_kinds(&p), [Shortcuts, Recent, Playlists, End]);
+        assert_eq!(card_ids(&p.shelves[0]), [album.to_string()]);
+        assert_eq!(card_ids(&p.shelves[1]), [t.to_string()]);
+        assert_eq!(card_ids(&p.shelves[2]), [mine.to_string()]);
+        assert_eq!(raw_doc().await, bytes);
+        wipe().await;
+    }
+
+    #[tokio::test]
+    async fn new_releases_rotate_through_every_liked_artist() {
+        let (_lock, _) = setup().await;
+        wipe().await;
+        // One release in the window each.
+        for k in 0..25 {
+            liked_artist(&format!("rot {k}")).await;
+        }
+        let mut seen = HashSet::new();
+        for day in 0..3 {
+            let doc = build(OCT_25 + day * DAY_MS).await.unwrap();
+            let ids = items(&doc, ShelfKind::NewReleases);
+            assert!(ids.len() <= 10, "day {day}: {}", ids.len());
+            seen.extend(ids);
+        }
+        assert_eq!(seen.len(), 25);
+    }
+
+    #[tokio::test]
+    async fn refresh_reports_a_running_build_that_failed() {
+        let (_lock, _) = setup().await;
+        wipe().await;
         build(now_ms()).await.unwrap();
         set_mode("fake", "network").await;
         set_mode("fake-b", "network").await;
-        let doc = build(now_ms()).await.unwrap();
-        assert_eq!(items(&doc, ShelfKind::Discovery), Vec::<String>::new());
-        assert_eq!(items(&doc, ShelfKind::Chart).len(), 2);
+        in_background();
+        assert_eq!(refresh().await, Err(CoreError::Offline));
     }
 
     /// A loaded shelf of `ids`.
@@ -780,6 +945,13 @@ pub(crate) mod tests {
                 })
                 .collect(),
         }
+    }
+
+    /// A first page: 4 chart shelves of `t`.
+    fn first_page(t: ItemId) -> Vec<StoredShelf> {
+        (0..PAGE)
+            .map(|_| stored(ShelfKind::Chart, true, &[t]))
+            .collect()
     }
 
     /// A "because you listened" shelf of `artist`, not loaded yet.
@@ -837,13 +1009,13 @@ pub(crate) mod tests {
     }
 
     /// Waits for a background build to end.
-    async fn settle() {
+    pub(crate) async fn settle() {
         let wait = tokio::time::timeout(std::time::Duration::from_secs(10), BUILD.lock());
         drop(wait.await.expect("background build still running"));
     }
 
     /// The `Home` events received so far.
-    fn homes(rx: &mut tokio::sync::broadcast::Receiver<LibraryChanged>) -> usize {
+    pub(crate) fn homes(rx: &mut tokio::sync::broadcast::Receiver<LibraryChanged>) -> usize {
         let mut n = 0;
         while let Ok(c) = rx.try_recv() {
             n += usize::from(c == LibraryChanged::Home);
@@ -857,18 +1029,18 @@ pub(crate) mod tests {
         let (_lock, _) = setup().await;
         wipe().await;
         let (t, _, _) = song("home page a").await;
-        let mut shelves: Vec<_> = (0..9).map(|_| stored(Recent, false, &[t])).collect();
+        let mut shelves: Vec<_> = (0..9).map(|_| stored(Chart, true, &[t])).collect();
         shelves.push(stored(End, false, &[]));
         store(now_ms(), shelves).await;
         let first = page(None).await.unwrap();
-        assert_eq!(page_kinds(&first), [Recent; 4]);
+        assert_eq!(page_kinds(&first), [Chart; 4]);
         assert_eq!(card_ids(&first.shelves[0]), [t.to_string()]);
         assert_eq!(first.next.as_deref(), Some("4"));
         let second = page(first.next).await.unwrap();
-        assert_eq!(page_kinds(&second), [Recent; 4]);
+        assert_eq!(page_kinds(&second), [Chart; 4]);
         assert_eq!(second.next.as_deref(), Some("8"));
         let last = page(second.next).await.unwrap();
-        assert_eq!(page_kinds(&last), [Recent, End]);
+        assert_eq!(page_kinds(&last), [Chart, End]);
         assert_eq!(last.next, None);
         assert!(page(Some("x".into())).await.is_err());
     }
@@ -904,20 +1076,23 @@ pub(crate) mod tests {
         let (t, album, artist) = song("home byl a").await;
         play(t, None).await;
         let name = "Artist home-byl-a";
-        store(
-            now_ms(),
-            vec![because(artist, name), stored(End, false, &[])],
-        )
-        .await;
-        let p = page(None).await.unwrap();
+        let mut shelves = first_page(t);
+        shelves.extend([because(artist, name), stored(End, false, &[])]);
+        store(now_ms(), shelves).await;
+        // Not on the first page.
+        let before = calls().await;
+        let first = page(None).await.unwrap();
+        assert_eq!(calls().await, before);
+        assert!(!stored_doc().await.shelves[4].loaded);
+        let p = page(first.next).await.unwrap();
         assert_eq!(page_kinds(&p), [BecauseYouListened, End]);
         assert_eq!(p.shelves[0].seed.as_deref(), Some(name));
         assert_eq!(card_ids(&p.shelves[0]), [album.to_string()]);
         let doc = stored_doc().await;
-        assert!(doc.shelves[0].loaded);
+        assert!(doc.shelves[4].loaded);
         assert_eq!(items(&doc, BecauseYouListened), [album.to_string()]);
         let before = calls().await;
-        let again = page(None).await.unwrap();
+        let again = page(Some("4".into())).await.unwrap();
         assert_eq!(calls().await, before);
         assert_eq!(card_ids(&again.shelves[0]), [album.to_string()]);
     }
@@ -928,6 +1103,7 @@ pub(crate) mod tests {
         let (_lock, app) = setup().await;
         wipe().await;
         let (t, _, artist) = song("home private cached").await;
+        play(t, None).await;
         let shelves = vec![
             stored(Recent, false, &[t]),
             stored(Mixes, true, &[artist]),
@@ -960,14 +1136,14 @@ pub(crate) mod tests {
         let old = now_ms() - 25 * 3600 * 1000;
         store(
             old,
-            vec![stored(Recent, false, &[t]), stored(End, false, &[])],
+            vec![stored(Chart, true, &[t]), stored(End, false, &[])],
         )
         .await;
         let mut rx = app.events.library.subscribe();
         // Both served the stale doc; only the first starts a build.
         let (a, b) = (page(None).await.unwrap(), page(None).await.unwrap());
-        assert_eq!(page_kinds(&a), [Recent, End]);
-        assert_eq!(page_kinds(&b), [Recent, End]);
+        assert_eq!(page_kinds(&a), [Chart, End]);
+        assert_eq!(page_kinds(&b), [Chart, End]);
         settle().await;
         assert_eq!(homes(&mut rx), 1);
         assert!(stored_doc().await.built_at_ms > old);
@@ -1037,7 +1213,8 @@ pub(crate) mod tests {
         wipe().await;
         store(now_ms(), vec![stored(ShelfKind::End, false, &[])]).await;
         let mut rx = app.events.library.subscribe();
-        let running = BUILD.try_lock().unwrap();
+        let mut running = BUILD.try_lock().unwrap();
+        *running = None;
         let refresh = tokio::spawn(crate::api::library::refresh_home());
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         assert!(!refresh.is_finished());
@@ -1055,18 +1232,16 @@ pub(crate) mod tests {
         let (t, album, artist) = song("home byl nowrite").await;
         play(t, None).await;
         let name = "Artist home-byl-nowrite";
-        store(
-            now_ms(),
-            vec![because(artist, name), stored(End, false, &[])],
-        )
-        .await;
+        let mut shelves = first_page(t);
+        shelves.extend([because(artist, name), stored(End, false, &[])]);
+        store(now_ms(), shelves).await;
         let block = "CREATE TEMP TRIGGER no_feed BEFORE INSERT ON plugin_kv
                      WHEN NEW.key = 'home_feed' BEGIN SELECT RAISE(ABORT, 'disk full'); END;";
         app.db
             .write(move |tx| tx.tx.execute_batch(block))
             .await
             .unwrap();
-        let p = page(None).await;
+        let p = page(Some("4".into())).await;
         app.db
             .write(|tx| tx.tx.execute_batch("DROP TRIGGER no_feed;"))
             .await
@@ -1074,6 +1249,6 @@ pub(crate) mod tests {
         let p = p.unwrap();
         assert_eq!(page_kinds(&p), [BecauseYouListened, End]);
         assert_eq!(card_ids(&p.shelves[0]), [album.to_string()]);
-        assert!(!stored_doc().await.shelves[0].loaded);
+        assert!(!stored_doc().await.shelves[4].loaded);
     }
 }

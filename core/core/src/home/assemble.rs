@@ -9,17 +9,15 @@ use crate::library::{ItemId, fold};
 const DISCOVERY: usize = 30;
 
 /// What `assemble` works from. Local: read from the library. Network: left empty when
-/// `discover` is off or offline.
+/// `discover` is off or offline. The local shelves (shortcuts, rediscover, recent,
+/// playlists, downloads) take no input: they are read when served.
 #[derive(Default)]
 pub(crate) struct Inputs {
-    pub shortcuts: Vec<ItemId>,
     /// The top artists (id, name): one "because you listened" shelf each.
     pub top_artists: Vec<(ItemId, String)>,
+    /// The first top artist's "because you listened" items, when the build loaded them.
+    pub because: Option<Vec<StoredItem>>,
     pub mixes: Vec<ItemId>,
-    pub rediscover: Vec<ItemId>,
-    pub recent: Vec<ItemId>,
-    pub playlists: Vec<ItemId>,
-    pub downloads: Vec<ItemId>,
     /// Played or liked: never in discovery.
     pub excluded: HashSet<ItemId>,
     /// The `folded` keys of the played or liked tracks.
@@ -43,23 +41,25 @@ pub(crate) fn folded(title: &str, artist: &str) -> String {
     format!("{}\u{1f}{}", fold(title), fold(artist))
 }
 
-/// The shelves in the spec's order, `End` last; an empty loaded shelf is left out, and
-/// without `discover` so is every network shelf.
+/// The shelves in the spec's order, `End` last. The local ones are kept empty (read when
+/// served); an empty loaded network shelf is left out, and without `discover` so is every
+/// network shelf.
 pub(crate) fn assemble(inputs: Inputs, discover: bool) -> Vec<StoredShelf> {
     let discovery = discovery(inputs.discovery, &inputs.excluded, &inputs.folded_excluded);
-    let mut byl = inputs
-        .top_artists
-        .into_iter()
-        .map(|(id, name)| StoredShelf {
+    let mut because = inputs.because;
+    let mut byl = inputs.top_artists.into_iter().map(|(id, name)| {
+        let items = because.take();
+        StoredShelf {
             kind: ShelfKind::BecauseYouListened,
             seed: Some(name),
             seed_id: Some(id.to_string()),
             network: true,
-            loaded: false,
-            items: vec![],
-        });
+            loaded: items.is_some(),
+            items: items.unwrap_or_default(),
+        }
+    });
     let mut out = vec![
-        shelf(ShelfKind::Shortcuts, false, inputs.shortcuts),
+        shelf(ShelfKind::Shortcuts, false, vec![]),
         StoredShelf {
             items: discovery,
             ..shelf(ShelfKind::Discovery, true, vec![])
@@ -69,20 +69,18 @@ pub(crate) fn assemble(inputs: Inputs, discover: bool) -> Vec<StoredShelf> {
     out.extend(byl.next());
     out.extend([
         shelf(ShelfKind::NewReleases, true, inputs.releases),
-        shelf(ShelfKind::Rediscover, false, inputs.rediscover),
+        shelf(ShelfKind::Rediscover, false, vec![]),
         shelf(ShelfKind::Chart, true, inputs.chart),
     ]);
     out.extend(byl.next());
-    out.push(shelf(ShelfKind::Recent, false, inputs.recent));
+    out.push(shelf(ShelfKind::Recent, false, vec![]));
     out.extend(byl.next());
-    out.push(shelf(ShelfKind::Playlists, false, inputs.playlists));
+    out.push(shelf(ShelfKind::Playlists, false, vec![]));
     out.extend(byl.next());
-    out.push(shelf(ShelfKind::Downloads, false, inputs.downloads));
+    out.push(shelf(ShelfKind::Downloads, false, vec![]));
     out.extend(byl);
     out.push(shelf(ShelfKind::End, false, vec![]));
-    out.retain(|s| {
-        (discover || !s.network) && (!s.loaded || !s.items.is_empty() || s.kind == ShelfKind::End)
-    });
+    out.retain(|s| !s.network || (discover && (!s.loaded || !s.items.is_empty())));
     out
 }
 
@@ -182,16 +180,11 @@ mod tests {
         vec![ItemId::new()]
     }
 
-    /// Every input set; `n` top artists.
+    /// Every network input set; `n` top artists.
     fn full(n: usize) -> Inputs {
         Inputs {
-            shortcuts: one(),
             top_artists: (1..=n).map(|i| (ItemId::new(), format!("a{i}"))).collect(),
             mixes: one(),
-            rediscover: one(),
-            recent: one(),
-            playlists: one(),
-            downloads: one(),
             discovery: vec![("Halo".into(), cands("x", 1))],
             releases: one(),
             chart: one(),
@@ -325,18 +318,54 @@ mod tests {
     }
 
     #[test]
-    fn empty_loaded_shelves_are_omitted() {
+    fn empty_network_shelves_are_omitted_local_ones_kept() {
         use ShelfKind::*;
-        assert_eq!(kinds(&assemble(Inputs::default(), true)), [End]);
+        let local = [Shortcuts, Rediscover, Recent, Playlists, Downloads, End];
+        assert_eq!(kinds(&assemble(Inputs::default(), true)), local);
         let inputs = Inputs {
             top_artists: vec![(ItemId::new(), "a1".into())],
-            recent: one(),
+            chart: one(),
             ..Inputs::default()
         };
+        let shelves = assemble(inputs, true);
         assert_eq!(
-            kinds(&assemble(inputs, true)),
-            [BecauseYouListened, Recent, End]
+            kinds(&shelves),
+            [
+                Shortcuts,
+                BecauseYouListened,
+                Rediscover,
+                Chart,
+                Recent,
+                Playlists,
+                Downloads,
+                End
+            ]
         );
+        assert!(shelves.iter().all(|s| s.network || s.items.is_empty()));
+    }
+
+    #[test]
+    fn the_first_because_shelf_takes_the_items_loaded() {
+        let loaded = vec![StoredItem {
+            id: ItemId::new().to_string(),
+            reason: None,
+        }];
+        let want = loaded[0].id.clone();
+        let inputs = Inputs {
+            because: Some(loaded),
+            ..full(2)
+        };
+        let byl: Vec<_> = assemble(inputs, true)
+            .into_iter()
+            .filter(|s| s.kind == ShelfKind::BecauseYouListened)
+            .map(|s| {
+                (
+                    s.loaded,
+                    s.items.into_iter().map(|i| i.id).collect::<Vec<_>>(),
+                )
+            })
+            .collect();
+        assert_eq!(byl, [(true, vec![want]), (false, vec![])]);
     }
 
     #[test]

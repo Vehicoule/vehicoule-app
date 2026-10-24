@@ -3,6 +3,7 @@
 use crate::app::app;
 use crate::error::CoreError;
 use crate::events::LibraryChanged;
+use crate::home;
 use crate::library::plugins as rows;
 use crate::plugins::FeedPreview;
 pub use crate::plugins::{FeedView, PluginView};
@@ -33,25 +34,36 @@ pub async fn preview_feed(url: String, public_key: String) -> Result<FeedPreview
     app().plugins.preview_feed(&url, &public_key).await
 }
 
+/// Online with `discover` on, the home is rebuilt in the background (`LibraryChanged::Home`
+/// follows).
 pub async fn add_feed(url: String, public_key: String) -> Result<(), CoreError> {
     app().plugins.add_feed(&app().db, &url, &public_key).await?;
     changed();
+    home::on_plugins_changed().await;
     Ok(())
 }
 
+/// Online with `discover` on, the home is rebuilt in the background (`LibraryChanged::Home`
+/// follows).
 pub async fn remove_feed(url: String) -> Result<(), CoreError> {
     app().plugins.remove_feed(&app().db, &url).await?;
     changed();
+    home::on_plugins_changed().await;
     Ok(())
 }
 
+/// When a plugin is installed or updated, the home is rebuilt as after `add_feed`.
 pub async fn refresh_feeds() -> Result<(), CoreError> {
-    app().plugins.refresh_feeds(&app().db).await?;
+    let installed = app().plugins.refresh_feeds(&app().db).await?;
     changed();
+    if !installed.is_empty() {
+        home::on_plugins_changed().await;
+    }
     Ok(())
 }
 
-/// `capability`: `search`, `suggest`, `entity`, `resolve`, `lyrics`, `radio` or `artwork`.
+/// `capability`: `search`, `suggest`, `entity`, `resolve`, `lyrics`, `radio`, `browse` or
+/// `artwork`.
 /// The loaded plugins it routes to, in order.
 pub async fn capability_order(capability: String) -> Result<Vec<String>, CoreError> {
     router::order_of(&capability).await
@@ -69,4 +81,35 @@ pub async fn set_capability_order(
         .write(move |tx| rows::set_capability_order(tx, &capability, &plugin_ids))
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::home::tests::{homes, settle, wipe};
+    use crate::library::settings;
+
+    #[tokio::test]
+    async fn a_plugin_change_rebuilds_the_home() {
+        let (_lock, app) = crate::catalog::tests::setup().await;
+        wipe().await;
+        crate::home::build(crate::plugins::now_ms()).await.unwrap();
+        let mut rx = app.events.library.subscribe();
+        remove_feed("https://feed.fake.test/feed.json".into())
+            .await
+            .unwrap();
+        settle().await;
+        assert_eq!(homes(&mut rx), 1);
+        // Not with `discover` off.
+        app.db
+            .write(|tx| settings::device_set(tx, "discover", "false"))
+            .await
+            .unwrap();
+        remove_feed("https://feed.fake.test/feed.json".into())
+            .await
+            .unwrap();
+        settle().await;
+        assert_eq!(homes(&mut rx), 0);
+        wipe().await;
+    }
 }

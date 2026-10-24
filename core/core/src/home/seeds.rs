@@ -2,6 +2,7 @@
 
 use rusqlite::Connection;
 
+use super::ShelfKind;
 use super::assemble::{Inputs, Pick, folded};
 use crate::library::catalog::{self, TrackRow};
 use crate::library::plays::{self, TOP_WINDOW_MS};
@@ -14,6 +15,7 @@ const SHORTCUTS: u32 = 6;
 /// Local shelves' length.
 pub(super) const ROWS: u32 = 20;
 const REDISCOVER_MS: i64 = 60 * 86_400_000;
+const DAY_MS: i64 = 86_400_000;
 
 pub(super) struct Local {
     /// The local inputs; the network ones empty.
@@ -22,6 +24,8 @@ pub(super) struct Local {
     pub track_seeds: Vec<ItemId>,
     /// The 10 most recently liked artists, each with its most played track.
     pub liked_artists: Vec<(ItemId, Option<ItemId>)>,
+    /// New releases: today's 10 liked artists, in turn over all of them.
+    pub release_artists: Vec<ItemId>,
 }
 
 pub(super) fn read(c: &Connection, now_ms: i64) -> rusqlite::Result<Local> {
@@ -30,7 +34,8 @@ pub(super) fn read(c: &Connection, now_ms: i64) -> rusqlite::Result<Local> {
     let mut track_seeds = likes::list(c, Kind::Track, first(TRACK_SEEDS as u32))?;
     let top = plays::top_items(c, Kind::Track, since, TRACK_SEEDS as u32)?;
     push_new(&mut track_seeds, top, TRACK_SEEDS);
-    let liked = likes::list(c, Kind::Artist, first(ARTISTS as u32))?;
+    let all_liked = likes::list(c, Kind::Artist, first(u32::MAX))?;
+    let liked = &all_liked[..all_liked.len().min(ARTISTS)];
     let mut artists = plays::top_items(c, Kind::Artist, since, ARTISTS as u32)?;
     push_new(&mut artists, liked.iter().copied(), ARTISTS);
     let mut top_artists = Vec::new();
@@ -40,24 +45,17 @@ pub(super) fn read(c: &Connection, now_ms: i64) -> rusqlite::Result<Local> {
         }
     }
     let liked_artists = liked
-        .into_iter()
-        .map(|a| Ok((a, plays::top_track_of(c, a)?)))
+        .iter()
+        .map(|&a| Ok((a, plays::top_track_of(c, a)?)))
         .collect::<rusqlite::Result<_>>()?;
-    let mut mine = playlists::list(c, CollectionSort::Recent)?;
-    mine.truncate(ROWS as usize);
     let excluded = plays::played_or_liked(c)?;
     // ponytail: reads every played or liked track in full; a SQL fold() query if it gets slow
     let all: Vec<ItemId> = excluded.iter().copied().collect();
     let folded_excluded = catalog::tracks(c, &all)?.iter().map(key).collect();
     artists.truncate(MIXES);
     let inputs = Inputs {
-        shortcuts: plays::top_contexts(c, since, SHORTCUTS)?,
         top_artists,
         mixes: artists,
-        rediscover: plays::liked_not_played_since(c, now_ms - REDISCOVER_MS, ROWS)?,
-        recent: plays::recent_items(c, Kind::Track, first(ROWS))?,
-        playlists: mine,
-        downloads: downloads::done(c, TrackSort::Added, first(ROWS))?,
         excluded,
         folded_excluded,
         ..Inputs::default()
@@ -66,7 +64,46 @@ pub(super) fn read(c: &Connection, now_ms: i64) -> rusqlite::Result<Local> {
         inputs,
         track_seeds,
         liked_artists,
+        release_artists: of_the_day(&all_liked, now_ms.div_euclid(DAY_MS), ARTISTS),
     })
+}
+
+/// `n` of `all` from `day * n` on, wrapping: every one of them in turn, `n` a day.
+fn of_the_day(all: &[ItemId], day: i64, n: usize) -> Vec<ItemId> {
+    if all.is_empty() {
+        return vec![];
+    }
+    let start = (day.rem_euclid(all.len() as i64) as usize * n) % all.len();
+    all.iter()
+        .cycle()
+        .skip(start)
+        .take(n.min(all.len()))
+        .copied()
+        .collect()
+}
+
+/// A local shelf's items, read when it is served; `None` for any other kind.
+pub(super) fn local_items(
+    c: &Connection,
+    kind: ShelfKind,
+    now_ms: i64,
+) -> rusqlite::Result<Option<Vec<ItemId>>> {
+    let first = Page {
+        offset: 0,
+        limit: ROWS,
+    };
+    Ok(Some(match kind {
+        ShelfKind::Shortcuts => plays::top_contexts(c, now_ms - TOP_WINDOW_MS, SHORTCUTS)?,
+        ShelfKind::Rediscover => plays::liked_not_played_since(c, now_ms - REDISCOVER_MS, ROWS)?,
+        ShelfKind::Recent => plays::recent_items(c, Kind::Track, first)?,
+        ShelfKind::Playlists => {
+            let mut mine = playlists::list(c, CollectionSort::Recent)?;
+            mine.truncate(ROWS as usize);
+            mine
+        }
+        ShelfKind::Downloads => downloads::done(c, TrackSort::Added, first)?,
+        _ => return Ok(None),
+    }))
 }
 
 /// The tracks `ids` as discovery candidates; unknown ids skipped.

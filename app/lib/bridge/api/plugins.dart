@@ -29,16 +29,22 @@ Future<FeedPreview> previewFeed({
   publicKey: publicKey,
 );
 
+/// Online with `discover` on, the home is rebuilt in the background (`LibraryChanged::Home`
+/// follows).
 Future<void> addFeed({required String url, required String publicKey}) =>
     RustLib.instance.api.crateApiPluginsAddFeed(url: url, publicKey: publicKey);
 
+/// Online with `discover` on, the home is rebuilt in the background (`LibraryChanged::Home`
+/// follows).
 Future<void> removeFeed({required String url}) =>
     RustLib.instance.api.crateApiPluginsRemoveFeed(url: url);
 
+/// When a plugin is installed or updated, the home is rebuilt as after `add_feed`.
 Future<void> refreshFeeds() =>
     RustLib.instance.api.crateApiPluginsRefreshFeeds();
 
-/// `capability`: `search`, `suggest`, `entity`, `resolve`, `lyrics`, `radio` or `artwork`.
+/// `capability`: `search`, `suggest`, `entity`, `resolve`, `lyrics`, `radio`, `browse` or
+/// `artwork`.
 /// The loaded plugins it routes to, in order.
 Future<List<String>> capabilityOrder({required String capability}) =>
     RustLib.instance.api.crateApiPluginsCapabilityOrder(capability: capability);
