@@ -168,7 +168,12 @@ interface browse {
         /// Shown as a big card at the top of Explore.
         featured: bool,
     }
-    record shelf { title: string, items: list<entity> }
+    record shelf {
+        /// A key the app translates, not a display title: `tracks`, `albums`, `artists` or
+        /// `playlists`.
+        title: string,
+        items: list<entity>,
+    }
     record category-page { title: string, shelves: list<shelf>, next: option<string> }
     record release {
         album: album,
@@ -178,8 +183,7 @@ interface browse {
 
     /// Explore's idle view: featured cards first, then the browse grid.
     categories: func(region: string) -> result<list<category>, error>;
-    /// One category's shelves. Named `fetch-category` because WIT types and functions share a
-    /// namespace and `category` is the record above.
+    /// One category's shelves.
     fetch-category: func(id: string, region: string, cursor: option<string>) -> result<category-page, error>;
     /// An artist's releases, newest first (for "new from your artists").
     releases: func(artist-id: string, region: string) -> result<list<release>, error>;

@@ -19,7 +19,7 @@ fn wit_is_frozen() {
     );
     assert_eq!(
         sha256_hex(contract::MUSIC_WIT),
-        "17957ee74e7dd2464ae3dcbeba7f7a3aa45b9dcbf9238eadb9eeecae24f422e1"
+        "29444d58e23e5cd4b30944cc269601eb12e565c6a5e973634618948ad751060c"
     );
 }
 
