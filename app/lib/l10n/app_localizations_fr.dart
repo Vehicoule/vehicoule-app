@@ -282,4 +282,16 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get shelfPlaylists => 'Playlists';
+
+  @override
+  String get actionOpenPlayer => 'Ouvrir le lecteur';
+
+  @override
+  String get actionStop => 'Arrêter la lecture';
+
+  @override
+  String get actionExitImmersive => 'Quitter le plein écran';
+
+  @override
+  String get miniPlayerLabel => 'Mini-lecteur';
 }

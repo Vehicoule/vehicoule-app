@@ -10,41 +10,47 @@ import '../tokens.dart';
 import 'loading.dart';
 import 'menu.dart';
 
-/// An icon-only button with its spoken label (and tooltip on desktop).
+enum VIconStyle { standard, filled, tonal, outlined }
+
+/// An icon-only button with its spoken label (and tooltip on desktop). [selected] makes
+/// it a toggle (the icon fills, the shape morphs).
 class VIconButton extends StatelessWidget {
   const VIconButton({
     super.key,
     required this.icon,
     required this.label,
     required this.onPressed,
-    this.selected = false,
-    this.filled = false,
+    this.selected,
+    this.style = VIconStyle.standard,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
-  final bool selected;
 
-  /// A filled container (tonal), for the one prominent icon of a block.
-  final bool filled;
+  /// Null: not a toggle.
+  final bool? selected;
+  final VIconStyle style;
 
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
     button: true,
     enabled: onPressed != null,
-    toggled: selected ? true : null,
+    toggled: selected,
     label: label,
     onTap: onPressed,
     excludeSemantics: true,
     child: M3EIconButton(
-      icon: VSymbol(icon, filled: selected),
+      icon: VSymbol(icon, filled: selected ?? false),
       onPressed: onPressed,
       tooltip: label,
-      variant: filled
-          ? M3EIconButtonVariant.tonal
-          : M3EIconButtonVariant.standard,
+      variant: switch (style) {
+        VIconStyle.standard => M3EIconButtonVariant.standard,
+        VIconStyle.filled => M3EIconButtonVariant.filled,
+        VIconStyle.tonal => M3EIconButtonVariant.tonal,
+        VIconStyle.outlined => M3EIconButtonVariant.outlined,
+      },
       isSelected: selected,
     ),
   );
@@ -203,8 +209,9 @@ String _playLabel(
   required bool loading,
 }) => loading ? l.loading : (playing ? l.actionPause : l.actionPlay);
 
-/// Shuffle · ⏮ · ⏯ · ⏭ · repeat, an M3E button group whose widths morph on press.
-/// ⏯ becomes the loading indicator while [loading].
+/// Shuffle · ⏮ · ⏯ · ⏭ · repeat, an M3E button group whose widths morph on press. ⏯ is
+/// the one emphasized action (filled, twice as wide); it becomes the loading indicator
+/// while [loading]. All five always fit the width they get.
 class VControls extends StatelessWidget {
   const VControls({
     super.key,
@@ -217,18 +224,16 @@ class VControls extends StatelessWidget {
     required this.onPrevious,
     required this.onShuffle,
     required this.onRepeat,
-    this.compact = false,
   });
 
   final bool playing, loading, shuffle;
   final Repeat repeat;
   final VoidCallback onPlayPause, onNext, onPrevious, onShuffle, onRepeat;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final size = compact ? M3EButtonSize.sm : M3EButtonSize.md;
+    final scheme = Theme.of(context).colorScheme;
     final on = {if (shuffle) 0, if (playing) 2, if (repeat != Repeat.off) 4};
     final calls = [
       onShuffle,
@@ -240,50 +245,72 @@ class VControls extends StatelessWidget {
       onNext,
       onRepeat,
     ];
-    final play = loading
-        ? const VLoading(size: VSize.playIcon)
-        : VPlayPauseIcon(playing: playing);
-    return M3EButtonGroup(
-      size: size,
-      style: M3EButtonStyle.tonal,
-      multiSelect: true,
-      selectedIndices: on,
-      onSelectedIndicesChanged: (next) {
-        for (final i in next.difference(on).union(on.difference(next))) {
-          calls[i]();
-        }
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Six units (⏯ takes two) and four gaps.
+        final room = box.maxWidth.isFinite
+            ? box.maxWidth
+            : 6 * VSize.controlMax;
+        final unit = ((room - 4 * VSpace.s8) / 6).clamp(
+          VSize.menuTarget * 0.75,
+          VSize.controlMax,
+        );
+        final big = unit >= VSize.menuTarget;
+        final play = loading
+            ? VLoading(size: big ? VSize.playIcon : VSize.icon)
+            : VPlayPauseIcon(
+                playing: playing,
+                size: big ? VSize.playIcon : VSize.icon,
+              );
+        M3EButtonGroupAction side(Widget icon, String label) =>
+            M3EButtonGroupAction(
+              icon: icon,
+              semanticLabel: label,
+              minWidth: unit,
+            );
+        return M3EButtonGroup(
+          size: big ? M3EButtonSize.md : M3EButtonSize.sm,
+          style: M3EButtonStyle.tonal,
+          spacing: VSpace.s8,
+          multiSelect: true,
+          selectedIndices: on,
+          onSelectedIndicesChanged: (next) {
+            for (final i in next.difference(on).union(on.difference(next))) {
+              calls[i]();
+            }
+          },
+          actions: [
+            side(VSymbol(VIcons.shuffle, filled: shuffle), l.actionShuffle),
+            side(VSymbol(VIcons.skipPrevious, filled: true), l.actionPrevious),
+            M3EButtonGroupAction(
+              icon: play,
+              selectedIcon: play,
+              minWidth: 2 * unit,
+              semanticLabel: _playLabel(l, playing: playing, loading: loading),
+              decoration: M3EButtonDecoration.styleFrom(
+                backgroundColor: scheme.primary,
+                foregroundColor: scheme.onPrimary,
+                selectedBackgroundColor: scheme.primary,
+                selectedForegroundColor: scheme.onPrimary,
+              ),
+            ),
+            side(VSymbol(VIcons.skipNext, filled: true), l.actionNext),
+            side(
+              VSymbol(
+                repeat == Repeat.one ? VIcons.repeatOne : VIcons.repeat,
+                filled: repeat != Repeat.off,
+              ),
+              l.actionRepeat,
+            ),
+          ],
+        );
       },
-      actions: [
-        M3EButtonGroupAction(
-          icon: VSymbol(VIcons.shuffle),
-          semanticLabel: l.actionShuffle,
-        ),
-        M3EButtonGroupAction(
-          icon: VSymbol(VIcons.skipPrevious, filled: true),
-          semanticLabel: l.actionPrevious,
-        ),
-        M3EButtonGroupAction(
-          icon: play,
-          selectedIcon: play,
-          semanticLabel: _playLabel(l, playing: playing, loading: loading),
-        ),
-        M3EButtonGroupAction(
-          icon: VSymbol(VIcons.skipNext, filled: true),
-          semanticLabel: l.actionNext,
-        ),
-        M3EButtonGroupAction(
-          icon: VSymbol(
-            repeat == Repeat.one ? VIcons.repeatOne : VIcons.repeat,
-          ),
-          semanticLabel: l.actionRepeat,
-        ),
-      ],
     );
   }
 }
 
-/// The mini player's square ⏯ FAB (spec UI §5.3): play ↔ pause, the loading indicator
-/// while loading.
+/// The mini player's rounded-square ⏯ FAB (spec UI §5.3): play ↔ pause morphing, and the
+/// M3E loading indicator inside the same container while loading.
 class VPlayPauseFab extends StatelessWidget {
   const VPlayPauseFab({
     super.key,
@@ -313,11 +340,44 @@ class VPlayPauseFab extends StatelessWidget {
       excludeSemantics: true,
       child: M3EFab(
         size: M3EFabSize.regular,
+        color: M3EFabColor.primary,
         onPressed: press,
         icon: loading
-            ? const VLoading(size: VSize.playIcon)
+            ? const VLoading(size: VSize.playIcon, onContainer: true)
             : VPlayPauseIcon(playing: playing),
       ),
     );
+  }
+}
+
+/// The volume (spec UI §4.2): an M3E slider with the speaker inside its track; upright
+/// in the desktop strip ([vertical]).
+class VVolume extends StatelessWidget {
+  const VVolume({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.vertical = false,
+  });
+
+  final double value;
+  final ValueChanged<double>? onChanged;
+  final bool vertical;
+
+  @override
+  Widget build(BuildContext context) {
+    final slider = M3ESlider(
+      value: value,
+      onChanged: onChanged,
+      size: M3ESliderSize.xs,
+      semanticLabel: AppLocalizations.of(context).volumeLabel,
+      // Upright whichever way the slider runs.
+      icon: RotatedBox(
+        quarterTurns: vertical ? 1 : 0,
+        child: const VSymbol(VIcons.volume, filled: true),
+      ),
+      iconPosition: M3ESliderIconPosition.start,
+    );
+    return vertical ? RotatedBox(quarterTurns: 3, child: slider) : slider;
   }
 }

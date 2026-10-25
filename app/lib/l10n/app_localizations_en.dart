@@ -279,4 +279,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shelfPlaylists => 'Playlists';
+
+  @override
+  String get actionOpenPlayer => 'Open the player';
+
+  @override
+  String get actionStop => 'Stop playback';
+
+  @override
+  String get actionExitImmersive => 'Exit full screen';
+
+  @override
+  String get miniPlayerLabel => 'Mini player';
 }

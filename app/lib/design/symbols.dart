@@ -18,6 +18,7 @@ abstract final class VIcons {
   static const check = IconData(0xe668, fontFamily: _f);
   static const chevronRight = IconData(0xe5cc, fontFamily: _f);
   static const close = IconData(0xe5cd, fontFamily: _f);
+  static const closeFullscreen = IconData(0xf1cf, fontFamily: _f);
   static const cloudOff = IconData(0xe2c1, fontFamily: _f);
   static const collapse = IconData(
     0xe313,
@@ -54,6 +55,8 @@ abstract final class VIcons {
   static const shuffle = IconData(0xe043, fontFamily: _f);
   static const skipNext = IconData(0xe044, fontFamily: _f);
   static const skipPrevious = IconData(0xe045, fontFamily: _f);
+  static const stop = IconData(0xe047, fontFamily: _f);
+  static const expandUp = IconData(0xe316, fontFamily: _f); // keyboard_arrow_up
   static const volume = IconData(0xe050, fontFamily: _f); // volume_up
 }
 

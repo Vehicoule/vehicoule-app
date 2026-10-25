@@ -112,5 +112,9 @@
   "shelfTracks": "Titres",
   "shelfAlbums": "Albums",
   "shelfArtists": "Artistes",
-  "shelfPlaylists": "Playlists"
+  "shelfPlaylists": "Playlists",
+  "actionOpenPlayer": "Ouvrir le lecteur",
+  "actionStop": "Arrêter la lecture",
+  "actionExitImmersive": "Quitter le plein écran",
+  "miniPlayerLabel": "Mini-lecteur"
 }

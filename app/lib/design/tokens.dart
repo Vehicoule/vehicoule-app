@@ -39,8 +39,24 @@ abstract final class VSize {
   /// The loading indicator inside ⏯.
   static const playIcon = 32.0;
 
-  /// Artwork in the compact player (mini player, strip, compact header).
-  static const compactArt = 48.0;
+  /// Artwork with its ring in the compact player (mini player, strip, compact header).
+  static const compactArt = 56.0;
+
+  /// The regular FAB (the mini player's ⏯) and the floating toolbar beside it.
+  static const fab = 56.0, toolbar = 64.0;
+
+  /// The largest text scale inside a toolbar's fixed height (title and subtitle).
+  static const toolbarTextScale = 1.2;
+
+  /// The header row of the player.
+  static const playerHeader = 56.0;
+
+  /// The widest a control button gets (⏯ takes two).
+  static const controlMax = 72.0;
+
+  /// From this width the immersive player has its group, controls and selector on one
+  /// row.
+  static const immersiveRow = 1100.0;
 
   /// The empty-state decor shape.
   static const emptyDecor = 160.0;

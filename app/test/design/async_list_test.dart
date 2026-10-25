@@ -176,15 +176,27 @@ void main() {
     expect(find.text('row 249'), findsOneWidget);
   });
 
-  testWidgets('a stream that ends without items is empty, not loading', (tester) async {
-    await tester.pumpWidget(harness(CustomScrollView(slivers: [
-      VAsyncList<String>.stream(
-        watch: () => const Stream<List<String>>.empty(),
-        builder: (context, list) => SliverList.builder(itemCount: list.length, itemBuilder: (_, i) => Text(list[i])),
-        empty: VEmptyState(icon: VIcons.queue, message: fr().emptyLikes),
-        errorText: (e) => 'broken',
+  testWidgets('a stream that ends without items is empty, not loading', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        CustomScrollView(
+          slivers: [
+            VAsyncList<String>.stream(
+              watch: () => const Stream<List<String>>.empty(),
+              builder: (context, list) => SliverList.builder(
+                itemCount: list.length,
+                itemBuilder: (_, i) => Text(list[i]),
+              ),
+              empty: VEmptyState(icon: VIcons.queue, message: fr().emptyLikes),
+              errorText: (e) => 'broken',
+            ),
+          ],
+        ),
+        reduce: true,
       ),
-    ]), reduce: true));
+    );
     await tester.pump();
     await tester.pump();
     expect(find.byType(VLoading), findsNothing);

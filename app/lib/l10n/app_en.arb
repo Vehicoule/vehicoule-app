@@ -84,5 +84,9 @@
   "shelfTracks": "Tracks",
   "shelfAlbums": "Albums",
   "shelfArtists": "Artists",
-  "shelfPlaylists": "Playlists"
+  "shelfPlaylists": "Playlists",
+  "actionOpenPlayer": "Open the player",
+  "actionStop": "Stop playback",
+  "actionExitImmersive": "Exit full screen",
+  "miniPlayerLabel": "Mini player"
 }

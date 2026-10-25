@@ -607,6 +607,30 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Playlists'**
   String get shelfPlaylists;
+
+  /// No description provided for @actionOpenPlayer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ouvrir le lecteur'**
+  String get actionOpenPlayer;
+
+  /// No description provided for @actionStop.
+  ///
+  /// In fr, this message translates to:
+  /// **'Arrêter la lecture'**
+  String get actionStop;
+
+  /// No description provided for @actionExitImmersive.
+  ///
+  /// In fr, this message translates to:
+  /// **'Quitter le plein écran'**
+  String get actionExitImmersive;
+
+  /// No description provided for @miniPlayerLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mini-lecteur'**
+  String get miniPlayerLabel;
 }
 
 class _AppLocalizationsDelegate

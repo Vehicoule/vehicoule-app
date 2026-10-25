@@ -1,4 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../bridge/catalog.dart';
@@ -11,7 +16,6 @@ import '../symbols.dart';
 import '../tokens.dart';
 import 'artwork.dart';
 import 'controls.dart';
-import 'loading.dart';
 import 'menu.dart';
 import 'view_selector.dart';
 import 'wave_artwork.dart';
@@ -84,6 +88,8 @@ class NowPlayingActions {
     this.onOutput,
     this.onMenu,
     this.onCollapse,
+    this.onOpen,
+    this.onStop,
   });
 
   final VoidCallback onPlayPause, onNext, onPrevious;
@@ -98,19 +104,28 @@ class NowPlayingActions {
 
   /// ⌄ (mobile) or fold the pane (desktop).
   final VoidCallback? onCollapse;
+
+  /// The mini player's ↑ or tap: open the full player.
+  final VoidCallback? onOpen;
+
+  /// The mini player's ↓: stop and hide (the shell shows "Lecture arrêtée — Annuler").
+  final VoidCallback? onStop;
 }
 
 /// The one player (spec UI §5.5), presentation only. Its blocks, always in this order:
 /// header · artwork · title · like/playlist/download · times · controls · view selector.
 ///
-/// - [PlayerSize.compact]: artwork (disc, ring), title, like, ⏯ — the mini player, the
-///   desktop strip ([axis] vertical, with ⏭ and [volume]) and the lyrics/queue header;
-/// - medium (desktop pane) and large (full screen); [wide] puts the artwork left of the
-///   blocks (landscape, immersive).
+/// - [PlayerSize.compact]: the mini player (spec UI §5.3): an M3E floating toolbar
+///   (artwork with its ring, title, artists, like, a menu) and the ⏯ FAB beside it, with
+///   its gestures; the desktop strip with [axis] vertical (spec UI §4.2);
+/// - medium (desktop pane) and large (phone full screen): one column, centred in the
+///   height it gets; [wide] puts the artwork left of the blocks (landscape);
+/// - [immersive] (desktop, large): artwork left, lyrics or queue right, controls below;
+///   Esc calls [onImmersive].
 ///
-/// In the lyrics and queue views the big artwork shrinks into the compact header: one
-/// artwork flies between the two places (a 150 ms fade with "reduce motion").
-/// [position] (ms) is listened to by the ring, the wave edge and the times only.
+/// In the lyrics and queue views the big artwork flies into the compact header, which is
+/// the mini player's own toolbar (a 150 ms fade with "reduce motion"). [position] (ms) is
+/// listened to by the ring, the wave edge and the times only.
 class VNowPlaying extends StatefulWidget {
   const VNowPlaying({
     super.key,
@@ -127,7 +142,7 @@ class VNowPlaying extends StatefulWidget {
     this.volume,
     this.axis = Axis.horizontal,
     this.wide = false,
-    this.inlinePlayPause = true,
+    this.immersive = false,
   });
 
   final NowPlayingData data;
@@ -138,13 +153,12 @@ class VNowPlaying extends StatefulWidget {
   final ValueChanged<PlayerView> onView;
   final NowPlayingActions actions;
   final WidgetBuilder lyrics, queue;
+
+  /// ⤢ in the header (enter), or leave the immersive view (its ⌄ and Esc).
   final VoidCallback? onImmersive;
   final Widget? volume;
   final Axis axis;
-  final bool wide;
-
-  /// False when ⏯ is the separate [VPlayPauseFab] (the mobile mini player).
-  final bool inlinePlayPause;
+  final bool wide, immersive;
 
   static const headerKey = ValueKey('np.header'),
       artworkKey = ValueKey('np.artwork'),
@@ -177,6 +191,10 @@ class _VNowPlayingState extends State<VNowPlaying>
   NowPlayingData get data => widget.data;
   NowPlayingActions get actions => widget.actions;
 
+  /// The compact header's artwork slot and the side view holding it: the flight lands on
+  /// the slot as laid out, whatever the toolbar's padding and the text size.
+  final _slotKey = GlobalKey(), _sideKey = GlobalKey();
+
   @override
   void didUpdateWidget(VNowPlaying old) {
     super.didUpdateWidget(old);
@@ -202,14 +220,14 @@ class _VNowPlayingState extends State<VNowPlaying>
   @override
   Widget build(BuildContext context) {
     if (widget.size == PlayerSize.compact) {
-      return widget.axis == Axis.vertical ? _strip(context) : _compact(context);
+      return widget.axis == Axis.vertical ? _strip(context) : _mini(context);
     }
     final scheme = Theme.of(context).colorScheme;
     return DecoratedBox(
       // The player's one gradient: a tint behind the artwork (spec UI §2.2).
       decoration: BoxDecoration(
         gradient: RadialGradient(
-          center: widget.wide
+          center: widget.wide || widget.immersive
               ? const Alignment(-0.5, 0)
               : const Alignment(0, -0.45),
           radius: 0.9,
@@ -220,24 +238,33 @@ class _VNowPlayingState extends State<VNowPlaying>
         ),
       ),
       child: SafeArea(
-        child: Column(
-          children: [
-            _header(context),
-            Expanded(child: LayoutBuilder(builder: _body)),
-            ?widget.volume,
-            Padding(
-              padding: const EdgeInsets.all(VSpace.s16),
-              child: VViewSelector(
-                key: VNowPlaying.selectorKey,
-                value: widget.view,
-                onChanged: widget.onView,
-              ),
-            ),
-          ],
-        ),
+        child: widget.immersive ? _immersive(context) : _column(context),
       ),
     );
   }
+
+  Widget _column(BuildContext context) => Column(
+    children: [
+      _header(context),
+      Expanded(child: _body(context)),
+      if (widget.volume case final volume?)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: VSpace.s24),
+          child: volume,
+        ),
+      Padding(
+        padding: const EdgeInsets.only(top: VSpace.s8, bottom: VSpace.s16),
+        child: _selector(PlayerView.values, widget.view),
+      ),
+    ],
+  );
+
+  Widget _selector(List<PlayerView> views, PlayerView value) => VViewSelector(
+    key: VNowPlaying.selectorKey,
+    value: value,
+    views: views,
+    onChanged: widget.onView,
+  );
 
   double get _seekStep => data.durationMs <= 0
       ? 0.05
@@ -245,74 +272,60 @@ class _VNowPlayingState extends State<VNowPlaying>
 
   void _seek(double p) => actions.onSeek((p * data.durationMs).round());
 
-  /// The big artwork's side for this body: as large as the size allows, leaving room for
-  /// the blocks under it (beside it when wide), and never taller than the body.
-  double _artSide(BuildContext context, BoxConstraints box) {
-    final maxArt = widget.size == PlayerSize.large
-        ? VSize.playerArtLarge
-        : VSize.playerArtMedium;
-    final times = MediaQuery.textScalerOf(context).scale(VSpace.s24);
-    final fits = box.maxHeight - VSpace.s8 - times;
-    final room = widget.wide ? box.maxWidth / 2 : box.maxWidth;
-    final tall = widget.wide ? fits : box.maxHeight - VSize.playerBlocks;
-    // The Wave style is full width (spec UI §5.5); the disc keeps a margin and a cap.
-    final wave = widget.style == PlayerStyle.wave;
-    final cap = wave ? room : maxArt;
-    final side = [
-      wave ? room : room - 2 * VSpace.s24,
-      tall,
-      cap,
-    ].reduce((a, b) => a < b ? a : b).clamp(VSize.playerArtMin, cap);
-    return side.clamp(0.0, fits < 0 ? 0.0 : fits);
-  }
+  bool get _disc => widget.style == PlayerStyle.disc;
 
-  Widget _body(BuildContext context, BoxConstraints box) {
-    final side = _artSide(context, box);
-    final big = widget.wide
-        ? Rect.fromLTWH((box.maxWidth / 2 - side) / 2, VSpace.s8, side, side)
-        : Rect.fromLTWH((box.maxWidth - side) / 2, VSpace.s8, side, side);
-    const slot = Rect.fromLTWH(
-      VSpace.s16,
-      0,
-      VSize.compactArt,
-      VSize.compactArt,
-    );
+  /// The player view and the lyrics/queue view, with one artwork flying between the big
+  /// place and the compact header.
+  Widget _body(BuildContext context) {
     final reduced = reduceMotion(context);
     return AnimatedBuilder(
       animation: _side,
       builder: (context, _) {
         final t = _side.value;
-        final rect = reduced
-            ? (t < 0.5 ? big : slot)
-            : Rect.lerp(big, slot, t)!;
-        return Stack(
+        return CustomMultiChildLayout(
+          delegate: _PlayerLayout(
+            slotKey: _slotKey,
+            sideKey: _sideKey,
+            t: t,
+            reduced: reduced,
+            wide: widget.wide,
+            disc: _disc,
+            cap: widget.size == PlayerSize.large
+                ? VSize.playerArtLarge
+                : VSize.playerArtMedium,
+          ),
           children: [
             // Keyed: the layers come and go, and the flying artwork must keep its state
             // (its turn, its wave) rather than be matched to whichever layer is next.
             if (t < 1)
-              Positioned.fill(
+              LayoutId(
                 key: const ValueKey('np.layer.player'),
+                id: _Part.blocks,
                 child: IgnorePointer(
                   ignoring: t > 0,
-                  child: Opacity(opacity: 1 - t, child: _player(context, side)),
+                  child: Opacity(opacity: 1 - t, child: _blocks(context)),
                 ),
               ),
             if (t > 0)
-              Positioned.fill(
+              LayoutId(
                 key: const ValueKey('np.layer.side'),
+                id: _Part.side,
                 child: IgnorePointer(
+                  key: _sideKey,
                   ignoring: t < 1,
                   child: Opacity(opacity: t, child: _sideView(context)),
                 ),
               ),
-            Positioned.fromRect(
+            LayoutId(
               key: const ValueKey('np.layer.art'),
-              rect: rect,
+              id: _Part.art,
               child: Opacity(
                 opacity: reduced ? (1 - 2 * t).abs() : 1,
                 child: KeyedSubtree(
                   key: VNowPlaying.artworkKey,
-                  child: _art(rect.width, t),
+                  child: LayoutBuilder(
+                    builder: (context, box) => _art(box.maxWidth, t),
+                  ),
                 ),
               ),
             ),
@@ -338,7 +351,7 @@ class _VNowPlayingState extends State<VNowPlaying>
         seekStep: _seekStep,
         semanticLabel: data.track.album?.title,
       );
-      if (widget.style == PlayerStyle.disc) return disc();
+      if (_disc) return disc();
       final f = ((t - 0.35) / 0.3).clamp(0.0, 1.0);
       final wave = VWaveArtwork(
         itemId: data.track.id,
@@ -362,83 +375,93 @@ class _VNowPlayingState extends State<VNowPlaying>
     },
   );
 
+  /// ⌄ · « Lecture depuis … » · moon and time left · output · ⤢ · ⋮, on one row; the
+  /// source ellipsizes, the actions never move.
   Widget _header(BuildContext context) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final sleep = data.sleepLeft;
+    final immersive = widget.immersive;
     return Padding(
       key: VNowPlaying.headerKey,
       padding: const EdgeInsets.symmetric(horizontal: VSpace.s8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              if (actions.onCollapse != null)
-                VIconButton(
-                  icon: VIcons.collapse,
-                  label: l.actionCollapse,
-                  onPressed: actions.onCollapse,
+      child: SizedBox(
+        height: VSize.playerHeader,
+        child: Row(
+          children: [
+            if (immersive && widget.onImmersive != null)
+              VIconButton(
+                icon: VIcons.collapse,
+                label: l.actionExitImmersive,
+                onPressed: widget.onImmersive,
+              )
+            else if (actions.onCollapse != null)
+              VIconButton(
+                icon: VIcons.collapse,
+                label: l.actionCollapse,
+                onPressed: actions.onCollapse,
+              ),
+            const SizedBox(width: VSpace.s4),
+            Expanded(
+              child: Text(
+                l.playingFrom(data.sourceTitle),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-              const Spacer(),
-              if (sleep != null || data.sleepEndOfTrack) ...[
-                VSymbol(
-                  VIcons.bedtime,
-                  size: VSize.iconSmall,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: VSpace.s4),
-                Text(
-                  data.sleepEndOfTrack
-                      ? l.sleepEndOfTrack
-                      : l.sleepMinutesLeft((sleep!.inSeconds / 60).ceil()),
-                  style: theme.textTheme.labelMedium,
-                ),
-                const SizedBox(width: VSpace.s8),
-              ],
-              if (actions.onOutput != null)
-                VIconButton(
-                  icon: VIcons.devices,
-                  label: l.actionOutput,
-                  onPressed: actions.onOutput,
-                ),
-              if (widget.onImmersive != null)
-                VIconButton(
-                  icon: VIcons.fullscreen,
-                  label: l.actionImmersive,
-                  onPressed: widget.onImmersive,
-                ),
-              if (actions.onMenu != null)
-                Builder(
-                  builder: (b) => VIconButton(
-                    icon: VIcons.more,
-                    label: l.actionMore,
-                    onPressed: () {
-                      final box = b.findRenderObject()! as RenderBox;
-                      actions.onMenu!(
-                        box.localToGlobal(Offset.zero) & box.size,
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ),
-          // Its own line, wrapping if it must: never cut (a narrow pane has little room
-          // beside the icons).
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: VSpace.s8),
-            child: Text(
-              l.playingFrom(data.sourceTitle),
-              style: theme.textTheme.labelLarge,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: VSpace.s4),
+            if (sleep != null || data.sleepEndOfTrack) ...[
+              VSymbol(
+                VIcons.bedtime,
+                size: VSize.iconSmall,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: VSpace.s4),
+              Text(
+                data.sleepEndOfTrack
+                    ? l.sleepEndOfTrack
+                    : l.sleepMinutesLeft((sleep!.inSeconds / 60).ceil()),
+                style: theme.textTheme.labelMedium,
+              ),
+            ],
+            if (actions.onOutput != null)
+              VIconButton(
+                icon: VIcons.devices,
+                label: l.actionOutput,
+                onPressed: actions.onOutput,
+              ),
+            if (!immersive && widget.onImmersive != null)
+              VIconButton(
+                icon: VIcons.fullscreen,
+                label: l.actionImmersive,
+                onPressed: widget.onImmersive,
+              ),
+            if (actions.onMenu != null)
+              Builder(
+                builder: (b) => VIconButton(
+                  icon: VIcons.more,
+                  label: l.actionMore,
+                  onPressed: () {
+                    final box = b.findRenderObject()! as RenderBox;
+                    actions.onMenu!(box.localToGlobal(Offset.zero) & box.size);
+                  },
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _times(BuildContext context) {
-    final style = Theme.of(context).textTheme.labelMedium;
+    final style = Theme.of(context).textTheme.labelMedium?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     return ValueListenableBuilder(
       key: VNowPlaying.progressKey,
       valueListenable: widget.position,
@@ -452,23 +475,28 @@ class _VNowPlayingState extends State<VNowPlaying>
     );
   }
 
+  /// The title in the rounded display face, large; the artists under it.
   Widget _title(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
       key: VNowPlaying.titleKey,
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           data.track.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.headlineSmall,
+          style: widget.size == PlayerSize.large
+              ? theme.textTheme.headlineMedium
+              : theme.textTheme.headlineSmall,
         ),
+        const SizedBox(height: VSpace.s4),
         Text(
           data.track.artists.map((a) => a.name).join(', '),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyLarge?.copyWith(
+          style: theme.textTheme.titleMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
@@ -519,91 +547,154 @@ class _VNowPlayingState extends State<VNowPlaying>
     onRepeat: actions.onRepeat,
   );
 
-  /// The player view, with an empty square where the flying artwork sits.
-  Widget _player(BuildContext context, double side) {
-    final disc = widget.style == PlayerStyle.disc;
-    final artArea = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(height: VSpace.s8 + side),
-        if (disc) SizedBox(width: side, child: _times(context)),
-      ],
-    );
-    final blocks = Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _title(context),
-        if (!disc) ...[const SizedBox(height: VSpace.s8), _times(context)],
-        const SizedBox(height: VSpace.s16),
-        Center(child: _actions(context)),
-        const SizedBox(height: VSpace.s16),
-        Center(child: _controls()),
-      ],
-    );
-    const pad = EdgeInsets.symmetric(
-      horizontal: VSpace.s24,
-      vertical: VSpace.s8,
-    );
-    if (widget.wide) {
-      return Row(
-        children: [
-          Expanded(
-            child: Align(alignment: Alignment.topCenter, child: artArea),
-          ),
-          Expanded(
-            child: Center(
-              child: SingleChildScrollView(padding: pad, child: blocks),
-            ),
-          ),
-        ],
-      );
-    }
-    return Column(
-      children: [
-        artArea,
-        const SizedBox(height: VSpace.s8),
-        Expanded(
-          child: SingleChildScrollView(padding: pad, child: blocks),
-        ),
-      ],
-    );
-  }
+  /// Everything under the artwork: the times under the ring (Disc) or under the title
+  /// (Wave), the connected group, the controls.
+  Widget _blocks(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (_disc) ...[_times(context), const SizedBox(height: VSpace.s16)],
+      _title(context),
+      if (!_disc) ...[const SizedBox(height: VSpace.s12), _times(context)],
+      const SizedBox(height: VSpace.s16),
+      _actions(context),
+      const SizedBox(height: VSpace.s24),
+      _controls(),
+    ],
+  );
 
   /// Lyrics or queue under the compact header, whose artwork slot the flying artwork fills.
   Widget _sideView(BuildContext context) => Column(
     children: [
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: VSpace.s16),
-        child: _compact(context, slot: true),
+        child: _mini(context, slot: true),
       ),
       const SizedBox(height: VSpace.s8),
-      Expanded(
-        child: vSharedAxis(
-          key: _lastSide,
-          reverse: _lastSide == PlayerView.lyrics,
-          child: (_lastSide == PlayerView.lyrics
-              ? widget.lyrics
-              : widget.queue)(context),
-        ),
-      ),
+      Expanded(child: _sideContent(context, _lastSide)),
     ],
   );
 
-  Widget _playPause(AppLocalizations l) => data.loading
-      ? const SizedBox.square(
-          dimension: VSize.menuTarget,
-          child: Center(child: VLoading(size: VSize.playIcon)),
-        )
-      : VIconButton(
-          icon: data.playing ? VIcons.pause : VIcons.play,
-          label: data.playing ? l.actionPause : l.actionPlay,
-          filled: true,
-          onPressed: () {
-            VHaptics.light();
-            actions.onPlayPause();
-          },
-        );
+  Widget _sideContent(BuildContext context, PlayerView v) => vSharedAxis(
+    key: v,
+    reverse: v == PlayerView.lyrics,
+    child: (v == PlayerView.queue ? widget.queue : widget.lyrics)(context),
+  );
+
+  /// Desktop full window: the artwork and title on the left, lyrics or queue on the
+  /// right, the controls along the bottom (spec UI §4.2).
+  Widget _immersive(BuildContext context) {
+    final side = widget.view == PlayerView.queue
+        ? PlayerView.queue
+        : PlayerView.lyrics;
+    return CallbackShortcuts(
+      bindings: {
+        if (widget.onImmersive != null)
+          const SingleActivator(LogicalKeyboardKey.escape): widget.onImmersive!,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Column(
+          children: [
+            _header(context),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: VSpace.s32,
+                        vertical: VSpace.s16,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, box) {
+                                final s = box.biggest.shortestSide;
+                                return Center(
+                                  child: SizedBox.square(
+                                    key: VNowPlaying.artworkKey,
+                                    dimension: s,
+                                    child: _art(s, 0),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: VSpace.s16),
+                          _title(context),
+                          const SizedBox(height: VSpace.s8),
+                          _times(context),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(flex: 6, child: _sideContent(context, side)),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                VSpace.s24,
+                VSpace.s8,
+                VSpace.s24,
+                VSpace.s16,
+              ),
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final controls = SizedBox(
+                    width: 6 * VSize.controlMax + 4 * VSpace.s8,
+                    child: _controls(),
+                  );
+                  final selector = _selector(const [
+                    PlayerView.lyrics,
+                    PlayerView.queue,
+                  ], side);
+                  // Wide: one row; narrower, the controls above the group and
+                  // the selector.
+                  if (box.maxWidth >= VSize.immersiveRow) {
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: _actions(context),
+                          ),
+                        ),
+                        const SizedBox(width: VSpace.s16),
+                        controls,
+                        const SizedBox(width: VSpace.s16),
+                        Expanded(
+                          child: Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: selector,
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      controls,
+                      const SizedBox(height: VSpace.s16),
+                      Row(
+                        children: [_actions(context), const Spacer(), selector],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _likeButton(AppLocalizations l) => VIconButton(
     icon: VIcons.favorite,
@@ -612,26 +703,28 @@ class _VNowPlayingState extends State<VNowPlaying>
     onPressed: _like(l).onSelected,
   );
 
-  /// Artwork (disc, ring), title, like, ⏯. With [slot], the artwork's place is left empty
-  /// for the player's flying artwork.
-  Widget _compact(BuildContext context, {bool slot = false}) {
+  Widget _fab() => VPlayPauseFab(
+    playing: data.playing,
+    loading: data.loading,
+    onPressed: actions.onPlayPause,
+  );
+
+  /// The mini player (spec UI §5.3): the floating toolbar (artwork with its ring, title,
+  /// artists, like, the menu of its gestures) and the ⏯ FAB beside it. With [slot], it is
+  /// the lyrics/queue header: the artwork's place is left for the player's flying
+  /// artwork, and there are no gestures.
+  Widget _mini(BuildContext context, {bool slot = false}) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    return Row(
-      key: VNowPlaying.compactKey,
-      // In the player's header the slot sits at the top, where the flying artwork
-      // lands, whatever the text size makes the row's height.
-      crossAxisAlignment: slot
-          ? CrossAxisAlignment.start
-          : CrossAxisAlignment.center,
-      children: [
-        if (slot)
-          const SizedBox.square(
-            key: VNowPlaying.compactArtKey,
-            dimension: VSize.compactArt,
+    final art = slot
+        ? KeyedSubtree(
+            key: _slotKey,
+            child: const SizedBox.square(
+              key: VNowPlaying.compactArtKey,
+              dimension: VSize.compactArt,
+            ),
           )
-        else
-          ValueListenableBuilder(
+        : ValueListenableBuilder(
             valueListenable: widget.position,
             builder: (context, ms, _) => VArtwork(
               itemId: data.track.id,
@@ -639,37 +732,88 @@ class _VNowPlayingState extends State<VNowPlaying>
               playing: data.playing,
               progress: data.progressAt(ms),
             ),
-          ),
-        const SizedBox(width: VSpace.s12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                data.track.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium,
-              ),
-              Text(
-                data.track.artists.map((a) => a.name).join(', '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+          );
+    final gestures = !slot;
+    // The pill keeps its M3E height: very large text is capped inside it.
+    final bar = MediaQuery.withClampedTextScaling(
+      maxScaleFactor: VSize.toolbarTextScale,
+      child: M3EToolbar.floating(
+        key: VNowPlaying.compactKey,
+        screenOffset: 0,
+        padding: const EdgeInsets.all(VSpace.s4),
+        semanticLabel: l.miniPlayerLabel,
+        leading: art,
+        title: Text(
+          data.track.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium,
+        ),
+        subtitle: Text(
+          data.track.artists.map((a) => a.name).join(', '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        _likeButton(l),
-        if (widget.inlinePlayPause) _playPause(l),
-      ],
+        actions: [
+          M3EToolbarWidget(child: _likeButton(l)),
+          // Every gesture has its equivalent in this menu.
+          if (gestures)
+            M3EToolbarWidget(
+              child: Builder(
+                builder: (b) => VIconButton(
+                  icon: VIcons.more,
+                  label: l.actionMore,
+                  onPressed: () {
+                    final box = b.findRenderObject()! as RenderBox;
+                    showVMenu(
+                      b,
+                      anchor: box.localToGlobal(Offset.zero) & box.size,
+                      quick: const [],
+                      groups: [
+                        [
+                          VAction(
+                            l.actionPrevious,
+                            VIcons.skipPrevious,
+                            actions.onPrevious,
+                          ),
+                          VAction(
+                            l.actionNext,
+                            VIcons.skipNext,
+                            actions.onNext,
+                          ),
+                        ],
+                        [
+                          if (actions.onOpen case final open?)
+                            VAction(l.actionOpenPlayer, VIcons.expandUp, open),
+                          if (actions.onStop case final stop?)
+                            VAction(l.actionStop, VIcons.stop, stop),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+        ],
+        floatingActionButton: _fab(),
+        fabExpandsToolbar: false,
+      ),
+    );
+    if (!gestures) return bar;
+    return _MiniGestures(
+      onNext: actions.onNext,
+      onPrevious: actions.onPrevious,
+      onOpen: actions.onOpen,
+      onStop: actions.onStop,
+      child: bar,
     );
   }
 
-  /// The collapsed desktop pane: a 76 px column (spec UI §4.2).
+  /// The collapsed desktop pane: a 76 px band, the mirror of the rail (spec UI §4.2):
+  /// the disc with its ring, like, ⏯, ⏭ and the volume.
   Widget _strip(BuildContext context) {
     final l = AppLocalizations.of(context);
     return Column(
@@ -680,7 +824,7 @@ class _VNowPlayingState extends State<VNowPlaying>
           valueListenable: widget.position,
           builder: (context, ms, _) => VArtwork(
             itemId: data.track.id,
-            size: VSize.strip - VSpace.s16,
+            size: VSize.strip - VSpace.s8,
             playing: data.playing,
             progress: data.progressAt(ms),
             onSeek: _seek,
@@ -689,14 +833,218 @@ class _VNowPlayingState extends State<VNowPlaying>
         ),
         const SizedBox(height: VSpace.s8),
         _likeButton(l),
-        _playPause(l),
+        const SizedBox(height: VSpace.s8),
+        _fab(),
+        const SizedBox(height: VSpace.s8),
         VIconButton(
           icon: VIcons.skipNext,
           label: l.actionNext,
           onPressed: actions.onNext,
         ),
-        ?widget.volume,
+        if (widget.volume case final volume?) ...[
+          const SizedBox(height: VSpace.s8),
+          volume,
+        ],
       ],
     );
   }
+}
+
+enum _Part { blocks, side, art }
+
+/// One column, centred in the height it gets: the artwork as large as the width allows
+/// (a margin of 24, full width for the Wave) and the blocks under it; [wide] puts the
+/// artwork in the left half and the blocks in the right one. The artwork flies to the
+/// compact header's slot as [t] goes to 1.
+class _PlayerLayout extends MultiChildLayoutDelegate {
+  _PlayerLayout({
+    required this.slotKey,
+    required this.sideKey,
+    required this.t,
+    required this.reduced,
+    required this.wide,
+    required this.disc,
+    required this.cap,
+  });
+
+  final GlobalKey slotKey, sideKey;
+  final double t, cap;
+  final bool reduced, wide, disc;
+
+  /// The slot as just laid out inside the side view (which sits at the origin).
+  Rect _slot() {
+    final slot = slotKey.currentContext?.findRenderObject() as RenderBox?;
+    final side = sideKey.currentContext?.findRenderObject();
+    if (slot == null || side == null || !slot.attached) {
+      return const Rect.fromLTWH(
+        VSpace.s16,
+        0,
+        VSize.compactArt,
+        VSize.compactArt,
+      );
+    }
+    return slot.localToGlobal(Offset.zero, ancestor: side) &
+        const Size.square(VSize.compactArt);
+  }
+
+  @override
+  void performLayout(Size size) {
+    const m = VSpace.s24;
+    final gap = disc ? VSpace.s8 : VSpace.s16;
+    Rect big;
+    if (wide) {
+      final half = size.width / 2;
+      var blocksH = 0.0;
+      if (hasChild(_Part.blocks)) {
+        final w = half - 2 * m;
+        blocksH = layoutChild(
+          _Part.blocks,
+          BoxConstraints(minWidth: w, maxWidth: w, maxHeight: size.height),
+        ).height;
+        positionChild(
+          _Part.blocks,
+          Offset(half + m, ((size.height - blocksH) / 2).clamp(0, size.height)),
+        );
+      }
+      final side = [
+        half - 2 * m,
+        size.height - 2 * VSpace.s8,
+        cap,
+      ].reduce(math.min).clamp(0.0, double.infinity);
+      big = Rect.fromLTWH(
+        (half - side) / 2,
+        (size.height - side) / 2,
+        side,
+        side,
+      );
+    } else {
+      final w = size.width - 2 * m;
+      var blocksH = 0.0;
+      if (hasChild(_Part.blocks)) {
+        blocksH = layoutChild(
+          _Part.blocks,
+          BoxConstraints(minWidth: w, maxWidth: w, maxHeight: size.height),
+        ).height;
+      }
+      final room = size.height - blocksH - gap - 2 * VSpace.s8;
+      final side = [
+        disc ? w : size.width,
+        room,
+        disc ? cap : size.width,
+      ].reduce(math.min).clamp(0.0, double.infinity);
+      final top = ((size.height - side - gap - blocksH) / 2).clamp(
+        0.0,
+        double.infinity,
+      );
+      big = Rect.fromLTWH((size.width - side) / 2, top, side, side);
+      if (hasChild(_Part.blocks)) {
+        positionChild(_Part.blocks, Offset(m, top + side + gap));
+      }
+    }
+    if (hasChild(_Part.side)) {
+      layoutChild(_Part.side, BoxConstraints.tight(size));
+      positionChild(_Part.side, Offset.zero);
+    }
+    final slot = t > 0 ? _slot() : big;
+    final rect = reduced ? (t < 0.5 ? big : slot) : Rect.lerp(big, slot, t)!;
+    layoutChild(_Part.art, BoxConstraints.tight(rect.size));
+    positionChild(_Part.art, rect.topLeft);
+  }
+
+  @override
+  bool shouldRelayout(_PlayerLayout old) =>
+      old.t != t ||
+      old.reduced != reduced ||
+      old.wide != wide ||
+      old.disc != disc ||
+      old.cap != cap;
+}
+
+/// The mini player's gestures (spec UI §5.3): the toolbar follows the finger and springs
+/// back; ← next, → previous, ↑ (or a tap) opens the player, ↓ stops.
+class _MiniGestures extends StatefulWidget {
+  const _MiniGestures({
+    required this.child,
+    required this.onNext,
+    required this.onPrevious,
+    required this.onOpen,
+    required this.onStop,
+  });
+
+  final Widget child;
+  final VoidCallback onNext, onPrevious;
+  final VoidCallback? onOpen, onStop;
+
+  @override
+  State<_MiniGestures> createState() => _MiniGesturesState();
+}
+
+class _MiniGesturesState extends State<_MiniGestures>
+    with TickerProviderStateMixin {
+  late final _x = AnimationController.unbounded(vsync: this);
+  late final _y = AnimationController.unbounded(vsync: this);
+  Axis? _axis;
+  bool _armed = false;
+
+  static const _threshold = VSize.swipe;
+
+  @override
+  void dispose() {
+    _x.dispose();
+    _y.dispose();
+    super.dispose();
+  }
+
+  void _update(DragUpdateDetails d) {
+    _axis ??= d.delta.dx.abs() >= d.delta.dy.abs()
+        ? Axis.horizontal
+        : Axis.vertical;
+    final c = _axis == Axis.horizontal ? _x : _y;
+    c.value += _axis == Axis.horizontal ? d.delta.dx : d.delta.dy;
+    final armed = c.value.abs() >= _threshold;
+    if (armed != _armed) {
+      _armed = armed;
+      if (armed) VHaptics.selection();
+    }
+  }
+
+  void _end(DragEndDetails _) {
+    final x = _x.value, y = _y.value;
+    if (_axis == Axis.horizontal) {
+      if (x <= -_threshold) widget.onNext();
+      if (x >= _threshold) widget.onPrevious();
+    } else if (_axis == Axis.vertical) {
+      if (y <= -_threshold) widget.onOpen?.call();
+      if (y >= _threshold && widget.onStop != null) {
+        VHaptics.medium();
+        widget.onStop!();
+      }
+    }
+    _axis = null;
+    _armed = false;
+    for (final c in [_x, _y]) {
+      if (reduceMotion(context)) {
+        c.value = 0;
+      } else {
+        c.animateWith(SpringSimulation(VSprings.spatial, c.value, 0, 0));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.translucent,
+    onTap: widget.onOpen,
+    onPanUpdate: _update,
+    onPanEnd: _end,
+    child: AnimatedBuilder(
+      animation: Listenable.merge([_x, _y]),
+      builder: (context, child) => Transform.translate(
+        // Up and down only hint at the gesture; sideways it follows the finger.
+        offset: Offset(_x.value, _y.value * 0.5),
+        child: child,
+      ),
+      child: widget.child,
+    ),
+  );
 }
