@@ -240,6 +240,26 @@ Ce qui justifie le 3-en-1 : les domaines se parlent.
   génériques, à un anime ou un manga. À l'ouverture du lecteur de livres, une puce propose
   « Reprendre la bande-son ».
 
+## 6 bis. « C'est quel… ? »
+
+Chaque domaine sait reconnaître ce que tu lui montres, par une capacité `identify` de son
+contrat :
+
+| Domaine | Entrée | Fournisseur | Résultat |
+|---|---|---|---|
+| Anime | une capture d'écran | trace.moe (API ouverte) | la série, l'épisode et l'instant : l'app l'ouvre à ce moment-là (`?t=`, §3.1) |
+| Livres | une page ou une case | SauceNAO (clé gratuite saisie par l'utilisateur dans les réglages de la source) | le livre et le chapitre |
+| Musique | 10 s capturées au micro | aucun fournisseur ouvert ne reconnaît fiablement un extrait bruité : la capacité existe, les fournisseurs viennent de feeds tiers ou d'une clé de l'utilisateur (AudD, ACRCloud) | le titre, liké ou lu en un toucher |
+| Musique (desktop) | le son de l'ordinateur, capturé proprement | AcoustID (empreinte calculée en local par `rusty-chromaprint`, en Rust) | idem |
+
+- **Entrées** : partager une image ou un son vers l'app ; un bouton dans la search bar de
+  chaque domaine (appareil photo, micro) ; ⌘K « Identifier ».
+- **Vie privée** : seule l'entrée nécessaire part vers le fournisseur (l'image, ou l'empreinte
+  audio quand le fournisseur l'accepte), après un premier usage expliqué. Le micro n'est
+  demandé qu'au premier toucher sur le bouton.
+- Une reconnaissance faite pendant un épisode (« c'est quel son ? ») cherche d'abord dans les
+  génériques et chansons connus de la série (`themes`) avant d'appeler un fournisseur.
+
 ## 7. Hors ligne et hors de l'app
 
 - **Budget de stockage unique** pour tous les domaines (Réglages › Téléchargements). Au-delà,
@@ -355,7 +375,9 @@ entre dans la v1 musique (§12).
   - **liens collés** (§3) : liens Deezer et YouTube Music ;
   - **liens de partage** (§3.1) : titres, albums, artistes, playlists ; App Links et liens
     universels (plan 5, Task 4 : le concentrateur de liens), page statique sur `vehicoule.com` ;
-  - **M1** paroles romanisées et traduites, **M3** son par sortie audio (§13).
+  - **M1** paroles romanisées et traduites, **M3** son par sortie audio (§13) ;
+  - **« C'est quel son ? »** (§6 bis) : capacité `music.identify` (contrat musique 1.2, mineure),
+    AcoustID sur desktop dans le feed officiel, bouton micro dans la search bar.
 
 ## 13. Idées propres à un domaine
 

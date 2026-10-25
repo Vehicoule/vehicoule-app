@@ -21,7 +21,7 @@ données de l'utilisateur indépendantes des fournisseurs.
 | Lecteur | Complet, sans accès brut à mpv : gestes, pistes, style des sous-titres, saut du générique, double sous-titres, Anime4K (§6) |
 | Lecture | Seconde session, en parallèle de la musique ; fenêtre flottante vivante ; PiP système (addendum §5) |
 | Téléchargements | HLS et fichiers directs, par la crate `stream` (§7) |
-| Feed officiel | AniList (catalogue + tracker), MyAnimeList (tracker), AnimeThemes, AniSkip. **Aucune source de lecture** |
+| Feed officiel | AniList (catalogue + tracker), MyAnimeList (tracker), AnimeThemes, AniSkip, trace.moe. **Aucune source de lecture** |
 | Plateformes | Android + macOS, comme la musique |
 
 ### Critères de réussite
@@ -236,6 +236,21 @@ interface skip {
     /// `duration-ms` lets the provider pick the right timing for this release.
     segments: func(ref: series-ref, episode: f32, duration-ms: u32) -> result<list<segment>, error>;
 }
+
+interface identify {
+    use types.{series-ref};
+    use vehicoule:host/types.{error};
+
+    record sighting {
+        series: series-ref,
+        episode: option<f32>,
+        at-ms: option<u32>,
+        /// 0 to 100.
+        confidence: u8,
+    }
+    /// A screenshot (PNG or JPEG bytes), best match first.
+    identify: func(image: list<u8>) -> result<list<sighting>, error>;
+}
 ```
 
 - Un film est une série de format `movie` à un seul épisode : même page, même lecteur, même
@@ -247,7 +262,12 @@ interface skip {
   (« titre artiste ») et crée une relation `theme-song` (addendum §6) ; le titre se lit et se
   like comme n'importe quel titre.
 - `skip` : plugin AniSkip.
+- `identify` : plugin trace.moe (« C'est quel anime ? », addendum §6 bis).
 - Routage : liste de priorité par capacité, comme le socle §4.7.
+- **Source la plus fiable d'abord** : le cœur note chaque source en local, par série (taux de
+  réussite de `videos`, temps jusqu'à la première image, hauteur obtenue, sur les 30 derniers
+  essais). Pour chaque épisode, il essaie les sources dans l'ordre de cette note ; un ordre
+  fixé à la main dans `source_bindings` passe avant. Une source qui se dégrade descend seule.
 
 ### 4.2 Capacités et erreurs
 
@@ -362,8 +382,14 @@ Accueil (commun, addendum §4) · **Bibliothèque** · **Nouveautés** · **Hist
   défilants), pastille « non vus » en haut à droite de l'affiche. Filtres (non vus,
   téléchargés, statut, tracker), tri (dernier vu, ajout, alphabétique, prochain épisode).
   Desktop : 4 à 8 colonnes, survol ▶ « Reprendre ».
-- **Nouveautés** (`/anime/updates`) : épisodes sortis dans la bibliothèque, groupés par jour,
-  en lignes d'épisode (§5.3). Tirer pour rafraîchir lance la mise à jour.
+- **Nouveautés** (`/anime/updates`) : bascule **Sortis · À venir**.
+  - Sortis : épisodes sortis dans la bibliothèque, groupés par jour, en lignes d'épisode
+    (§5.3). Tirer pour rafraîchir lance la mise à jour.
+  - À venir : le **calendrier** des sept prochains jours des séries suivies
+    (`catalog.schedule`), heure dans le fuseau de l'appareil.
+- **Anti-spoiler** (réglage, désactivé par défaut) : titres et vignettes des épisodes non vus
+  masqués partout (« Épisode 9 », vignette floutée). Le flou est le seul de l'app, fourni par
+  `design/` (spec UI §2.8).
 - **Historique** (`/anime/history`) : dernier épisode vu par série, groupé par jour ; ✕ retire
   la série de l'historique, avec Annuler.
 - **Parcourir** (`/anime/browse`) : la search bar (catalogue AniList d'abord, puis « Chercher
@@ -449,6 +475,10 @@ pour la musique.
 - **Pistes retenues par série** : langue audio, langue des sous-titres, piste secondaire.
 - Seuil « vu » réglable (70 à 100 %, défaut 85 %) ; un saut du générique de fin compte comme
   la fin.
+- **Démarrage instantané du suivant** : à la pré-résolution, `stream` télécharge les 30
+  premières secondes de l'épisode suivant (premiers segments HLS, ou premiers Mo d'un
+  fichier) dans le cache ; l'enchaînement et « Suivant » partent de ce cache.
+- **Minuterie** : la minuterie commune (addendum §5.1) gagne « À la fin de l'épisode ».
 
 ### 6.2 Fonctions
 
