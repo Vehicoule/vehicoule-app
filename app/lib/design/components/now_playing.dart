@@ -296,7 +296,10 @@ class _VNowPlayingState extends State<VNowPlaying>
     // A plain surface, no gradient (spec UI §6.6, user ruling).
     return ColoredBox(
       color: Theme.of(context).colorScheme.surfaceContainer,
+      // The Vague's cover runs under the status bar: no top inset for the column, the
+      // header takes it instead.
       child: SafeArea(
+        top: !_bleed,
         child: widget.immersive ? _immersive(context) : _column(context),
       ),
     );
@@ -314,7 +317,15 @@ class _VNowPlayingState extends State<VNowPlaying>
                 top: 0,
                 left: 0,
                 right: 0,
-                child: KeyedSubtree(key: _headerKey, child: _header(context)),
+                child: KeyedSubtree(
+                  key: _headerKey,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.paddingOf(context).top,
+                    ),
+                    child: _header(context),
+                  ),
+                ),
               ),
             ],
           ),
@@ -1013,6 +1024,7 @@ class _VNowPlayingState extends State<VNowPlaying>
         VIconButton(
           icon: VIcons.skipNext,
           label: l.actionNext,
+          glyphFilled: true,
           onPressed: actions.onNext,
         ),
         if (widget.volume case final volume?) ...[

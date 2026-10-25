@@ -126,6 +126,11 @@ class VChoiceGroup<T> extends StatelessWidget {
     type: M3EButtonGroupType.connected,
     style: M3EButtonStyle.tonal,
     size: M3EButtonSize.sm,
+    // The chosen one is primary, as everywhere in the app.
+    decoration: M3EButtonDecoration.styleFrom(
+      selectedBackgroundColor: Theme.of(context).colorScheme.primary,
+      selectedForegroundColor: Theme.of(context).colorScheme.onPrimary,
+    ),
     selectionRequired: true,
     selectedIndex: choices.indexWhere((c) => c.$1 == value),
     onSelectedIndexChanged: (i) {

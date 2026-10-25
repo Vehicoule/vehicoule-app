@@ -22,6 +22,7 @@ class VIconButton extends StatelessWidget {
     required this.onPressed,
     this.selected,
     this.style = VIconStyle.standard,
+    this.glyphFilled,
   });
 
   final IconData icon;
@@ -31,6 +32,9 @@ class VIconButton extends StatelessWidget {
   /// Null: not a toggle.
   final bool? selected;
   final VIconStyle style;
+
+  /// The glyph's FILL; by default filled when selected or in a filled button.
+  final bool? glyphFilled;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -42,7 +46,10 @@ class VIconButton extends StatelessWidget {
     onTap: onPressed,
     excludeSemantics: true,
     child: M3EIconButton(
-      icon: VSymbol(icon, filled: selected ?? false),
+      icon: VSymbol(
+        icon,
+        filled: glyphFilled ?? (selected ?? style == VIconStyle.filled),
+      ),
       onPressed: onPressed,
       tooltip: label,
       variant: switch (style) {
@@ -107,9 +114,15 @@ class VConnectedGroup extends StatelessWidget {
       for (final (i, a) in actions.indexed)
         if (a.selected) i,
     };
+    final scheme = Theme.of(context).colorScheme;
     return M3EButtonGroup(
       type: M3EButtonGroupType.connected,
       style: M3EButtonStyle.tonal,
+      // Selected toggles are primary, like ⏯ and the selector (the mockup).
+      decoration: M3EButtonDecoration.styleFrom(
+        selectedBackgroundColor: scheme.primary,
+        selectedForegroundColor: scheme.onPrimary,
+      ),
       multiSelect: true,
       selectedIndices: on,
       onSelectedIndicesChanged: (next) {
@@ -279,9 +292,9 @@ class VControls extends StatelessWidget {
         // Shuffle and repeat are plain icons until they are on (the mockup).
         final quiet = M3EButtonDecoration.styleFrom(
           backgroundColor: scheme.surface.withValues(alpha: 0),
-          selectedBackgroundColor: scheme.secondaryContainer,
+          selectedBackgroundColor: scheme.primary,
           foregroundColor: scheme.onSurfaceVariant,
-          selectedForegroundColor: scheme.onSecondaryContainer,
+          selectedForegroundColor: scheme.onPrimary,
         );
         M3EButtonGroupAction toggle(Widget icon, String label) =>
             M3EButtonGroupAction(

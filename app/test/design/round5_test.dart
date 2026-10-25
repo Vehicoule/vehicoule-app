@@ -5,7 +5,12 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_3_expressive/material_3_expressive.dart'
-    show M3ETheme, M3EListItem, M3EMenuItem;
+    show
+        M3ETheme,
+        M3EListItem,
+        M3EMenuItem,
+        M3EButtonGroup,
+        M3EButtonDecoration;
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/bridge/queue.dart';
 import 'package:vehicoule/debug/library.dart';
@@ -468,5 +473,95 @@ void main() {
         .whereType<VRingPainter>()
         .single;
     expect(painter.stroke, VSize.ringStrokeSmall);
+  });
+
+  testWidgets('B-1: the strip ⏯ and ⏭ have filled glyphs', (tester) async {
+    await show(
+      tester,
+      Align(
+        alignment: Alignment.topRight,
+        child: SizedBox(
+          width: VSize.strip,
+          child: player(size: PlayerSize.compact, axis: Axis.vertical),
+        ),
+      ),
+    );
+    for (final icon in [VIcons.pause, VIcons.skipNext]) {
+      final symbol = tester.widget<VSymbol>(
+        find.byWidgetPredicate((w) => w is VSymbol && w.icon == icon),
+      );
+      expect(symbol.filled, isTrue, reason: '$icon');
+    }
+  });
+
+  testWidgets('B-2: the Vague cover runs under the status bar', (tester) async {
+    tester.view.physicalSize = const Size(412, 892);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 24);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      harness(player(style: PlayerStyle.wave), reduce: true),
+    );
+    await tester.pump();
+    final art = tester.getRect(find.byKey(VNowPlaying.artworkKey));
+    final header = tester.getRect(find.byKey(VNowPlaying.headerKey));
+    expect(art.top, 0);
+    expect(
+      header.top,
+      greaterThanOrEqualTo(24),
+      reason: 'the header clears it',
+    );
+    // The Disc keeps its safe area.
+    await tester.pumpWidget(harness(player(), reduce: true));
+    await tester.pump();
+    expect(
+      tester.getRect(find.byKey(VNowPlaying.headerKey)).top,
+      greaterThanOrEqualTo(24),
+    );
+  });
+
+  testWidgets('selected toggles are primary, like ⏯ and the selector', (
+    tester,
+  ) async {
+    await show(
+      tester,
+      Column(
+        children: [
+          VConnectedGroup(
+            actions: [VAction('a', VIcons.favorite, () {}, selected: true)],
+          ),
+          VChoiceGroup<int>(
+            choices: const [(0, 'a'), (1, 'b')],
+            value: 0,
+            onChanged: (_) {},
+          ),
+          VControls(
+            playing: true,
+            loading: false,
+            shuffle: true,
+            repeat: Repeat.all,
+            onPlayPause: () {},
+            onNext: () {},
+            onPrevious: () {},
+            onShuffle: () {},
+            onRepeat: () {},
+          ),
+        ],
+      ),
+    );
+    final s = Theme.of(tester.element(find.byType(VControls))).colorScheme;
+    const selected = {WidgetState.selected};
+    for (final g in tester.widgetList<M3EButtonGroup>(
+      find.byType(M3EButtonGroup),
+    )) {
+      final decorations = [
+        g.decoration,
+        for (final a in g.actions) a.decoration,
+      ].whereType<M3EButtonDecoration>();
+      expect(decorations, isNotEmpty);
+      for (final d in decorations) {
+        expect(d.backgroundColor?.resolve(selected), s.primary);
+      }
+    }
   });
 }
