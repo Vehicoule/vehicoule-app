@@ -4,10 +4,10 @@ Date : 2026-10-25 · Statut : approuvé par l'utilisateur le 2026-10-25
 
 Specs parentes : `2026-10-18-socle-musique-design.md` (le « socle »),
 `2026-10-23-socle-ui-design.md` (la « spec UI », branche `socle`),
-`2026-10-25-navigation-domaines.md` (l'« addendum »), `2026-10-25-anime-design.md` (la « spec
-anime ») et `2026-10-25-surface-attaque.md`. Cette spec branche les livres (mangas, manhwa,
+`2026-10-25-navigation-domaines.md` (l'« addendum »), `2026-10-25-video-design.md` (la « spec
+vidéo », qui remplace la spec vidéo) et `2026-10-25-surface-attaque.md`. Cette spec branche les livres (mangas, manhwa,
 comics, romans, light novels, ebooks) sur le socle : même cœur, même hôte de plugins, même
-bibliothèque, mêmes coques, et les tables et contrats communs posés par l'anime.
+bibliothèque, mêmes coques, et les tables et contrats communs posés par la vidéo.
 
 ## 1. But et décisions
 
@@ -20,12 +20,12 @@ indépendantes des fournisseurs, aucun HTML rendu par une WebView.
 | Libellé visible | **« Livres »** (« Books » en anglais). Nom interne `books`, routes `/books/…`, forme de décor **arche** (addendum §8) |
 | Identité d'un livre | **Un item Vehicoule** `book`, ses chapitres des items `chapter`. Métadonnées d'un catalogue (AniList, Open Library) ; une ou plusieurs sources rattachées (§3.3) |
 | Contrat | `vehicoule:books@1.0.0` : `catalog`, `source`, `remote-progress`, `identify` (§4) ; un chapitre fournit des **pages**, du **texte** XHTML ou un **fichier** |
-| Trackers | `vehicoule:tracker@1.0.0` de la spec anime, `media: book` : AniList, MyAnimeList |
+| Trackers | `vehicoule:tracker@1.0.0` de la spec vidéo, `media: book` : AniList, MyAnimeList |
 | Lecteur | Images (page par page, défilant, webtoon, case par case) et texte (EPUB **rendu en natif** : Rust lit, Flutter met en page) (§6) |
 | Formats de fichiers | EPUB 2 et 3, CBZ, CB7, PDF, MOBI et AZW3 sans DRM, FB2 ; CBR si un décodeur RAR en Rust tient (§3.5). Tout en Rust pur |
-| Feed officiel | AniList (catalogue + tracker, un seul plugin avec l'anime), MyAnimeList (tracker), Open Library, MangaUpdates (sorties), SauceNAO, OPDS (Project Gutenberg, Standard Ebooks, serveurs de l'utilisateur). Les sources de scans viennent de feeds tiers, comme ytmusic et les sources anime |
+| Feed officiel | AniList (catalogue + tracker, un seul plugin avec la vidéo), MyAnimeList (tracker), Open Library, MangaUpdates (sorties), SauceNAO, OPDS (Project Gutenberg, Standard Ebooks, serveurs de l'utilisateur). Les sources de scans viennent de feeds tiers, comme ytmusic et les sources vidéo |
 | Performance | **120 images/s** partout (défilement, pages, zoom), mesurées au 99ᵉ centile (§11.1) |
-| Plateformes | Android + macOS, comme la musique et l'anime |
+| Plateformes | Android + macOS, comme la musique et la vidéo |
 
 ### Critères de réussite
 
@@ -44,14 +44,14 @@ indépendantes des fournisseurs, aucun HTML rendu par une WebView.
 
 | Socle | Généralisation |
 |---|---|
-| `items.kind` (§5.1) | + `book`, `chapter` (posés par la spec anime §2) |
-| Tables communes (spec anime §3.2) | réutilisées telles quelles ; `progress` gagne `locator` (§3.2) |
-| `vehicoule:host` 1.1.0 (spec anime §4.5) | + interfaces `credentials` et `locale` (§4.5), dans la même version 1.1.0 tant qu'elle n'est pas publiée ; `locale` sert à tous les domaines |
-| Manifeste (socle §4.3) | + `replaces-mihon` (§3.6), + domaines ajoutés par l'utilisateur (§4.3) |
+| `items.kind` (§5.1) | + `book`, `chapter` (posés par la spec vidéo §2) |
+| Tables communes (spec vidéo §3.2) | réutilisées telles quelles ; `progress` gagne `locator` (§3.2) |
+| `vehicoule:host` 1.1.0 (spec vidéo §4.5) | + interfaces `credentials` et `locale` (§4.5), dans la même version 1.1.0 tant qu'elle n'est pas publiée ; `locale` sert à tous les domaines |
+| Manifeste (socle §4.3) | + `replaces-mihon` (§3.6) ; serveurs de l'utilisateur par l'accord d'adresse de la surface d'attaque §2 (§4.3) |
 | `vehicoule:music` | + capacité `tempo` (mineure, comme `identify`) pour le défilement au tempo (§6.5) |
 | Crate `stream` | + pages servies par le proxy local (surface d'attaque §2), désembrouillage, transcodage d'images, découpe des images hautes (§6.2) |
 | Lecteur | + `ReadState` dans le cœur, `/read/:id` (addendum §3) |
-| Plateforme | même tâche périodique que l'anime (spec anime §5.5) ; synthèse vocale du système (§6.8) |
+| Plateforme | même tâche périodique que la vidéo (spec vidéo §5.5) ; synthèse vocale du système (§6.8) |
 
 ## 3. Bibliothèque
 
@@ -69,7 +69,7 @@ indépendantes des fournisseurs, aucun HTML rendu par une WebView.
 
 ### 3.2 Tables communes
 
-Celles de la spec anime §3.2, sans changement de rôle :
+Celles de la spec vidéo §3.2, sans changement de rôle :
 
 - `library_entries` : livres suivis, statut personnel (en cours, à lire, fini, en pause,
   abandonné).
@@ -91,7 +91,7 @@ Celles de la spec anime §3.2, sans changement de rôle :
 
 ### 3.3 Correspondance catalogue ↔ source
 
-L'algorithme de la spec anime §3.3, adapté :
+L'algorithme de la spec vidéo §3.3, adapté :
 
 1. `source_bindings` déjà présent → l'utiliser.
 2. Identifiant direct : ISBN (Open Library), id AniList, MyAnimeList ou MangaUpdates connu
@@ -108,7 +108,7 @@ renommés en anglais) vit avec le premier plugin de source tiers et sert de test
 
 ### 3.4 Plusieurs sources, groupes, doublons
 
-- Plusieurs sources par livre, ordonnées par la note de fiabilité de la spec anime §4.1 (taux
+- Plusieurs sources par livre, ordonnées par la note de fiabilité de la spec vidéo §4.1 (taux
   de réussite de `content`, temps jusqu'à la première page), un ordre fixé à la main passant
   avant. Un chapitre absent de la première est cherché dans la suivante.
 - **Groupe préféré, retenu par série** : quand plusieurs groupes sortent le même numéro, la
@@ -168,8 +168,8 @@ Réglages › Sauvegarde › « Importer depuis une autre app », et l'étape du
 (§5.6).
 
 - **Mihon et ses forks** (SY, J2K, Komikku : leurs champs en plus sont ignorés), et **la
-  partie manga d'Aniyomi** : le `.tachibk` lu par le même lecteur Rust que la spec anime §3.5
-  (`prost`, plafonds, décodage borné). Une sauvegarde Aniyomi s'importe en une fois, anime et
+  partie manga d'Aniyomi** : le `.tachibk` lu par le même lecteur Rust que la spec vidéo §3.5
+  (`prost`, plafonds, décodage borné). Une sauvegarde Aniyomi s'importe en une fois, animés et
   manga.
   - Repris : bibliothèque, catégories, chapitres lus et dernière page lue, chapitres en
     signet (`bookmarks`), historique, trackers liés, filtre de groupes de scan (→ groupe
@@ -185,7 +185,7 @@ Réglages › Sauvegarde › « Importer depuis une autre app », et l'étape du
   dans le cœur par rusqlite) en lecture seule : livres, fichiers, couvertures, séries et
   numéros, ISBN. Les fichiers sont lus là où ils sont, comme les « Fichiers de l'appareil ».
 - **AniList, MyAnimeList** : « Importer ma liste » (`tracker.list`, `media: book`), comme la
-  spec anime §4.4.
+  spec vidéo §4.4.
 - Fin : un résumé (« 312 séries importées, 6 à vérifier »), la liste des séries à vérifier.
 
 ### 3.7 Migration en masse
@@ -260,7 +260,7 @@ interface catalog {
     record relation {
         kind: relation-kind,
         target: book-ref,
-        /// `books`, `anime`.
+        /// `books`, `video`.
         domain: string,
         /// For `continues-at`: the adaptation `target` ends after this episode…
         after-episode: option<f32>,
@@ -350,16 +350,16 @@ interface identify {
   chapitre avec `volume`. Un light novel en tomes EPUB est un livre dont chaque chapitre est un
   fichier.
 - `catalog` :
-  - **AniList** : un seul plugin pour l'anime et les livres (catalogues des deux contrats,
+  - **AniList** : un seul plugin pour la vidéo et les livres (catalogues des deux contrats,
     tracker), donc une seule connexion et un seul quota. `search`, `fetch`, `relations`,
     `recommendations` ; `external` porte les ids MyAnimeList et MangaUpdates quand AniList
     les connaît.
   - **Open Library** (sans clé) : `search`, `fetch`, `by-isbn`.
   - **MangaUpdates** (API publique, sans clé ni compte) : `releases`, `search`, `fetch`. Pas de
     tracker : sa connexion demande un mot de passe.
-- `continues-at` : aucune base ouverte ne dit où un anime s'arrête dans le manga. La relation
+- `continues-at` : aucune base ouverte ne dit où un animé s'arrête dans le manga. La relation
   vient d'un plugin (feed tiers) qui exporte `relations`, ou de l'utilisateur (« Où reprend le
-  manga ? » sur la page série anime ou la page livre, §5.2). Sans l'un ni l'autre, la page
+  manga ? » sur la page de l'animé ou la page livre, §5.2). Sans l'un ni l'autre, la page
   montre seulement « Adapté de ce manga ».
 - `source` :
   - **OPDS** (feed officiel) : un plugin, préréglé sur Project Gutenberg et Standard Ebooks,
@@ -371,7 +371,7 @@ interface identify {
     la sortie, file hors ligne comme le tracker). On reprend au même endroit dans leurs
     autres clients.
   - **Sources de scans et de romans web** : plugins tiers, dans leurs propres feeds (socle
-    §4.4), comme `vehicoule-ytmusic` et les sources anime.
+    §4.4), comme `vehicoule-ytmusic` et les sources vidéo.
 - `identify` : plugin **SauceNAO**, sans clé, dans le quota anonyme (§8).
 - Routage : liste de priorité par capacité (socle §4.7) ; note de fiabilité des sources
   (§3.4).
@@ -386,13 +386,12 @@ Un `file` au format non pris en charge → `not-found` côté cœur, avec la rai
 
 - Règles du socle §4.3 sans exception : chaque URL de page, de fichier et d'image du `text`
   est vérifiée (domaines du plugin, chaque redirection, IP privées refusées) **dans `stream`**.
-- **Domaines ajoutés par l'utilisateur** : un plugin peut déclarer `user-domains: true` dans
-  son manifeste (OPDS seulement dans le feed officiel). L'utilisateur saisit lui-même une URL
-  de serveur dans Sources › le plugin › Réglages ; ce domaine s'ajoute à ceux du plugin, pour
-  ce plugin seul. Une adresse du réseau local (Calibre sur `192.168.x.x`) est permise
-  **seulement** si l'utilisateur l'a saisie telle quelle ; l'écran l'affiche (« Serveur du
-  réseau local »). Une redirection depuis un domaine déclaré vers une IP privée reste
-  refusée.
+- **Serveurs de l'utilisateur** (Calibre, Komga, Kavita) : la règle de la surface d'attaque §2
+  (« serveur personnel sur le réseau local ») et de la spec vidéo §4.6, sans mécanisme propre
+  aux livres. À l'ajout du serveur, l'utilisateur **accorde son adresse (IP ou nom, et port) au
+  seul plugin OPDS** ; l'hôte la garde, l'affiche dans Sources › Détails, et elle se retire à
+  tout moment. Toute autre adresse privée reste refusée, pour lui comme pour les autres ; un
+  plugin ne peut pas demander d'accord lui-même.
 - Le désembrouillage (`scramble`), le transcodage et la découpe des images se font en Rust
   dans `stream`, sur des images dont la taille est plafonnée avant décodage (surface d'attaque
   §6).
@@ -400,20 +399,20 @@ Un `file` au format non pris en charge → `not-found` côté cœur, avec la rai
 
 ### 4.4 Trackers
 
-Le contrat `vehicoule:tracker@1.0.0` de la spec anime §4.4, avec `media: book` :
+Le contrat `vehicoule:tracker@1.0.0` de la spec vidéo §4.4, avec `media: book` :
 
-- **AniList** (même plugin que l'anime) et **MyAnimeList**. `progress` = chapitres lus (ou
+- **AniList** (même plugin que la vidéo) et **MyAnimeList**. `progress` = chapitres lus (ou
   tomes lus quand le livre se compte en tomes).
 - Liaison au premier ajout par `find` avec les ids de `external`, sinon « Lier le tracker ».
 - Mise à jour à chaque chapitre lu (§6.1), file hors ligne, conflit (progression la plus
-  haute gagne) : comme l'anime.
+  haute gagne) : comme la vidéo.
 - Ebooks hors AniList : pas de tracker. Goodreads n'a plus d'API, et Hardcover demande de
   coller une clé, ce qui est exclu.
 
 ### 4.5 Ajouts à `vehicoule:host` 1.1.0 : `credentials`, `locale`
 
 Pour les serveurs OPDS privés. Nouvelle interface, posée dans la 1.1.0 avec celles de la spec
-anime §4.5 (aucune n'est encore publiée).
+vidéo §4.5 (aucune n'est encore publiée).
 
 - L'utilisateur saisit l'identifiant et le mot de passe **de son propre serveur** dans Sources
   › le plugin › Réglages, champ par champ. Ce n'est pas une clé d'API.
@@ -426,18 +425,22 @@ anime §4.5 (aucune n'est encore publiée).
   contient pas.
 
 **`locale`** : les langues préférées de l'utilisateur, **commune à tous les domaines**
-(musique, anime, livres), dans la même 1.1.0.
+(musique, vidéo, livres), dans la même 1.1.0 ; même définition que la spec vidéo §4.7.
 
 ```wit
 interface locale {
-    /// BCP 47 tags, most preferred first (`fr-FR`, `fr`, `en`).
+    /// BCP 47 tags, most preferred first (`fr-FR`, `fr`, `en`); three at most.
     preferred-languages: func() -> list<string>;
+    /// ISO 3166-1 alpha-2 region of the user (`FR`).
+    region: func() -> string;
 }
 ```
 
-- La liste vient de Réglages › Langue : la langue de l'interface d'abord (français ou anglais),
-  puis les langues ajoutées par l'utilisateur, ordonnées. Elle est distincte des langues des
-  chapitres (§3.4), qui en partent par défaut.
+- La liste vient de **Réglages › Langues** : un réglage de l'app, partagé par les trois
+  domaines, prérempli avec la liste ordonnée des langues du système et modifiable par glisser.
+  `preferred-languages` en renvoie **trois au plus**, pour limiter ce qu'un fournisseur apprend
+  de l'utilisateur. `region` est celle du réglage, ou à défaut celle du système. Les langues des
+  chapitres (§3.4) partent de cette liste par défaut, puis vivent à part.
 - Les plugins s'en servent pour demander les **métadonnées dans la langue de l'utilisateur**
   (titres, synopsis, genres, noms de rayons) quand le fournisseur le permet, et pour filtrer
   ce qu'ils renvoient (langue des chapitres chez MangaDex, par exemple).
@@ -468,12 +471,12 @@ Accueil (commun) · **Bibliothèque** · **Nouveautés** · **Historique** · **
 - **Parcourir** : la search bar (catalogues AniList et Open Library d'abord, puis « Chercher
   dans les sources »), les sources installées (une source ouvre Populaires · Récents et ses
   filtres), les catalogues OPDS (navigation dans leurs rayons), « Fichiers de l'appareil ».
-- **Contenu adulte** : le réglage de la spec anime §2 (« Afficher les sources pour adultes »,
+- **Contenu adulte** : le réglage de la spec vidéo §2 (« Afficher les sources pour adultes »,
   désactivé par défaut) s'applique tel quel ; `book.adult` est respecté dans Parcourir, les
   recommandations et les résultats de « C'est quoi ? ».
-- **Anti-spoiler** : le réglage de la spec anime §5.1 s'applique aux titres de chapitres non
+- **Anti-spoiler** : le réglage de la spec vidéo §5.1 s'applique aux titres de chapitres non
   lus.
-- **Titres en** : le réglage de la spec anime §5.1 bis (Réglages › Livres) : romaji, anglais,
+- **Titres en** : le réglage de la spec vidéo §5.1 bis (Réglages › Livres) : romaji, anglais,
   natif, ou **dans ta langue quand il existe** (titre localisé : synonymes AniList, titre de
   l'édition Open Library dans ta langue, `titles` de la source dans la langue demandée), sinon
   l'anglais. Pour un ebook, « original » ou « de l'édition ». Le choix s'applique partout
@@ -493,7 +496,7 @@ Accueil (commun) · **Bibliothèque** · **Nouveautés** · **Historique** · **
 - Un livre à un seul chapitre (ebook) montre « Lire » et sa table des matières à la place de
   la liste.
 - **Si tu aimes ça** : étagère de `recommendations`.
-- **Liens** : l'anime adapté (« L'anime adapte jusqu'au chapitre 52 »), suites, relations ; «
+- **Liens** : l'animé adapté (« L'animé adapte jusqu'au chapitre 52 »), suites, relations ; «
   Où reprend le manga ? » quand une adaptation est connue sans `continues-at`.
 - **Tracker** : la ligne du tracker lié, statut et note modifiables.
 - ⋮ : changer de source, « Ce n'est pas le bon livre », sens de lecture, groupe préféré,
@@ -518,7 +521,7 @@ et séries finies.
 
 ### 5.5 Mise à jour de la bibliothèque
 
-- La tâche périodique de la spec anime §5.5, partagée par les deux domaines.
+- La tâche périodique de la spec vidéo §5.5, partagée par les deux domaines.
 - **Mise à jour maline** : `catalog.releases` (MangaUpdates) pour tous les livres suivis en un
   appel ; on n'interroge `source.chapters` que pour ceux qui ont une sortie depuis la dernière
   vérification, plus une vérification complète par semaine. Les séries finies et lues ne sont
@@ -528,7 +531,7 @@ et séries finies.
 ### 5.6 Premier passage dans le domaine
 
 Une étape, la première fois qu'on ouvre Livres : « Lie ton compte » (AniList, MyAnimeList ;
-sauté si AniList est déjà lié par l'anime) avec « Importer ma liste », « Importer depuis Mihon
+sauté si AniList est déjà lié par la vidéo) avec « Importer ma liste », « Importer depuis Mihon
 ou Aniyomi », « Choisir un dossier de livres », ou « Passer ». Sans source qui lit, le bouton «
 Lire » explique pourquoi et renvoie vers « Ajoute une source » (spec UI §6.7).
 
@@ -584,7 +587,7 @@ mode liseuse, flash, police et mise en page du texte, voix.
   haute) s'affiche seule ; décalage d'une page au choix, retenu par livre.
 - **Zones de toucher** au choix (L, bords, Kindle, désactivées) ; touches de volume en option.
 - **Filtres** : luminosité, mode nuit, niveaux de gris.
-- **Netteté** : les shaders Anime4K (MIT, déjà embarqués pour l'anime) réécrits en
+- **Netteté** : les shaders Anime4K (MIT, déjà embarqués pour la vidéo) réécrits en
   `FragmentShader` Flutter, préréglages Désactivé · Rapide · Qualité. Calculée **une fois par
   page** puis gardée en image : le défilement n'en paie pas le coût. « Rapide » sur Android
   seulement si le spike tient le seuil.
@@ -726,7 +729,7 @@ raccourcis visent le lecteur quand il a le focus (addendum §5.3).
 L'écran et les règles de l'addendum §6 bis ; le domaine fournit :
 
 - **`books.identify`** par SauceNAO, sans clé, dans le quota anonyme ; en parallèle de
-  `anime.identify` (trace.moe). Le spike vérifie que ce quota existe toujours ; sinon la
+  `video.identify` (trace.moe). Le spike vérifie que ce quota existe toujours ; sinon la
   capacité vient d'un feed tiers.
 - Le résultat se rattache par l'id MangaUpdates ou AniList renvoyé, sinon par le titre (§3.3),
   et ouvre le chapitre à la page trouvée quand elle est connue.
@@ -766,7 +769,7 @@ L'écran et les règles de l'addendum §6 bis ; le domaine fournit :
   300 pages de cases deviennent des tests de non-régression (mise en page, découpe).
 - **`plugin-host`** : `locale` (liste dans l'ordre des réglages, `Accept-Language` ajouté
   seulement quand le plugin n'en fixe pas), `credentials` (le mot de passe n'atteint jamais le composant ; refusé
-  hors du domaine saisi), `user-domains` (adresse locale permise seulement si saisie, refusée
+  hors du domaine saisi), adresse accordée au plugin OPDS seulement (refusée aux autres, et refusée
   par redirection), images d'un `text` hors des domaines refusées.
 - **Plugins** (feed officiel) : AniList (livres), Open Library, MangaUpdates, OPDS (Gutenberg,
   Standard Ebooks, un Calibre de test), SauceNAO, MyAnimeList, sur réponses enregistrées.
@@ -799,7 +802,7 @@ fréquence, mémoire sous les mêmes plafonds. macOS : un Mac à 120 Hz (ProMoti
 |---|---|---|
 | Texte vertical (`vert`, ruby, tate-chū-yoko) sur 5 light novels | identique à Apple Books ; tourner la page à 120 | Paragraphes verticaux mis en page en Rust (`parley`), peints par Flutter |
 | Webtoon : 60 images jusqu'à 800×30 000 px, défilement manuel puis automatique | 120 ; PSS ≤ 200 Mio | Bandes de 2048 px, préchargement réduit, images hors écran libérées plus tôt |
-| Les 20 sources Mihon les plus installées, en WASM avec le SDK seul (désembrouillage compris) | ≥ 18 sur 20 | Option `js` du SDK (Boa), mesurée comme dans la spec anime §10.1 |
+| Les 20 sources Mihon les plus installées, en WASM avec le SDK seul (désembrouillage compris) | ≥ 18 sur 20 | Option `js` du SDK (Boa), mesurée comme dans la spec vidéo §10.1 |
 | EPUB natif sur 60 fichiers (Standard Ebooks, Gutenberg, commerciaux sans DRM, EPUB 2 mal formés, les 5 verticaux) | ≥ 57 sur 60 sans perte de texte, mise en forme juste (titres, italiques, images, notes) | Sous-ensemble CSS élargi d'après les échecs ; sinon mise en page entière en Rust (`parley` + `taffy`), Flutter ne fait que peindre |
 | Repagination d'un chapitre de 50 000 caractères après un changement de taille | ≤ 100 ms | Pagination progressive : pages autour de la position d'abord, le reste en arrière-plan |
 | Tourner une page (images et texte), zoom du case par case | 120 | Pages voisines prérastérisées |
@@ -825,11 +828,11 @@ fréquence, mémoire sous les mêmes plafonds. macOS : un Mac à 120 Hz (ProMoti
 | Taille ajoutée par le domaine (`hayro`, `html5ever`, `rxing`, `jxl-oxide`, `rav1d`, `mobi`…), arm64 | ≤ +6 Mio | `rav1d` retiré si Flutter lit déjà l'AVIF |
 | Mode liseuse | pas d'appareil e-ink : flash de Mihon, réglable | Mesure par un testeur de la communauté avant la release |
 
-Le rapport va dans `docs/superpowers/reports/`, comme ceux de la musique et de l'anime.
+Le rapport va dans `docs/superpowers/reports/`, comme ceux de la musique et de la vidéo.
 
 ### 11.2 Ensuite
 
-1. Ajouts au socle (§2) : `locator` (`progress`, `bookmarks`), `book_highlights`, `credentials`, `locale`, `user-domains`,
+1. Ajouts au socle (§2) : `locator` (`progress`, `bookmarks`), `book_highlights`, `credentials`, `locale`, adresses accordées (surface d'attaque §2),
    `replaces-mihon`, pages dans le proxy de `stream`, `music.tempo`.
 2. Contrat `vehicoule:books`, plugins du feed officiel (AniList livres, Open Library,
    MangaUpdates, OPDS, SauceNAO ; MyAnimeList livres).
@@ -847,15 +850,15 @@ Le rapport va dans `docs/superpowers/reports/`, comme ceux de la musique et de l
 | Addendum §5.1 : « Lire un livre ne joue rien : la musique continue » | Sauf la lecture à voix haute, qui atténue la musique pendant qu'elle parle (§6.8) |
 | Addendum §6 : `continues-at` | Fournie par `books.catalog.relations` (plugin tiers) ou saisie par l'utilisateur ; champs `after-episode` et `at-chapter` (§4.1) |
 | Addendum §13 : B1, B2, B3, défilement au tempo | §6.2 à §6.5 |
-| Spec anime §3.2 : `progress`, `bookmarks` | + colonne `locator` (nullable) |
-| Spec anime §4.1 : plugin AniList | Un seul plugin AniList exporte `vehicoule:anime`, `vehicoule:books` et le tracker |
-| Spec anime §4.5 : `vehicoule:host` 1.1.0 | + interfaces `credentials` et `locale` (§4.5) ; `Accept-Language` ajouté par l'hôte. Les plugins musique et anime s'en servent aussi (métadonnées localisées) |
-| Socle §4.3 : manifeste | + `replaces-mihon` (liste d'ids de sources Mihon), + `user-domains` (§4.3) |
+| Spec vidéo §3.2 : `progress`, `bookmarks` | + colonne `locator` (nullable) |
+| Spec vidéo §4.1 : plugin AniList | Un seul plugin AniList exporte `vehicoule:video`, `vehicoule:books` et le tracker |
+| Spec vidéo §4.5 : `vehicoule:host` 1.1.0 | + interfaces `credentials` et `locale` (§4.5) ; `Accept-Language` ajouté par l'hôte. Même définition que la spec vidéo §4.7 : une seule interface pour les trois domaines |
+| Socle §4.3 : manifeste | + `replaces-mihon` (liste d'ids de sources Mihon) |
 | Contrat `vehicoule:music` | + capacité `tempo(track) -> option<f32>` (mineure), plugin Deezer |
 | Surface d'attaque §7.1 : dépendances prévues | + `html5ever`, `cssparser`, `hyphenation`, `read-fonts`, `zip`, `sevenz-rust`, `hayro`, `resvg`, `mobi`, `rxing`, `jxl-oxide`, `rav1d` (tous Rust), décodeur RAR Rust si le spike le valide ; `cargo-fuzz` en CI |
 
 ## 13. Ce que cette spec ne couvre pas
 
 - Les sources de scans et de romans web : plugins tiers, hors des dépôts Vehicoule, comme
-  `vehicoule-ytmusic` et les sources anime.
+  `vehicoule-ytmusic` et les sources vidéo.
 - Les fichiers avec DRM : jamais lus (refus avec la raison).
