@@ -282,6 +282,10 @@ Hors ligne, l'entrée attend et part au retour du réseau, avec une notification
     pas de clé.
   - Sans fournisseur micro installé, le mode Écouter le dit en une phrase et renvoie vers
     « Ajoute une source ».
+  - **Écartés** (2026-10-25) : ShazamKit (exige le programme développeur Apple payant, et une
+    bibliothèque Android fermée) ; « En cours de lecture » des Pixel, la recherche de chanson
+    de Google et les modèles sur l'appareil (Gemini Nano, Foundation Models d'Apple) n'ont
+    aucune API qui rende le résultat à une autre app, ou ne reconnaissent pas la musique.
 
 ### L'écran, en M3E
 
