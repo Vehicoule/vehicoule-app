@@ -24,7 +24,11 @@ material_color_utilities 0.13.0, gen-l10n, Kotlin (deux services Android).
 **Spec :** `docs/superpowers/specs/2026-10-23-socle-ui-design.md` (interface : identité,
 composants, écrans ; amendée par 1d6b301, 6214976 et 398def0) ;
 `docs/superpowers/specs/2026-10-18-socle-musique-design.md` (v4), sections 1
-(périmètre, critères), 2 (règles des coques), 3.1, 3.4, 3.6, 3.7, 4.6, 6, 7, 8, 12.
+(périmètre, critères), 2 (règles des coques), 3.1, 3.4, 3.6, 3.7, 4.6, 6, 7, 8, 12 ;
+`docs/superpowers/specs/2026-10-25-navigation-domaines.md` (l'« addendum », §11 et §12 :
+Task 5, Task 5r, Tasks 6, 7, 8 et 10) ; `docs/superpowers/specs/2026-10-25-surface-attaque.md`
+(§2 et §9 : Task 5c, Task 8). Les autres ajouts v1 de l'addendum §12 sont au plan 8
+(`2026-10-25-socle-8-ajouts-v1-musique.md`), exécuté après celui-ci.
 Rapport : « Reste à faire » (test sur téléphone). Prérequis : plan 4 (façade
 `app/lib/bridge/`, squelette `app/`) ; plan 7 avant les tâches 6 et 7 ; plan 6 pour la
 validation finale.
@@ -37,13 +41,15 @@ validation finale.
 - Dépôt `/Users/btw/Documents/repo/Vehicoule-socle`, branche `socle` (copie partagée avec
   d'autres sessions : jamais de `stash`, de `reset` ni de changement de branche). Licence
   MPL-2.0. Commit = `git commit -s -m "<msg>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`.
-- Ordre d'exécution : 2, 1, 3, 4, 5, 5b, 6, 7, 10, 8. La 9 est manuelle, sur appareils, après
-  la Task 7 du plan 6. Les tâches 1 et 2 sont terminées.
+- Ordre d'exécution : 2, 1, 3, 4, 5 (jusqu'à son commit), 5r, point de contrôle du shell
+  (Task 5 Step 6), 5b, 5c, 6, 7, 10, 8. La 9 est manuelle, sur appareils, après la Task 7 du
+  plan 6. Les tâches 1 à 4 sont terminées.
 - Chaque sous-agent tourne en modèle opus, effort high.
 - Versions de paquets **figées** (pas de `^`) dans `app/pubspec.yaml`, aux versions de la Tech
   Stack. Chaque tâche ajoute les paquets qu'elle importe la première et liste
   `app/pubspec.yaml` dans ses Modify.
-- Dossiers (spec 2) : `app/lib/{bridge,design,l10n,platform,features/music,shell_mobile,shell_desktop,debug}`.
+- Dossiers (spec 2) : `app/lib/{bridge,design,l10n,platform,features/music,features/app,shell_mobile,shell_desktop,debug}`.
+  `features/app/` tient les écrans globaux, communs à tous les domaines (addendum §2.3).
   `bridge/` n'est jamais modifié à la main. `debug/` ne sert qu'en `kDebugMode`, aux tests et
   à la galerie.
 - `package:flutter/material.dart` n'est importé nulle part : les écrans importent
@@ -63,8 +69,10 @@ validation finale.
       sous `VBreakpoints.paneOpen` (1000 dp), déplié au-delà. Pas de barre de lecture en bas ;
   - `WindowClass.medium` (600 à 840 dp) → la coque mobile, mais le rail replié à gauche
     remplace la barre du bas (spec UI §4.3) ;
-  - `WindowClass.compact` → mobile : barre de navigation M3E (Accueil, Explorer, Bibliothèque,
-    Réglages), ☰ qui ouvre le rail déplié en modal, mini-lecteur flottant au-dessus.
+  - `WindowClass.compact` → mobile : barre de navigation M3E (Accueil, puis les destinations
+    du domaine courant : Explorer, Bibliothèque), ☰ qui ouvre le rail déplié en modal,
+    mini-lecteur flottant au-dessus. Réglages, Sources et Téléchargements sont des sections
+    globales (addendum §2.1).
 - Listes : `CustomScrollView` + `VAsyncList` (ses quatre états : chargement, vide, erreur avec
   « Réessayer », hors ligne). Une longue liste est `VAsyncList.paged` (pages de 100 via l'API) :
   une playlist de 10 000 titres défile sans tout charger. Une liste dont la requête change
@@ -162,6 +170,14 @@ validation finale.
    → test `onboarding_offline_explains_and_continues` (tâche 7).
 6. **Seek** : la progression montre la cible dès le geste, sans retour à l'ancienne position
    ni minuterie dans `design/`. → test `seek_publishes_its_target_at_once` (tâche 3).
+7. **Lancement Android après le renommage** : le symbole JNI de `RustInit.initVerifier` suit
+   le nouveau paquet Kotlin, sinon l'app plante au démarrage (`UnsatisfiedLinkError`) alors
+   que tous les tests Dart et Rust passent. → test `jni_symbols_follow_the_kotlin_package`
+   et lancement sur l'émulateur (tâche 5r).
+8. **Build macOS de release** : le proxy média écoute sur `127.0.0.1` ; sans
+   `com.apple.security.network.server` dans `Release.entitlements` (seul `DebugProfile` l'a),
+   le son marche en debug et jamais en release. → test `release entitlements allow the proxy`
+   (tâche 5c).
 
 ---
 
@@ -732,9 +748,15 @@ test('app config fills all eight fields', ...);
 
 ### Task 5 : routes et coques
 
+**État : en rondes de correction.** La ronde 2 applique l'addendum §11 (navigation entre
+domaines) avant le point de contrôle du shell ; le texte ci-dessous en tient compte. Les noms
+du bloc Interfaces marqués « addendum » sont ceux du plan ; si la ronde en livre d'autres,
+le code fait foi et ce bloc est corrigé au commit de la ronde.
+
 **Files :**
 - Create :
   - `app/lib/router.dart` ;
+  - `app/lib/domains.dart` (addendum : la liste des domaines, `domainOf`, `sessionTarget`) ;
   - `app/lib/app_scope.dart` (`AppScope`) et `app/lib/screen_fab.dart` (`ScreenFab`,
     `ScreenFabHost`) ;
   - `app/lib/shell_mobile/{mobile_shell,mini_player,domain_rail}.dart` (le rail replié de la
@@ -755,36 +777,71 @@ test('app config fills all eight fields', ...);
   `download`, `notices`, `checkUpdates`.
 - Produces :
   ```dart
-  GoRouter buildRouter();   // StatefulShellRoute.indexedStack, branches : /home, /explore, /library, /settings
-                            // routes : /album/:id, /artist/:id, /playlist/:id, /category/:id, /library/liked, /library/downloaded,
-                            //          /library/top, /library/history, /downloads, /settings/sources, /settings/appearance,
-                            //          /settings/diagnostics, /onboarding (redirect tant que onboarding().done == false),
-                            //          /debug/gallery (kDebugMode seulement)
+  GoRouter buildRouter();   // un StatefulShellRoute.indexedStack ; branches : /home, puis destinationsOf(d) pour chaque d de `domains`
+                            //   (v1 : /music/explore, /music/library), dans cet ordre ; aucun index écrit en dur ailleurs
+                            // pages d'entité dans la branche d'où elles viennent, préfixées par le domaine :
+                            //   /music/explore/{album,artist,playlist,category}/:id, /music/library/{album,artist,playlist}/:id,
+                            //   /home/music/{album,artist,playlist,category}/:id
+                            // /music/library/{liked,downloaded,top,history}
+                            // globales, hors branches : /downloads, /sources, /settings, /settings/appearance, /settings/diagnostics,
+                            //   /onboarding (redirect tant que onboarding().done == false), /debug/gallery (kDebugMode seulement)
+                            // réservées, non déclarées en v1 : /anime/…, /books/…, /watch/:id, /read/:id
+  void openItem(BuildContext context, String id, {Object? heroTag}); // seul constructeur de chemins d'entité : branche courante + domaine de l'item
+  // domains.dart (addendum §3, §11)
+  enum Domain { music }                                 // noms internes des paquets WIT ; anime et books s'ajoutent avec leurs specs
+  const List<Domain> domains = [Domain.music];          // la seule liste : branches, barre, rail, rail des domaines
+  class DomainDestination { const DomainDestination({required String path, required IconData icon,
+    required String Function(AppLocalizations) label}); }
+  List<DomainDestination> destinationsOf(Domain d);     // music : Explorer (/music/explore), Bibliothèque (/music/library)
+  Domain domainOf(String location, {required Domain stored}); // /<d>/… ou /home/<d>/… → d ; sinon stored (= ui.domain)
+  enum PlaybackSession { music }                        // la vidéo s'ajoute avec la spec anime
+  PlaybackSession sessionTarget(BuildContext c);        // la session visée par les raccourcis ; v1 : toujours music
   class AdaptiveShell extends StatelessWidget { const AdaptiveShell({required StatefulNavigationShell shell}); } // windowClassOf : compact, medium → mobile ; expanded → desktop
   class AppScope extends InheritedWidget { const AppScope({required PlayerAdapter player, required ThemeController theme,
-    required ValueListenable<bool> online, required Widget child}); static AppScope of(BuildContext c); }
+    required ValueListenable<bool> online, required ValueNotifier<Rect?> miniPlayerRect, required Widget child});
+    static AppScope of(BuildContext c); } // miniPlayerRect : rect global de la toolbar du mini-lecteur (ou de la bande), pour l'arrimage (addendum §5.2)
   class ScreenFab extends StatefulWidget { const ScreenFab({VAction? action, List<VAction> items = const [], Widget? bar, required Widget child}); }
       // l'action principale d'un écran ; items non vide → FAB menu ; bar → remplace le mini-lecteur (sélection multiple)
   class ScreenFabHost extends StatefulWidget { const ScreenFabHost({required Widget Function(BuildContext, VAction? action, List<VAction> items, Widget? bar) builder}); }
       // fourni par la coque ; seule publie la ScreenFab dont la route est courante (ModalRoute.isCurrent) et la branche active (TickerMode.valuesOf(context).enabled)
   class DesktopShortcuts extends StatelessWidget { const DesktopShortcuts({required Widget child, required PlayerAdapter player, required VoidCallback focusSearch}); }
-      // une table intent → action, la même pour la PlatformMenuBar
+      // une table intent → action, la même pour la PlatformMenuBar ; les actions de lecture passent par sessionTarget(c)
   class ThemeController extends ChangeNotifier {
     ThemeData get light; ThemeData get dark; ThemeMode get mode; PlayerStyle get playerStyle; VCoverTop? get coverTop;
     Future<void> setSource(ColorSource s); Future<void> setPreset(int index); Future<void> setPureBlack(bool v);
     Future<void> setMode(ThemeMode m); Future<void> setPlayerStyle(PlayerStyle s);   // chacun : setUiPref puis notifyListeners
   } // clés ui.color_source, ui.preset, ui.pure_black, ui.theme, ui.player_style
   ```
-- Règles (spec UI §4, §5.3, §5.4, §2.2) :
+- Règles (spec UI §4, §5.3, §5.4, §2.2 ; addendum §2, §3, §11) :
+  - **Domaines** (addendum §11, points 3 à 5) :
+    - `domainOf(location, stored:)` est la seule lecture du domaine courant ; aucun écran ni
+      aucune coque ne parse la route pour le trouver ;
+    - `ui.domain` (nom interne, `music`) est écrit à chaque changement de domaine et lu au
+      lancement ; sur `/home` seul et sur une section globale, le domaine est `ui.domain` ;
+    - la barre et le rail montrent Accueil + `destinationsOf(domainOf(location))` ; l'index
+      sélectionné se calcule depuis la route, jamais écrit en dur ;
+    - changer de domaine ouvre la dernière destination visitée de ce domaine (sa première au
+      premier passage) ; l'Accueil ne change pas ;
+    - le rail des domaines (☰ et bas du rail desktop) se construit depuis `domains` ; en v1
+      il ne contient que Musique.
   - **Mobile** :
-    - `VNavigationBar` à 4 destinations (Accueil, Explorer, Bibliothèque, Réglages) ;
-    - une `VLargeAppBar` qui se replie, par onglet, avec ☰ à gauche ;
-    - ☰ ouvre `domain_rail` : le rail déplié en modal, avec le domaine Musique, puis
-      « Sources » (`/settings/sources`) et « Téléchargements » (`/downloads`) ;
+    - `VNavigationBar` à 3 destinations : Accueil, puis celles du domaine (Explorer,
+      Bibliothèque) ;
+    - une `VLargeAppBar` qui se replie, par onglet, avec ☰ à gauche. Celle de `/home` prévoit
+      sous le titre la rangée de puces de domaine (Tout · Musique · …), **masquée** tant que
+      `domains.length == 1` (addendum §4) ;
+    - ☰ ouvre `domain_rail` : le rail déplié en modal, avec 1. les domaines (Musique), 2. les
+      sections globales « Téléchargements » (`/downloads`), « Sources » (`/sources`),
+      « Réglages » (`/settings`) ;
     - au-dessus de la barre : `ScreenFabHost` → `VFabDock(body: shell, fab: action, fabItems: items,
       player: bar ?? miniPlayer)`. Le FAB d'écran se place au-dessus du ⏯, se masque au
       défilement vers le bas et revient vers le haut. Sans titre chargé, pas de mini-lecteur :
       le FAB a le coin.
+  - **Couches** (addendum §11 point 7), de bas en haut, sur les deux coques : le contenu ;
+    le mini-lecteur et `VFabDock` (desktop : la bande ou le panneau) ; une **couche vidéo**
+    libre (un `SizedBox.shrink()` en v1, rien n'y est dessiné) ; puis les feuilles,
+    dialogues et snackbars du `Navigator`. La coque écrit le rect global de la toolbar du
+    mini-lecteur (ou de la bande) dans `AppScope.miniPlayerRect` après chaque mise en page.
   - **Mini-lecteur** (spec UI §5.3) : `VNowPlaying(size: PlayerSize.compact)`. La toolbar, le
     `VPlayPauseFab` (loading indicator pendant un chargement), les gestes au seuil
     `VSize.swipe`, leurs haptiques et leurs entrées de menu sont dans `design/` ; la coque ne
@@ -810,12 +867,14 @@ test('app config fills all eight fields', ...);
         (`suggestions_view.dart`), en menu déroulant ; Entrée ouvre les résultats dans Explorer ;
       - à droite, téléchargements, puis Sources.
     - **Rail** `VNavigationRail`, permanent, replié ↔ déplié (`ui.rail_expanded`) :
-      - les 4 destinations ;
+      - Accueil et les destinations du domaine courant (3 en v1) ;
       - `fab`/`fabItems` = la `ScreenFab` publiée (le FAB de la destination : « Lancer »
         sur Accueil, « Nouvelle » sur Bibliothèque, « Ajouter une source » sur Sources) ;
-      - « Épinglés » (`pinned.dart`) : ids dans `ui.pinned` (JSON), par défaut Likés et
-        Téléchargés ; pochettes seules quand le rail est replié ;
-      - en bas, le domaine.
+      - « Épinglés » **du domaine courant** (`pinned.dart`) : ids dans `ui.pinned.<domaine>`
+        (JSON ; v1 `ui.pinned.music`, jamais `ui.pinned`), par défaut Likés et Téléchargés ;
+        pochettes seules quand le rail est replié ;
+      - en bas, le choix du domaine (depuis `domains`), puis les sections globales
+        Téléchargements, Sources, Réglages. ⌘, ouvre toujours `/settings`.
 
       Déposer une sélection de titres sur un épinglé fait ceci : playlist → `addToPlaylist` ;
       Likés → `setLiked` pour chaque id ; Téléchargés → `download` (la Task 6 le fait passer
@@ -835,7 +894,8 @@ test('app config fills all eight fields', ...);
       - la `PlatformMenuBar` macOS (Lecture, Aller, Fenêtre) prend ses actions dans la table de
         `DesktopShortcuts`.
     - **Raccourcis** : tout le tableau de la spec UI §4.2, aucun quand un champ texte a le
-      focus. ⌘↑/⌘↓ → `player.setVolume(±0,1)` ; Suppr agit seulement dans la vue File et une
+      focus. Chaque action de lecture demande d'abord `sessionTarget(c)` (addendum §5.3) ; en
+      v1 c'est toujours `PlaybackSession.music`. ⌘↑/⌘↓ → `player.setVolume(±0,1)` ; Suppr agit seulement dans la vue File et une
       playlist perso (retrait différé, Task 6) ; Espace sélectionne quand le focus est dans un
       tableau de titres, sinon lecture/pause.
   - **Ce qui joue** : la coque fournit `NowPlayingScope(trackId:, contextId:, playing:)` depuis
@@ -850,6 +910,10 @@ test('app config fills all eight fields', ...);
     album, artiste, playlist et catégorie s'ouvrent en `vContainerTransformPage` (tag unique
     par source : route + étagère + id) ; le changement de destination se fait en
     `vFadeThroughPage`.
+  - **Chemins** : `openItem` construit tous les chemins d'entité (branche courante + domaine
+    de l'item) ; une page ouverte depuis l'Accueil reste dans la branche Accueil
+    (`/home/music/album/:id`, Accueil sélectionné, barre du domaine Musique). Aucune autre
+    route ne s'écrit en dur hors de `router.dart` et `domains.dart`.
   - **Thème** :
     - la graine du titre qui joue vient de `seedForArtwork(artworkPath, fallback:)`, une fois
       par titre ; `fallback` = `systemSeed()`, sinon le préréglage choisi. `coverTop` vient de
@@ -887,8 +951,15 @@ testWidgets('arrow keys move focus inside a track table', ...);
 - [ ] **Step 1 : tests qui échouent** (API simulée : `FakeApi` de `lib/debug/fake_api.dart`)
 
 ```dart
-testWidgets('narrow width uses the navigation bar and mini player', ...);   // 400 dp : 4 destinations
+testWidgets('narrow width uses the navigation bar and mini player', ...);   // 400 dp : 3 destinations (Accueil, Explorer, Bibliothèque)
 testWidgets('menu button opens the modal rail with domains and global sections', ...);
+// addendum §11 point 10
+testWidgets('settings is a global section, not a bar destination', ...);  // ☰ et bas du rail : Téléchargements, Sources, Réglages ; aucune destination Réglages ; ⌘, → /settings
+testWidgets('the domain comes from the route', ...);                      // /music/explore → music ; /home/music/album/x → music ; /home → ui.domain
+testWidgets('an album opened from home stays in the home branch', ...);   // openItem depuis /home → /home/music/album/:id, Accueil sélectionné
+testWidgets('pinned are stored per domain', ...);                         // épingler → setUiPref("ui.pinned.music", …) ; jamais "ui.pinned"
+testWidgets('home app bar keeps the chip row hidden with one domain', ...);
+testWidgets('the video layer sits between the mini player and the overlays', ...); // ordre de la pile ; AppScope.miniPlayerRect == rect de la toolbar
 testWidgets('900 dp starts with the collapsed strip, no bottom bar', ...);
 testWidgets('android tablet at 900 dp has no title bar', ...);
 testWidgets('the playing album is a cookie in lists, shortcuts and pinned', ...);   // NowPlayingScope : contexte = album X → toutes ses VArtwork en playing
@@ -908,7 +979,8 @@ testWidgets('theme setters persist then notify', ...);                      // s
 testWidgets('every 4.2 shortcut reaches its action', ...);                  // une table : touche → appel attendu sur FakeApi / PlayerAdapter
 testWidgets('shortcuts_ignored_while_typing', ...);                         // focus dans la search bar, Espace → texte " ", lecteur inchangé
 testWidgets('space selects in a focused track table', ...);
-testWidgets('cmd+f focuses search', ...);                                    // desktop : le champ de la barre de titre ; mobile : /explore
+testWidgets('cmd+f focuses search', ...);                                    // desktop : le champ de la barre de titre ; mobile : /music/explore
+testWidgets('playback shortcuts go through sessionTarget', ...);             // Espace → la session rendue par sessionTarget (music en v1)
 testWidgets('menu bar items and shortcuts share one intent table', ...);
 testWidgets('window bounds are saved and restored', ...);
 testWidgets('first launch redirects to onboarding', ...);
@@ -940,6 +1012,82 @@ testWidgets('first launch redirects to onboarding', ...);
   Ses retours sont corrigés dans `design/` ou les coques, avec les tests verts, puis commités.
   La tâche 6 ne commence qu'après son accord, consigné dans le ledger
   (`Ruling (user): shell approved`).
+
+### Task 5r : identifiant `com.vehicoule` et domaine `vehicoule.com` (addendum §12)
+
+Une tâche isolée, après le commit de la Task 5 et avant son point de contrôle. L'identifiant
+de l'app devient **`com.vehicoule`** et son domaine **`vehicoule.com`** (sous-domaines
+`feeds.`, `updates.`, `telemetry.`), avant toute release : l'identifiant ne change plus
+ensuite. Cette tâche réécrit aussi les plans, celui-ci compris : son texte ne nomme les
+anciennes valeurs que dans les deux expressions de recherche ci-dessous, qui ne se
+trouvent pas elles-mêmes.
+
+**Files :**
+- Move : le dossier du paquet Kotlin sous `app/android/app/src/main/kotlin/` (l'ancien
+  identifiant découpé en dossiers) → `app/android/app/src/main/kotlin/com/vehicoule/`
+  (`git mv`), `package com.vehicoule` dans chaque fichier ; de même pour
+  `app/android/app/src/androidTest/kotlin/` s'il existe.
+- Modify :
+  - `app/android/app/build.gradle.kts` (`namespace`, `applicationId`) ;
+  - `app/macos/Runner/Configs/AppInfo.xcconfig` (`PRODUCT_BUNDLE_IDENTIFIER`),
+    `app/macos/Runner/Info.plist` (`CFBundleURLName`),
+    `app/macos/Runner.xcodeproj/project.pbxproj`,
+    `app/macos/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme`,
+    `app/ios/Runner.xcodeproj/project.pbxproj`, `app/linux/CMakeLists.txt` ;
+  - les canaux de plateforme (`com.vehicoule/notifications`, `com.vehicoule/downloads`,
+    `com.vehicoule/update`, l'id de canal de notification `com.vehicoule.playback`) dans
+    `MainActivity.kt` et `app/lib/platform/{downloads_service,lock_screen,notifications,updates}.dart` ;
+  - `core/core/src/android.rs` (symbole JNI `Java_com_vehicoule_RustInit_initVerifier`),
+    `core/core/src/{app,keys,updates}.rs` (`https://feeds.vehicoule.com/official/feed.json`,
+    `https://updates.vehicoule.com/releases`, le chemin de cache macOS du commentaire),
+    puis le pont régénéré (`app/lib/bridge/**`, jamais à la main) ;
+  - `core/plugin-host/src/engine.rs` (User-Agent `Vehicoule/<version> (+https://vehicoule.com)`),
+    `core/plugin-host/tests/net.rs` ;
+  - les tests Dart : `app/test/platform/{downloads_service,links,notifications,paths}_test.dart`,
+    `app/integration_test/bridge_test.dart` ;
+  - `probes/**` (supprimé à la Task 8, renommé ici pour que la recherche soit vide) ;
+  - `docs/superpowers/plans/2026-10-19-*.md`, `2026-10-23-*.md`,
+    `docs/superpowers/specs/2026-10-18-socle-musique-design.md` (§12 et chaque adresse).
+- Ne change pas : `docs/superpowers/specs/2026-10-25-navigation-domaines.md`, qui consigne
+  la décision et doit garder les deux anciennes valeurs ; c'est la seule exclusion des
+  recherches du Step 3 (ruling : la réécrire lui ferait dire « renommer X en X »).
+- Test : `core/core/src/android.rs` (`#[cfg(test)]`), les tests modifiés ci-dessus.
+
+**Interfaces :**
+- Produces : identifiant `com.vehicoule` (Android `applicationId` et `namespace`, bundle
+  macOS et iOS, `APPLICATION_ID` Linux, préfixe des canaux de plateforme) ; domaine
+  `vehicoule.com`. Les plans 8 et suivants les emploient tels quels.
+
+- [ ] **Step 1 : tests qui échouent.** Mettre les nouvelles valeurs dans les attentes :
+  `descriptive_user_agent_is_set` (plugin-host) attend `(+https://vehicoule.com)` ; les
+  tests Dart de canal attendent `com.vehicoule/…` ; `paths_test` attend
+  `Application Support/com.vehicoule` ; et un nouveau test Rust :
+  ```rust
+  #[test] fn jni_symbols_follow_the_kotlin_package() // lit le fichier `RustInit.kt` sous kotlin/com/vehicoule/, en tire `package com.vehicoule`,
+                                                    // et vérifie que android.rs déclare Java_com_vehicoule_RustInit_<fn> pour chaque `external fun`
+  ```
+  `cargo test -p plugin-host -p vehicoule-core` et `flutter test test/platform` → FAIL.
+- [ ] **Step 2 : renommer** (fichiers ci-dessus ; `git mv` pour le paquet Kotlin).
+  L'app installée avec l'ancien identifiant devient une autre app : ses données de dev ne
+  sont pas migrées (rien n'est sorti).
+- [ ] **Step 3 : vérifier que rien ne reste**, les trois commandes doivent être vides (contenu,
+  symboles JNI et chemins de plans, chemins de fichiers) :
+  ```bash
+  git grep -n -E "app\.vehicoule|vehicoule\.app" -- ':!docs/superpowers/specs/2026-10-25-navigation-domaines.md'
+  git grep -n -E "app[/_]vehicoule" -- ':!docs/superpowers/specs/2026-10-25-navigation-domaines.md'
+  git ls-files | grep -E "app[/_]vehicoule"
+  ```
+- [ ] **Step 4 : vérifier** : `cargo test --workspace` (dans `core/`), `cargo clippy
+  --workspace --all-targets -- -D warnings`, `cd app && flutter test`, `flutter analyze`,
+  `flutter build apk --debug`, `flutter build macos --debug` → PASS. Puis lancer l'app sur
+  l'émulateur Android (`flutter run --debug`) : elle démarre et charge l'accueil (le symbole
+  JNI est trouvé), et sur macOS.
+- [ ] **Step 5 : consigner au ledger**, dans « Pending user confirmation » : les
+  enregistrements DNS de `vehicoule.com` et les règles de redirection `feeds.`, `updates.`,
+  `telemetry.` (addendum §3.1), et la republication du feed officiel à sa nouvelle adresse.
+  Ce sont des étapes de l'utilisateur ; d'ici là, les vérifications passent par le feed de
+  dev local.
+- [ ] **Step 6 : commit** : `chore: identifiant com.vehicoule et domaine vehicoule.com (addendum §12)`.
 
 ### Task 5b : fil d'accueil et données du cœur pour la spec UI v2 (Rust, avant la Task 6)
 
@@ -1002,6 +1150,133 @@ qu'une page a moins de deux étagères hors écran.
   `cargo test -p core`, `cargo clippy -p core`, puis `cd app && flutter test` et
   `flutter analyze` → PASS. Commit —
   `feat(core): données de la spec UI v2 (sources activables, clé changée, taille de mise à jour, playlists d'un titre, candidats écoutables, progression d'import, année et durée, source bloquante, radio d'un titre)`.
+
+### Task 5c : proxy média local (Rust, crate `stream`) et mpv limité à `127.0.0.1`
+
+Surface d'attaque §2 et §9 : mpv ne reçoit plus jamais l'URL d'un plugin. Il suivait seul les
+redirections et les playlists HLS, hors de la liste de domaines et du refus des IP privées du
+socle §4.3. Désormais un serveur de `stream`, sur `127.0.0.1`, fait chaque requête avec les
+règles du plugin. Le plan 4 est clos : la tâche vit ici, avant les écrans d'écoute.
+
+**Files :**
+- Create : `core/stream/src/proxy.rs` (serveur, sessions, plages d'octets),
+  `core/stream/src/hls.rs` (réécriture des playlists, fonction pure),
+  `core/stream/tests/proxy.rs`, `app/integration_test/mpv_whitelist_test.dart`.
+- Modify :
+  - `core/stream/Cargo.toml` : `hyper` 1 (`server`, `http1`), `hyper-util` (`tokio`),
+    `http-body-util`, `bytes`, `tokio` (`net`, `sync`, `macros`), `uuid` du workspace (plus
+    la fonction `v4`, pour les jetons). Justification (surface
+    §7.2) : un serveur HTTP/1 minimal ; hyper est déjà dans le graphe par reqwest, Rust pur,
+    projet hyperium ; le stdlib n'a pas de serveur HTTP ;
+  - `core/stream/src/lib.rs` (`pub mod proxy; mod hls;`, `StreamError::Refused(String)`) ;
+  - `core/core/src/app.rs` (`App.proxy`, démarré dans `init`),
+    `core/core/src/player.rs` et `core/core/src/player/tests.rs` (chaque `Source` envoyée
+    au lecteur est une URL du proxy ; sessions fermées quand l'entrée quitte la courante et
+    la suivante ; erreur typée) ;
+  - `app/lib/platform/player.dart`, `app/test/platform/player_test.dart` ;
+  - `app/macos/Runner/Release.entitlements` (`com.apple.security.network.server`, que
+    `DebugProfile.entitlements` a déjà) ;
+  - `app/lib/debug/fake_api.dart` (ses `PlayerCommand` portent des URL `http://127.0.0.1:…`).
+- Test : les fichiers ci-dessus.
+
+**Interfaces :**
+- Consumes : `Host::check_url(&Plugin, &str)`, `Host::http_client(&Plugin)` (plugin-host :
+  chaque connexion et chaque redirection, 5 au plus, passent la liste du plugin ; DNS filtré,
+  IP privées refusées) ; `Resolution { plugin, source: Source { uri, headers }, mime, … }`
+  et `source_for` (fichier téléchargé ou réseau) de `player.rs`.
+- Produces :
+  ```rust
+  // core/stream/src/proxy.rs
+  pub type UrlCheck = Arc<dyn Fn(&reqwest::Url) -> Result<(), String> + Send + Sync>;
+  pub enum Upstream {
+      Remote { client: reqwest::Client, url: reqwest::Url, headers: Vec<(String, String)>, check: UrlCheck },
+      File { path: PathBuf },
+  }
+  pub struct Proxy;                                   // Clone ; un seul par App
+  impl Proxy {
+      pub async fn start() -> std::io::Result<Proxy>; // écoute 127.0.0.1:0 (port aléatoire)
+      pub fn open(&self, up: Upstream) -> ProxySession;
+      pub fn close(&self, token: &str);
+      pub fn take_error(&self, token: &str) -> Option<StreamError>; // la dernière requête refusée de la session
+  }
+  pub struct ProxySession { pub token: String, pub url: String } // url = http://127.0.0.1:<port>/<token>/0
+  // core/stream/src/hls.rs
+  pub(crate) fn is_playlist(content_type: Option<&str>, head: &[u8]) -> bool; // types mpegurl, ou corps commençant par #EXTM3U
+  pub(crate) fn rewrite(body: &str, base: &reqwest::Url, mut map: impl FnMut(reqwest::Url) -> String) -> String;
+  ```
+  `PlayerCommand::{Play, EnqueueNext, ReplaceNext}` portent `source.uri` = l'URL du proxy et
+  `source.headers` vide : les en-têtes du plugin restent côté Rust.
+- Règles (surface §2) :
+  - **Jeton** : 122 bits aléatoires (`uuid::Uuid::new_v4`, en hexadécimal) par session de
+    lecture, dans le chemin. Jeton inconnu ou fermé → 404. Chemins : `/<jeton>/0` (la source)
+    et `/<jeton>/u/<n>` (l'URL n° n d'une playlist réécrite, gardée côté Rust : mpv ne voit
+    jamais d'URL externe).
+  - **Chaque requête** vers l'amont passe `check` (la liste du plugin) puis le client du
+    plugin (redirections vérifiées, IP privées refusées après DNS). Refus → réponse 502 à mpv,
+    `StreamError::Refused` gardé pour `take_error`. Jamais 403 : mpv le classerait
+    `Forbidden` et relancerait la résolution.
+  - **Plages** : l'en-tête `Range` de mpv est transmis tel quel ; 206, `Content-Range`,
+    `Content-Length` et `Content-Type` de l'amont reviennent tels quels. Un fichier local est
+    servi avec la même sémantique (`bytes=a-b`, `bytes=a-`).
+  - **HLS** : une réponse qui est une playlist (`is_playlist`) est lue entière (plafond
+    1 Mio) et réécrite : chaque ligne d'URI, et l'attribut `URI="…"` de `#EXT-X-KEY`,
+    `#EXT-X-MAP`, `#EXT-X-MEDIA`, `#EXT-X-I-FRAME-STREAM-INF`, résolus contre l'URL de la
+    playlist, deviennent `/<jeton>/u/<n>`. Une URL que `check` refuse n'est pas ajoutée à la
+    table : la ligne devient une URL du proxy qui répond 502.
+  - **Fichiers et cache** : un titre téléchargé passe aussi par le proxy (`Upstream::File`) ;
+    mpv ne reçoit jamais `file://`.
+  - **Debug** : rien ne change pour le feed de dev local (`127.0.0.1:65200`) : le proxy ne
+    touche ni le téléchargement des feeds ni celui des plugins (`plugins.rs`), et les URL
+    de lecture qu'ils rendent passent le proxy comme les autres.
+- Règles mpv (`MediaKitBackend`, à la création du `Player`, par `NativePlayer.setProperty`) :
+  `ytdl=no`, `load-scripts=no`, `access-references=no`, `load-unsafe-playlists=no`,
+  `stream-lavf-o=protocol_whitelist=[http,tcp,crypto]`,
+  `demuxer-lavf-o=protocol_whitelist=[http,tcp,crypto]` (`crypto` : clés AES-128 du HLS,
+  servies par le proxy). `PlayerAdapter` refuse toute `Source` dont l'URI ne commence pas par
+  `http://127.0.0.1:` : il n'appelle pas le backend et rapporte
+  `PlayerEvent.error(kind: other)`.
+
+- [ ] **Step 1 : tests qui échouent**
+  ```rust
+  // core/stream/tests/proxy.rs (wiremock pour l'amont, reqwest pour jouer mpv)
+  #[tokio::test] async fn hls_segment_to_a_private_ip_is_refused()   // playlist dont un segment est http://10.0.0.1/s.ts → ce segment 502, take_error == Some(Refused), les autres 200
+  #[tokio::test] async fn redirect_outside_the_plugin_domains_is_refused() // 302 vers un hôte hors liste → 502, Refused
+  #[tokio::test] async fn wrong_token_is_404()
+  #[tokio::test] async fn closed_session_is_404()
+  #[tokio::test] async fn range_is_forwarded_and_206_comes_back()   // Range: bytes=100-199 → 206, Content-Range et 100 octets
+  #[tokio::test] async fn local_file_is_served_with_ranges()
+  #[tokio::test] async fn rewritten_playlist_holds_no_external_url() // variante, segments, EXT-X-KEY, EXT-X-MAP → toutes en http://127.0.0.1:<port>/<jeton>/u/<n>
+  #[test] fn rewrite_resolves_relative_uris_against_the_playlist()
+  // core/core/src/player/tests.rs
+  #[tokio::test] async fn player_commands_carry_proxy_urls_only()   // Play, EnqueueNext, ReplaceNext, et un titre téléchargé : uri commence par http://127.0.0.1:, headers vides
+  #[tokio::test] async fn sessions_close_when_entries_leave()        // après Play d'une autre piste, l'ancienne URL → 404
+  ```
+  ```dart
+  // app/test/platform/player_test.dart
+  test('mpv joins no other host', ...);       // « mpv ne joint aucun autre hôte » : Play d'une Source https://cdn.example/x → backend.open jamais appelé, Error(other) rapportée ;
+                                              // les options de MediaKitBackend.mpvOptions contiennent les deux protocol_whitelist et ytdl=no
+  test('release entitlements allow the proxy', ...); // macos/Runner/Release.entitlements contient com.apple.security.network.server
+  // app/integration_test/mpv_whitelist_test.dart (macOS, vrai mpv)
+  testWidgets('mpv refuses file and other hosts', ...); // avec les options : file:///System/Library/Sounds/Ping.aiff → erreur ;
+                                              // une playlist servie en local dont le segment est file:// → erreur ; une source du proxy → du son (position > 0)
+  ```
+  `cargo test -p vehicoule-stream -p vehicoule-core` et `flutter test test/platform` → FAIL.
+- [ ] **Step 2 : implémenter** `stream::proxy` et `stream::hls`, puis le branchement dans
+  `player.rs` : `send_play` et l'envoi de la suivante ouvrent une session par entrée
+  (`Upstream::Remote` avec `host.http_client(&plugin)` et un `check` qui appelle
+  `host.check_url(&plugin, …)`, ou `Upstream::File`) ; une `PlayerEvent::Error` de l'entrée
+  consulte `take_error` : `Refused` est consigné (`logs::push`, sans URL) et traité comme une
+  erreur réseau, jamais comme `Forbidden`.
+- [ ] **Step 3 : implémenter le côté Dart** : `MediaKitBackend.mpvOptions` (la table
+  ci-dessus, appliquée à la création) et le refus dans `PlayerAdapter`.
+- [ ] **Step 4 : vérifier** : `cargo test -p vehicoule-stream -p vehicoule-core` (deux fois),
+  `cargo clippy --workspace --all-targets -- -D warnings`, `cd app && flutter test`,
+  `flutter analyze`, `flutter test integration_test/mpv_whitelist_test.dart -d macos` → PASS.
+  Puis, en debug avec le feed de dev (`--dart-define=VEHICOULE_DEV_FEED=…`,
+  `VEHICOULE_DEV_PLAY=…`) sur macOS et l'émulateur : le titre joue, et le journal de mpv
+  ne montre que des URL `http://127.0.0.1:`. Enfin `flutter build macos --release` et un
+  titre joué dans ce build.
+- [ ] **Step 5 : commit** : `feat(stream): proxy média local (règles du plugin à chaque requête, HLS réécrit), mpv limité à 127.0.0.1`.
 
 ### Task 6 : écrans d'écoute (accueil, Explorer, pages, lecteur, file, paroles)
 
@@ -1072,7 +1347,7 @@ qu'une page a moins de deux étagères hors écran.
     - sans `browse` (`browseCategories` lève `NoPlugin(browse)`) et sans étagère
       `Discovery`, une carte envoie vers Explorer ;
     - `Mixes` : `VCarousel(kind: VCarouselKind.hero)`, un toucher appelle `playMix(artistId:)` ;
-    - `End` : la carte « Tu as fait le tour » vers `/explore` ;
+    - `End` : la carte « Tu as fait le tour » vers `/music/explore` ;
     - une étagère entre par `vEntrance(index, …)` la première fois qu'elle est construite, et
       plus jamais ;
     - la carte héros se rétracte en sortant de l'écran (échelle 1 → 0,92 et parallaxe) ;
@@ -1105,7 +1380,7 @@ qu'une page a moins de deux étagères hors écran.
     - les catégories s'affichent dès que `browseCategories()` rend `Ok` (même hors ligne,
       depuis le cache) ; sur `Err(Offline)` ou `Err(NoPlugin(browse))`, la recherche locale
       et l'historique restent, les vedettes et la grille sont remplacées par un message ;
-    - `/category/:id` : `browseCategory(id:, cursor:)`, ses étagères paginées, leur titre
+    - `/music/explore/category/:id` (et `/home/music/category/:id` depuis l'Accueil) : `browseCategory(id:, cursor:)`, ses étagères paginées, leur titre
       (`tracks`, `albums`, `artists`, `playlists`) traduit ; la copie du cache
       (`fromCache`) est signalée ; split button « Lire | ▾ ».
   - **Pages** (spec UI §6.4, §6.5) :
@@ -1270,9 +1545,12 @@ testWidgets('desktop: hover shows play on the row number', ...);
 - Create :
   - `app/lib/features/music/library/{library_page,collection_list,track_list_page,top_page,history_page,sort_sheet}.dart` ;
   - `features/music/library/{new_playlist_sheet,import_dialog}.dart` ;
-  - `features/music/settings/{settings_page,appearance_page,sources_page,add_source_sheet,diagnostics_page}.dart`
-    (`parseSourceLink` dans `add_source_sheet.dart`) ;
-  - `features/music/downloads/downloads_page.dart` ;
+  - écrans globaux (addendum §2.3, §12 : ils ne sont plus propres à la musique) :
+    `features/app/settings/{settings_page,appearance_page,diagnostics_page}.dart` (routes
+    `/settings`, `/settings/appearance`, `/settings/diagnostics`),
+    `features/app/sources/{sources_page,add_source_sheet}.dart` (route `/sources` ;
+    `parseSourceLink` dans `add_source_sheet.dart`),
+    `features/app/downloads/downloads_page.dart` (route `/downloads`) ;
   - `features/music/onboarding/onboarding_page.dart`, `features/music/updates/update_sheet.dart`.
 - Modify : `app/lib/router.dart` (`links()` → `AddSourceSheet` ; `Notice.updateAvailable` →
   `update_sheet`), `app/pubspec.yaml` (`share_plus: 13.3.1`), `app/lib/debug/fake_api.dart`,
@@ -1341,7 +1619,8 @@ testWidgets('desktop: hover shows play on the row number', ...);
     « Ouvrir » ; `ImportResult.truncated` → mention « playlist tronquée à 50 pages ».
   - **Réglages** : `VListGroup` et `VListRow` (listes M3E en groupes arrondis). Les choix sont
     des `VChoiceGroup` (groupes de boutons connectés), jamais des listes radio ni des segmented
-    buttons.
+    buttons. Ordre (addendum §2.3) : les sections générales, puis une section par domaine ;
+    en v1 « Lecture » est la section **Musique**, les autres sont générales.
     - Apparence (`appearance_page`, `/settings/appearance`) :
       - en haut, un **aperçu en direct** : un `VNowPlaying(size: PlayerSize.compact)` sur ce
         qui joue, ou sur un titre de `sampleTracks` en pochette absente, qui se met à jour à
@@ -1395,7 +1674,7 @@ testWidgets('desktop: hover shows play on the row number', ...);
     - « Ajouter » → `addFeed` (toucher « Ajouter » vaut accord explicite), puis snackbar
       « <nom> ajoutée » ;
     - jamais d'ajout sans la feuille, ni case à cocher ni champ de clé.
-  - **Écran Sources** (`sources_page`, `/settings/sources`) :
+  - **Écran Sources** (`sources_page`, `/sources`) :
     - `feeds()` groupés par origine (Officiel, puis chaque lien) ; une ligne par source
       (`installedPlugins`) avec ce qu'elle fait en mots et un `VSwitch` →
       `setPluginEnabled(id, enabled)` ;
@@ -1419,7 +1698,7 @@ testWidgets('desktop: hover shows play on the row number', ...);
     Android, `share_plus` le partage ; sur macOS, il est copié dans `~/Downloads` et montré
     dans le Finder. Puis ouverture de `https://github.com/Vehicoule/vehicoule/issues/new`
     sans aucune donnée dans l'URL.
-  - **Téléchargements** (`/downloads`, ouvert depuis le rail) :
+  - **Téléchargements** (`/downloads`, section globale ouverte depuis le ☰ et le bas du rail) :
     - `downloads()`, avec les titres via `tracks(ids)`, et l'annulation ;
     - en tête, la barre de stockage (`downloadStorage()` : musique téléchargée / espace
       libre) ;
@@ -1498,7 +1777,7 @@ testWidgets('report never puts data in the issue URL', ...);  // URL ouverte == 
 - Create : `app/integration_test/startup_mobile_test.dart`,
   `app/integration_test/startup_desktop_test.dart`, `app/test/a11y_test.dart`,
   `app/test/goldens/screens_golden_test.dart` (et ses images sous `app/test/goldens/`),
-  `.github/workflows/ci.yml`
+  `.github/workflows/ci.yml`, `core/deny.toml` (surface §7.2)
 - Modify : `app/lib/debug/fake_api.dart` (le parcours de démarrage : recherche « halo »,
   lecture)
 - Delete : `probes/` (remplacé par le socle, spec de l'étape 1)
@@ -1535,9 +1814,24 @@ testWidgets('screens match their goldens', ...);       // matrice clair/sombre �
   (`flutter test`, goldens compris, `flutter test integration_test -d macos`,
   `flutter build macos`) ; compilation seule : `flutter build ios --no-codesign`,
   `flutter build windows`, `flutter build linux` (chacun sur son runner).
+  Job **dépendances** (surface §7.2, §5), sur chaque push :
+  - `cargo deny check` avec `core/deny.toml` : `advisories` (RustSec) ; `licenses` (permises :
+    MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, ISC,
+    MPL-2.0, Unicode-3.0, Zlib, CC0-1.0, OpenSSL, CDLA-Permissive-2.0 ; toute autre fait
+    échouer) ; `bans` (doublons en avertissement) ; `sources` (crates.io et
+    `https://github.com/Vehicoule/*` seulement) ;
+  - `osv-scanner scan source --lockfile app/pubspec.lock --lockfile core/Cargo.lock` ;
+  - `test -z "$(cargo tree -i ring --target all)"` dans `core/` (vide aujourd'hui ; le plan 8
+    retire aussi `ring` de `Cargo.lock` et le bannit).
+
+  Une faille connue **bloque la release, pas le développement** : le job a
+  `continue-on-error: ${{ !startsWith(github.ref, 'refs/tags/v') }}`, et le job de release
+  Android dépend de lui.
 - [ ] **Step 5 : vérifier** — `flutter test` → PASS ; `flutter analyze` → PASS ;
   `flutter test integration_test -d macos` → PASS ; `git rm -r probes`.
-- [ ] **Step 6 : commit** — `test(app): démarrage par coque, accessibilité, tests dorés ; CI ; retrait des sondes`.
+  Puis, en local : `cargo deny check` (dans `core/`) et `osv-scanner` sur les deux lockfiles
+  → sortie consignée au rapport ; une alerte trouvée va au ledger, pas dans cette tâche.
+- [ ] **Step 6 : commit** — `test(app): démarrage par coque, accessibilité, tests dorés ; CI (dont cargo deny, osv-scanner, ring) ; retrait des sondes`.
 
 ### Task 9 : validation finale sur appareils (manuelle, après le plan 6)
 
@@ -1571,13 +1865,20 @@ testWidgets('screens match their goldens', ...);       // matrice clair/sombre �
     `MenuBarState` décode l'état reçu, fonction pure) ;
   - `app/macos/Runner/{en,fr}.lproj/Localizable.strings` (« Ouvrir Vehicoule », …) ;
   - `app/macos/RunnerTests/MenuBarStateTests.swift` (XCTest) ;
-  - `app/lib/platform/{home_widget,menu_bar}.dart`.
-- Modify : `app/pubspec.yaml` (`home_widget: 0.10.0`), `AndroidManifest.xml` (filtre
-  d'intent `vehicoule://now-playing`), `app/android/app/src/main/res/values{,-fr}/strings.xml`
-  (« Reprendre »), `app/macos/Runner/AppDelegate.swift`,
+  - `app/lib/platform/{home_widget,menu_bar}.dart` ;
+  - `app/lib/platform/resume.dart` (la carte Reprendre, partagée par le widget, les
+    raccourcis d'icône et le menu du Dock ; addendum §7, §12) ;
+  - `app/android/app/src/main/kotlin/app/vehicoule/ResumeShortcuts.kt` (raccourcis dynamiques,
+    `ShortcutManagerCompat`).
+- Modify : `app/pubspec.yaml` (`home_widget: 0.10.0`), `AndroidManifest.xml` (filtres
+  d'intent `vehicoule://now-playing` et `vehicoule://resume`),
+  `app/android/app/src/main/res/values{,-fr}/strings.xml`
+  (« Reprendre »), `MainActivity.kt` (canal `app.vehicoule/shortcuts`),
+  `app/macos/Runner/AppDelegate.swift` (menu du Dock, `applicationDockMenu(_:)`),
+  `app/lib/platform/links.dart` (route `resume`),
   `app/macos/Runner.xcodeproj/project.pbxproj` (les fichiers Swift compilés),
   `app/lib/main.dart` (abonnements), `app/lib/router.dart` (`links()` : `now-playing` ouvre
-  le lecteur), `features/music/settings/settings_page.dart` (`MenuBar.setVisible` après
+  le lecteur), `features/app/settings/settings_page.dart` (`MenuBar.setVisible` après
   `setUiPref("ui.menu_bar")`).
 - Test : `app/test/platform/{home_widget,menu_bar}_test.dart`, `app/android/app/src/androidTest/kotlin/app/vehicoule/widget/NowPlayingWidgetTest.kt`, `MenuBarStateTests.swift`.
 
@@ -1588,7 +1889,14 @@ testWidgets('screens match their goldens', ...);       // matrice clair/sombre �
 - Produces :
   ```dart
   class HomeWidgetPublisher { void start(Stream<NowPlaying> s, PlayerAdapter p, ThemeController t); } // publie title, artist, artworkPath, playing (p.playing), seed ARGB (t), resumable via home_widget, puis demande la mise à jour du widget
-  class MenuBar { void start(Stream<NowPlaying> s, PlayerAdapter p); void setVisible(bool visible); } // canal "vehicoule/menu_bar" : Dart → Swift `state` ; Swift → Dart `command` (prev, toggle, next, like, open)
+  class MenuBar { void start(Stream<NowPlaying> s, PlayerAdapter p); void setVisible(bool visible); } // canal "vehicoule/menu_bar" : Dart → Swift `state` ; Swift → Dart `command` (prev, toggle, next, like, open, resume)
+  // platform/resume.dart — v1 : une seule carte, la file musique sauvegardée (le plan 8 la tire de l'étagère Resume)
+  class ResumeCard { const ResumeCard({required String domain, required String title, String? subtitle, String? artworkPath, required Uri link}); }
+  ResumeCard? resumeCardOf(QueueView q, String? artworkPath); // q.current == null → null ; title = q.context?.title ?? q.current.title ;
+                                                              // subtitle = titre courant ; link = vehicoule://resume/music
+  class ResumePublisher { void start(Stream<QueueView> s); }  // à chaque QueueView : le widget (via HomeWidgetPublisher), les raccourcis Android (canal shortcuts : set(cards) / clear)
+                                                              // et le menu du Dock (champ `resume` de l'état du canal vehicoule/menu_bar)
+  Stream<Uri> resumeLinks();                                  // links.dart ; vehicoule://resume/<domaine> → queueOp(QueueOp.jumpTo(currentEntry)) puis lecture
   ```
 - Règles (spec UI §6.8) : ce sont deux interfaces natives, sans logique.
   - **Android** : deux tailles.
@@ -1600,7 +1908,13 @@ testWidgets('screens match their goldens', ...);       // matrice clair/sombre �
     des intents à la session média d'`audio_service` (`MediaButtonReceiver`, déclaré à la
     Task 4), ce qui fonctionne sans interface Flutter. Like envoie l'action personnalisée
     `like` de la même session, comme la notification : pas d'isolat en arrière-plan ni de
-    second cœur. Sans lecture, le widget affiche « Reprendre ».
+    second cœur. Sans lecture, le 4×2 affiche **la carte Reprendre** (`ResumeCard` : pochette,
+    « Reprendre », titre de la file) et son toucher ouvre `vehicoule://resume/music` ; sans
+    file sauvegardée, l'icône de l'app et « Ouvrir Vehicoule ».
+  - **Raccourcis Reprendre** (addendum §7) : l'appui long sur l'icône Android montre un
+    raccourci dynamique par carte Reprendre (« Reprendre · <titre> », icône = la pochette en
+    cookie), mis à jour par `ResumePublisher` ; le menu du Dock macOS montre les mêmes cartes,
+    au-dessus des entrées du système. Les deux ouvrent le lien de la carte.
   - **macOS** :
     - `NSStatusItem` avec une note, animée pendant la lecture ;
     - popover SwiftUI : pochette cookie avec l'anneau, titre, artiste, ⏮ ⏯ ⏭, like,
@@ -1614,10 +1928,15 @@ testWidgets('screens match their goldens', ...);       // matrice clair/sombre �
   test('menu bar sends state and maps commands to the player', ...);   // command "toggle" → PlayerAdapter.togglePlay
   test('menu bar hides when ui.menu_bar is false and on setVisible(false)', ...);
   test('now-playing link opens the player', ...);
+  test('resume card comes from the saved queue', ...);                 // resumeCardOf : titre du contexte, sinon du titre ; null sans titre courant
+  test('the widget shows the resume card when nothing plays', ...);    // playing false + file sauvegardée → resume publié
+  test('resume cards reach the shortcuts channel and the dock menu', ...); // canal shortcuts set([card]) ; état menu_bar avec resume
+  test('resume link jumps to the saved entry', ...);                   // vehicoule://resume/music → queueOp(QueueOp.jumpTo(currentEntry))
   ```
   Côté Android, le test instrumenté `NowPlayingWidgetTest` vérifie que l'état publié est
-  rendu, et que ⏯ envoie `KEYCODE_MEDIA_PLAY_PAUSE` à la session. Côté macOS,
-  `MenuBarStateTests` vérifie le décodage de l'état reçu par le canal.
+  rendu, que ⏯ envoie `KEYCODE_MEDIA_PLAY_PAUSE` à la session, et que la carte Reprendre
+  s'affiche sans lecture. Côté macOS, `MenuBarStateTests` vérifie le décodage de l'état reçu
+  par le canal (cartes Reprendre comprises) ; le menu du Dock est construit depuis cet état.
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
 - [ ] **Step 3 : implémenter.**
 - [ ] **Step 4 : vérifier** : `flutter test test/platform`, `flutter analyze`, puis le test
