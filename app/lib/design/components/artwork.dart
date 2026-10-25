@@ -465,9 +465,9 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
                           : _spin.value * 2 * math.pi * (1 - _morph.value),
                       progress: shown,
                       played: scheme.primary,
-                      // Half the outline: visible on the player's tinted background in both
-                      // themes, quieter than the played part.
-                      track: scheme.outline.withValues(alpha: 0.5),
+                      // The theme's secondary, lightened: tinted, and visible on the
+                      // player's surfaces in light, dark and pure black.
+                      track: scheme.secondary.withValues(alpha: 0.45),
                     ),
                   );
                 },

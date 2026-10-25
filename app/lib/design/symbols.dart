@@ -98,8 +98,9 @@ class VSymbol extends StatelessWidget {
   @override
   Widget build(BuildContext context) => TweenAnimationBuilder<double>(
     tween: Tween(end: filled ? 1 : 0),
-    duration: vMotion(context, VDurations.short),
-    curve: VCurves.standard,
+    // The heart fills (and the active icon thickens) on the M3E effects spring.
+    duration: vMotion(context, VDurations.medium),
+    curve: VCurves.spring,
     builder: (context, fill, _) => TweenAnimationBuilder<double>(
       tween: Tween(end: weight),
       duration: vMotion(context, VDurations.short),

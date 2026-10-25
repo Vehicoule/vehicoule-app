@@ -11,6 +11,7 @@ double contrast(Color a, Color b) {
 }
 
 void main() {
+  pureBlackTests();
   test('token color pairs meet WCAG AA for every source', () {
     // Self-check of the formula: black on white is 21:1.
     expect(
@@ -58,6 +59,42 @@ void main() {
         }
         if (black) expect(s.surface, const Color(0xFF000000));
       }
+    }
+  });
+}
+
+void pureBlackTests() {
+  test('pure black keeps tonal blocks and containers readable, not dull', () {
+    for (var h = 0; h < 360; h += 30) {
+      final seed = Color(Hct.from(h.toDouble(), 80, 50).toInt());
+      final s = vTheme(
+        brightness: Brightness.dark,
+        seed: seed,
+        pureBlack: true,
+      ).colorScheme;
+      expect(
+        contrast(s.secondaryContainer, s.surface),
+        greaterThanOrEqualTo(2),
+        reason: 'tonal blocks, hue $h',
+      );
+      expect(
+        contrast(s.surfaceContainer, s.surface),
+        greaterThanOrEqualTo(1.4),
+        reason: 'toolbar, hue $h',
+      );
+      expect(
+        contrast(s.surfaceContainerHigh, s.surface),
+        greaterThanOrEqualTo(1.6),
+        reason: 'chips, hue $h',
+      );
+      expect(
+        contrast(s.onSurface, s.surfaceContainerHighest),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        contrast(s.onSecondaryContainer, s.secondaryContainer),
+        greaterThanOrEqualTo(4.5),
+      );
     }
   });
 }

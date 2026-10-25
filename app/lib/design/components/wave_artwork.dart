@@ -19,10 +19,15 @@ class VWaveArtwork extends StatefulWidget {
     required this.playing,
     required this.onSeek,
     this.seekStep = 0.05,
+    this.height,
   });
 
   final String itemId;
   final double width;
+
+  /// Taller than wide on a tall screen (up to 1.15×, the player decides): the cover is
+  /// cropped to fill it. Null: square.
+  final double? height;
   final double progress;
   final bool playing;
   final ValueChanged<double> onSeek;
@@ -82,18 +87,25 @@ class _VWaveArtworkState extends State<VWaveArtwork>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final w = widget.width;
+    final w = widget.width, h = widget.height ?? widget.width;
+    final cover = math.max(w, h);
     // Only the bottom band (the edge) is grabbed; a drag shows where it will land.
     return SizedBox(
       width: w,
-      height: w,
+      height: h,
       child: VSeekable(
         progress: widget.progress,
         onSeek: widget.onSeek,
         step: widget.seekStep,
         hit: (local, size) => local.dy >= size.height - VSize.menuTarget,
         shape: const RoundedRectangleBorder(),
-        child: VArtworkPicture(itemId: widget.itemId, size: w),
+        child: ClipRect(
+          child: OverflowBox(
+            maxWidth: cover,
+            maxHeight: cover,
+            child: VArtworkPicture(itemId: widget.itemId, size: cover),
+          ),
+        ),
         builder: (context, shown, picture) => RepaintBoundary(
           child: AnimatedBuilder(
             animation: Listenable.merge([_phase, _amp]),
@@ -104,7 +116,7 @@ class _VWaveArtworkState extends State<VWaveArtwork>
                   wave: wave,
                   progress: shown,
                   played: scheme.primary,
-                  rest: scheme.secondaryContainer,
+                  rest: scheme.secondary.withValues(alpha: 0.45),
                 ),
                 child: ClipPath(clipper: _WaveClipper(wave), child: child),
               );

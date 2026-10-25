@@ -271,16 +271,22 @@ class VDownloadIcon extends StatelessWidget {
     final reduced = reduceMotion(context);
     final (Widget icon, String label) = switch (state) {
       DownloadStateView.done => (
-        VSymbol(VIcons.downloadDone, filled: true, size: size),
+        VSymbol(VIcons.check, filled: true, weight: 600, size: size),
         l.downloaded,
       ),
+      // The download icon inside an M3E circular progress, never a bare arc. Queued
+      // has no progress yet: the ring turns, or waits at zero with reduce motion.
       DownloadStateView.queued || DownloadStateView.running => (
-        M3EProgressIndicator.circular(
-          // Queued has no progress yet: an indeterminate ring turns, unless motion is
-          // reduced, where it waits at zero.
-          value: progress ?? (reduced ? 0 : null),
-          size: size,
-          strokeWidth: VSize.iconStroke,
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            M3EProgressIndicator.circular(
+              value: progress ?? (reduced ? 0 : null),
+              size: size,
+              strokeWidth: VSize.iconStroke,
+            ),
+            VSymbol(VIcons.download, size: size * 0.6),
+          ],
         ),
         l.downloading,
       ),

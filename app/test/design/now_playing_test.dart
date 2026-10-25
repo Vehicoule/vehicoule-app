@@ -782,18 +782,14 @@ void layoutTests() {
     }
   }
 
-  testWidgets('a tall phone centres the player between header and selector', (
+  testWidgets('a tall phone keeps the artwork near the header, large', (
     tester,
   ) async {
     await show(tester, player(), size: const Size(412, 1100));
     final header = tester.getRect(find.byKey(VNowPlaying.headerKey));
     final art = tester.getRect(find.byKey(VNowPlaying.artworkKey));
-    final controls = tester.getRect(find.byKey(VNowPlaying.controlsKey));
-    final selector = tester.getRect(find.byKey(VNowPlaying.selectorKey));
-    final above = art.top - header.bottom;
-    final below = selector.top - controls.bottom;
-    expect(above, greaterThan(VSpace.s32), reason: 'room to spare');
-    expect((above - below).abs(), lessThan(VSpace.s24));
+    expect(art.top - header.bottom, lessThanOrEqualTo(VSpace.s32));
+    expect(art.width, greaterThanOrEqualTo(412 - 2 * VSpace.s16 - 0.5));
   });
 
   testWidgets(

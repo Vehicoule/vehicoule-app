@@ -163,9 +163,14 @@ class VRingPainter extends CustomPainter {
     required this.played,
     required this.track,
     this.stroke = VSize.ringStroke,
+    this.stop = true,
   });
 
   final double stroke;
+
+  /// The M3E stop indicator: a dot in the played colour where the track ends (just
+  /// before 12 o'clock), so the end reads without the track's contrast.
+  final bool stop;
 
   final VRingGeometry geometry;
 
@@ -192,6 +197,10 @@ class VRingPainter extends CustomPainter {
       _line(geometry.played(progress, turn: turn)),
       pen..color = played,
     );
+    final rest = geometry.rest(progress, turn: turn, gap: stroke);
+    if (stop && rest.isNotEmpty && progress > 0) {
+      canvas.drawCircle(rest.last, stroke / 2, Paint()..color = played);
+    }
   }
 
   @override
@@ -201,5 +210,6 @@ class VRingPainter extends CustomPainter {
       old.progress != progress ||
       old.played != played ||
       old.track != track ||
-      old.stroke != stroke;
+      old.stroke != stroke ||
+      old.stop != stop;
 }

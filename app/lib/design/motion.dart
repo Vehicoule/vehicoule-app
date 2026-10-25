@@ -2,6 +2,7 @@
 /// Screens and shells never write `Duration(` or `Curves.` (guarded by test/design).
 library;
 
+import 'package:flutter/physics.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -42,6 +43,31 @@ abstract final class VCurves {
   static const emphasizedAccelerate = M3EMotion.emphasizedAccelerate;
   static const standard = M3EMotion.standard;
   static const linear = M3EMotion.linear;
+
+  /// The M3E effects spring as a curve, for tweens (an icon's fill, a colour).
+  static final spring = VSpringCurve(VSprings.effects);
+}
+
+/// A spring as a [Curve]: the spring from 0 to 1, read over the time it takes to
+/// settle, so a tween lands exactly on 1.
+class VSpringCurve extends Curve {
+  VSpringCurve(this.spring);
+
+  final SpringDescription spring;
+
+  late final _sim = SpringSimulation(spring, 0, 1, 0);
+
+  /// When the spring is within a hair of 1 and still.
+  late final double _settle = () {
+    var t = 0.0;
+    while (t < 5 && !_sim.isDone(t)) {
+      t += 0.01;
+    }
+    return t;
+  }();
+
+  @override
+  double transformInternal(double t) => _sim.x(t * _settle);
 }
 
 /// M3E springs, from the package tokens.

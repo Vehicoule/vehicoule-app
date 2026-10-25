@@ -40,10 +40,22 @@ ThemeData vTheme({
       surfaceDim: tone(92),
     );
   } else if (pureBlack) {
+    // On black, the containers step up a few tones so toolbars, chips and tonal
+    // blocks keep their edge instead of going dull.
+    final n = SchemeTonalSpot(
+      sourceColorHct: Hct.fromInt(pastel.toARGB32()),
+      isDark: true,
+      contrastLevel: 0,
+    ).neutralPalette;
+    Color tone(int t) => Color(n.get(t));
     cs = cs.copyWith(
       surface: _black,
       surfaceDim: _black,
       surfaceContainerLowest: _black,
+      surfaceContainerLow: tone(10),
+      surfaceContainer: tone(16),
+      surfaceContainerHigh: tone(22),
+      surfaceContainerHighest: tone(26),
     );
   }
   final base = ThemeData(colorScheme: cs, useMaterial3: true);

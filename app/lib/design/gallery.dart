@@ -17,6 +17,7 @@ import '../bridge/api/app.dart' as core;
 import '../bridge/api/catalog.dart' as core;
 import '../bridge/api/plugins.dart' as core;
 import '../bridge/app.dart' as core show AppConfig, Platform;
+import '../bridge/catalog.dart';
 import '../bridge/downloads.dart';
 import '../bridge/frb_generated.dart';
 import '../bridge/error.dart';
@@ -111,14 +112,14 @@ class GalleryCovers {
 
 enum _Brightness { light, dark, black }
 
-/// The theme's color source: three sample artworks, the system, two presets.
+/// The theme's color source: what's playing (the default, spec UI §2.2), the system,
+/// two presets.
 sealed class _Source {
   const _Source();
 }
 
-class _Art extends _Source {
-  const _Art(this.n);
-  final int n;
+class _NowPlaying extends _Source {
+  const _NowPlaying();
 }
 
 class _System extends _Source {
@@ -131,7 +132,7 @@ class _Preset extends _Source {
 }
 
 class GalleryApp extends StatefulWidget {
-  const GalleryApp({super.key, this.covers, this.resolve});
+  const GalleryApp({super.key, this.covers, this.resolve, this.seedFile});
 
   /// Null in tests and without a core: missing covers everywhere.
   final GalleryCovers? covers;
@@ -139,13 +140,20 @@ class GalleryApp extends StatefulWidget {
   /// Pictures from elsewhere (screenshots of the gallery); [covers] wins.
   final ArtworkSource? resolve;
 
+  /// The 112 px cover file of a sample id, for the theme's seed (tests); [covers] wins.
+  final Future<String?> Function(String itemId)? seedFile;
+
   @override
   State<GalleryApp> createState() => _GalleryAppState();
 }
 
 class _GalleryAppState extends State<GalleryApp> {
   _Brightness _brightness = _Brightness.light;
-  _Source _source = const _Art(1);
+  _Source _source = const _NowPlaying();
+
+  /// The sample track that plays: the gallery's players show it, and with « Ce qui
+  /// joue » the theme takes its seed from its cover.
+  int _playing = 1;
   Color _seed = VPresets.seeds.first;
   bool _reduce = false;
   Locale _locale = const Locale('fr');
@@ -158,22 +166,34 @@ class _GalleryAppState extends State<GalleryApp> {
 
   Future<void> _apply(_Source s) async {
     setState(() => _source = s);
+    final playing = _playing;
     final seed = switch (s) {
-      _Art(:final n) => await _artSeed(n),
+      _NowPlaying() => await _artSeed(sampleTracks[playing].id),
       _System() => await systemSeed(),
       _Preset(:final n) => VPresets.seeds[n - 1],
     };
-    if (mounted && seed != null && _source == s) setState(() => _seed = seed);
+    if (mounted && seed != null && _source == s && _playing == playing) {
+      setState(() => _seed = seed);
+    }
   }
 
-  /// The seed of sample track [n]'s cover: the 112 px file, as for what's playing.
-  Future<Color?> _artSeed(int n) async {
-    final path = await widget.covers?.file(sampleTracks[n - 1].id, 112);
+  /// The seed of a track's cover: its 112 px file, extracted once per cover
+  /// (`seedFromArtwork`, pastel, cached).
+  Future<Color?> _artSeed(String id) async {
+    final path =
+        await (widget.covers?.file(id, 112) ?? widget.seedFile?.call(id));
     return path == null ? null : seedFromArtwork(path);
+  }
+
+  /// The next sample track plays: the players follow, and so does the theme.
+  void _next() {
+    setState(() => _playing = (_playing + 1) % sampleTracks.length);
+    if (_source is _NowPlaying) _apply(_source);
   }
 
   @override
   Widget build(BuildContext context) {
+    _playingIndex = _playing;
     final dark = _brightness != _Brightness.light;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -194,20 +214,43 @@ class _GalleryAppState extends State<GalleryApp> {
           child: vAppBuilder(context, child),
         ),
       ),
-      home: _GalleryPage(
-        controls: _Controls(
-          brightness: _brightness,
-          source: _source,
-          reduce: _reduce,
-          locale: _locale,
-          onBrightness: (b) => setState(() => _brightness = b),
-          onSource: _apply,
-          onReduce: (r) => setState(() => _reduce = r),
-          onLocale: (l) => setState(() => _locale = l),
+      home: _GalleryTrack(
+        index: _playing,
+        next: _next,
+        child: _GalleryPage(
+          controls: _Controls(
+            brightness: _brightness,
+            source: _source,
+            reduce: _reduce,
+            locale: _locale,
+            onBrightness: (b) => setState(() => _brightness = b),
+            onSource: _apply,
+            onReduce: (r) => setState(() => _reduce = r),
+            onLocale: (l) => setState(() => _locale = l),
+            onNext: _next,
+          ),
         ),
       ),
     );
   }
+}
+
+/// The playing sample track, for the sections that show it.
+class _GalleryTrack extends InheritedWidget {
+  const _GalleryTrack({
+    required this.index,
+    required this.next,
+    required super.child,
+  });
+
+  final int index;
+  final VoidCallback next;
+
+  static _GalleryTrack? watch(BuildContext c) =>
+      c.dependOnInheritedWidgetOfExactType<_GalleryTrack>();
+
+  @override
+  bool updateShouldNotify(_GalleryTrack old) => old.index != index;
 }
 
 class _Controls extends StatelessWidget {
@@ -220,8 +263,10 @@ class _Controls extends StatelessWidget {
     required this.onSource,
     required this.onReduce,
     required this.onLocale,
+    required this.onNext,
   });
 
+  final VoidCallback onNext;
   final _Brightness brightness;
   final _Source source;
   final bool reduce;
@@ -250,12 +295,11 @@ class _Controls extends StatelessWidget {
           (_Brightness.black, l.themePureBlack),
         ])
           choice(label, brightness == b, () => onBrightness(b)),
-        for (final n in [1, 2, 3])
-          choice(
-            l.colorSourceArtwork(n),
-            source is _Art && (source as _Art).n == n,
-            () => onSource(_Art(n)),
-          ),
+        choice(
+          l.colorSourceNowPlaying,
+          source is _NowPlaying,
+          () => onSource(const _NowPlaying()),
+        ),
         choice(
           l.colorSourceSystem,
           source is _System,
@@ -267,6 +311,12 @@ class _Controls extends StatelessWidget {
             source is _Preset && (source as _Preset).n == n,
             () => onSource(_Preset(n)),
           ),
+        VButton(
+          label: l.actionNext,
+          icon: VIcons.skipNext,
+          style: VButtonStyle.tonal,
+          onPressed: onNext,
+        ),
         choice(l.reduceMotion, reduce, () => onReduce(!reduce)),
         for (final lang in AppLocalizations.supportedLocales)
           choice(
@@ -369,7 +419,9 @@ class _GalleryPageState extends State<_GalleryPage> {
 
 // ── Sample data ─────────────────────────────────────────────────────────────────────
 
-final _track = sampleTracks[1]; // Get Lucky
+/// The playing sample track (Get Lucky first); « Titre suivant » moves it on.
+int _playingIndex = 1;
+TrackView get _track => sampleTracks[_playingIndex];
 
 NowPlayingData _data({
   bool playing = true,
@@ -712,6 +764,8 @@ class _MiniSectionState extends State<_MiniSection> {
 
   @override
   Widget build(BuildContext context) {
+    // The playing sample track: rebuilt when it changes.
+    _GalleryTrack.watch(context);
     final l = AppLocalizations.of(context);
     Widget phone(NowPlayingData d, {bool hint = false}) {
       final mini = VNowPlaying(
@@ -829,6 +883,8 @@ class _FlightDemoState extends State<_FlightDemo> {
 
   @override
   Widget build(BuildContext context) {
+    // The playing sample track: rebuilt when it changes.
+    _GalleryTrack.watch(context);
     final l = AppLocalizations.of(context);
     final from = _local(_from), to = _local(_to);
     return Column(
@@ -934,6 +990,8 @@ class _PlayerSectionState extends State<_PlayerSection> {
 
   @override
   Widget build(BuildContext context) {
+    // The playing sample track: rebuilt when it changes.
+    final playing = _GalleryTrack.watch(context);
     final live = NowPlayingData(
       track: _track,
       sourceTitle: _track.album!.title,
@@ -947,7 +1005,7 @@ class _PlayerSectionState extends State<_PlayerSection> {
     );
     final actions = NowPlayingActions(
       onPlayPause: () => setState(() => _playing = !_playing),
-      onNext: _noop,
+      onNext: playing?.next ?? _noop,
       onPrevious: () => _position.value = 0,
       onSeek: (ms) => _position.value = ms,
       onLike: () => setState(() => _liked = !_liked),
@@ -1465,6 +1523,8 @@ class _SheetSectionState extends State<_SheetSection> {
 
   @override
   Widget build(BuildContext context) {
+    // The playing sample track: rebuilt when it changes.
+    _GalleryTrack.watch(context);
     final l = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1870,6 +1930,8 @@ class _SettingsSectionState extends State<_SettingsSection> {
 
   @override
   Widget build(BuildContext context) {
+    // The playing sample track: rebuilt when it changes.
+    _GalleryTrack.watch(context);
     final l = AppLocalizations.of(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: VBreakpoints.medium),

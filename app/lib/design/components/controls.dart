@@ -414,7 +414,7 @@ class VVolume extends StatelessWidget {
     final slider = M3ESlider(
       value: value,
       onChanged: onChanged,
-      size: M3ESliderSize.xs,
+      size: vSliderSize(VSize.volumeTrack),
       semanticLabel: AppLocalizations.of(context).volumeLabel,
       // Upright whichever way the slider runs.
       icon: RotatedBox(
@@ -444,7 +444,11 @@ class VSlider extends StatelessWidget {
   Widget build(BuildContext context) => M3ESlider(
     value: value,
     onChanged: onChanged,
-    size: M3ESliderSize.xs,
+    size: vSliderSize(VSize.sliderTrack),
     semanticLabel: label,
   );
 }
+
+/// The M3E slider size whose track is [track] (a token of [VSize]).
+M3ESliderSize vSliderSize(double track) =>
+    M3ESliderSize.values.firstWhere((s) => s.trackHeight == track);

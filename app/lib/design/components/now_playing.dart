@@ -427,6 +427,12 @@ class _VNowPlayingState extends State<VNowPlaying>
             ),
           ),
         ),
+      if (t < 1 && _disc && !widget.wide)
+        LayoutId(
+          key: const ValueKey('np.layer.times'),
+          id: _Part.times,
+          child: Opacity(opacity: 1 - t, child: _times(context)),
+        ),
       if (t > 0)
         LayoutId(
           key: const ValueKey('np.layer.side'),
@@ -445,7 +451,10 @@ class _VNowPlayingState extends State<VNowPlaying>
           child: KeyedSubtree(
             key: VNowPlaying.artworkKey,
             child: _visible(
-              LayoutBuilder(builder: (context, box) => _art(box.maxWidth, t)),
+              LayoutBuilder(
+                builder: (context, box) =>
+                    _art(box.maxWidth, t, height: box.maxHeight),
+              ),
             ),
           ),
         ),
@@ -456,13 +465,17 @@ class _VNowPlayingState extends State<VNowPlaying>
   /// The flying artwork at [side] for the flight's progress [t] (0 = big, 1 = in the
   /// compact header). The compact header keeps the disc in both styles (spec UI §5.5):
   /// in the Wave style the wave fades into the disc over the middle of the flight.
-  Widget _art(double side, double t) => ValueListenableBuilder(
+  Widget _art(
+    double side,
+    double t, {
+    double? height,
+  }) => ValueListenableBuilder(
     valueListenable: widget.position,
     builder: (context, ms, _) {
       final p = data.progressAt(ms);
       Widget disc() => VArtwork(
         itemId: data.track.id,
-        size: side,
+        size: math.min(side, height ?? side),
         playing: data.playing,
         progress: p,
         onSeek: _seek,
@@ -474,6 +487,7 @@ class _VNowPlayingState extends State<VNowPlaying>
       final wave = VWaveArtwork(
         itemId: data.track.id,
         width: side,
+        height: height,
         progress: p,
         playing: data.playing,
         onSeek: _seek,
@@ -507,12 +521,7 @@ class _VNowPlayingState extends State<VNowPlaying>
       color: theme.colorScheme.onSurfaceVariant,
     );
     Widget button(IconData icon, String label, VoidCallback? onPressed) =>
-        VIconButton(
-          icon: icon,
-          label: label,
-          style: VIconStyle.tonal,
-          onPressed: onPressed,
-        );
+        VIconButton(icon: icon, label: label, onPressed: onPressed);
     return Padding(
       key: VNowPlaying.headerKey,
       padding: const EdgeInsets.symmetric(horizontal: VSpace.s8),
@@ -533,39 +542,11 @@ class _VNowPlayingState extends State<VNowPlaying>
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // A running timer shares the label's line: the moon and the time
-                    // left, so the actions keep their room.
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            l.playingFromLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: small,
-                          ),
-                        ),
-                        if (sleep != null || data.sleepEndOfTrack) ...[
-                          const SizedBox(width: VSpace.s8),
-                          VSymbol(
-                            VIcons.bedtime,
-                            size: VSize.iconSmall,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: VSpace.s4),
-                          Text(
-                            data.sleepEndOfTrack
-                                ? l.sleepEndOfTrack
-                                : l.sleepMinutesLeft(
-                                    (sleep!.inSeconds / 60).ceil(),
-                                  ),
-                            style: small?.copyWith(
-                              color: theme.colorScheme.primary,
-                            ),
-                          ),
-                        ],
-                      ],
+                    Text(
+                      l.playingFromLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: small,
                     ),
                     Text(
                       data.sourceTitle,
@@ -578,6 +559,45 @@ class _VNowPlayingState extends State<VNowPlaying>
               ),
             ),
             const SizedBox(width: VSpace.s4),
+            // A running timer: a small tonal chip beside the output.
+            if (sleep != null || data.sleepEndOfTrack)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: VSpace.s4),
+                child: DecoratedBox(
+                  decoration: ShapeDecoration(
+                    color: theme.colorScheme.secondaryContainer,
+                    shape: const StadiumBorder(),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: VSpace.s8,
+                      vertical: VSpace.s4,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        VSymbol(
+                          VIcons.bedtime,
+                          size: VSize.iconSmall,
+                          filled: true,
+                          color: theme.colorScheme.onSecondaryContainer,
+                        ),
+                        const SizedBox(width: VSpace.s4),
+                        Text(
+                          data.sleepEndOfTrack
+                              ? l.sleepEndOfTrack
+                              : l.sleepMinutesLeft(
+                                  (sleep!.inSeconds / 60).ceil(),
+                                ),
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             if (actions.onOutput != null && !(pane && widget.volume != null))
               button(VIcons.devices, l.actionOutput, actions.onOutput),
             if (widget.onImmersive != null)
@@ -709,7 +729,9 @@ class _VNowPlayingState extends State<VNowPlaying>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_disc) ...[_times(context), SizedBox(height: gap)],
+        // In the column the Disc's times sit under the ring (their own layer); in two
+        // columns they lead the blocks.
+        if (_disc && widget.wide) ...[_times(context), SizedBox(height: gap)],
         _title(context),
         if (!_disc) ...[const SizedBox(height: VSpace.s12), _times(context)],
         SizedBox(height: gap),
@@ -1044,7 +1066,7 @@ class _VNowPlayingState extends State<VNowPlaying>
   }
 }
 
-enum _Part { blocks, side, art }
+enum _Part { blocks, times, side, art }
 
 /// One column, centred in the height it gets: the artwork as large as the width allows
 /// (a margin of 24, full width for the Wave) and the blocks under it; [wide] puts the
@@ -1125,22 +1147,48 @@ class _PlayerLayout extends MultiChildLayoutDelegate {
           BoxConstraints(minWidth: w, maxWidth: w, maxHeight: size.height),
         ).height;
       }
-      final room = size.height - blocksH - gap - (bleed ? 0 : 2 * VSpace.s8);
+      // The Disc's times: under the ring, as wide as it (lecteur-v3).
+      var times = Size.zero;
+      final timesW = math.min(size.width - 2 * margin, cap);
+      if (hasChild(_Part.times)) {
+        times = layoutChild(
+          _Part.times,
+          BoxConstraints(minWidth: timesW, maxWidth: timesW),
+        );
+      }
+      final under = hasChild(_Part.times)
+          ? VSpace.s4 + times.height + VSpace.s16
+          : gap;
+      final room = size.height - blocksH - under - (bleed ? 0 : 2 * VSpace.s8);
       final side = [
         bleed ? size.width : size.width - 2 * margin,
         room,
         bleed ? size.width : cap,
       ].reduce(math.min).clamp(0.0, double.infinity);
+      // The Vague may grow taller than wide (up to 1.15×, the cover cropped) to take
+      // the room that would otherwise sit between the wave and the title.
+      var height = side;
+      if (bleed) {
+        final spare = size.height - side - under - blocksH - 2 * VSpace.s16;
+        height = side + spare.clamp(0.0, side * (VSize.waveTallest - 1));
+      }
       // What's left is shared out (above the artwork, between it and the blocks,
       // below the controls) rather than left as two bands.
-      final slack = math.max(0.0, size.height - side - gap - blocksH);
-      final share = bleed ? slack / 2 : slack / 3;
-      final top = bleed ? 0.0 : share;
-      big = Rect.fromLTWH((size.width - side) / 2, top, side, side);
+      final slack = math.max(0.0, size.height - height - under - blocksH);
+      // Above the artwork: at most 32, the header stays close to it.
+      final top = bleed ? 0.0 : math.min(slack / 3, VSpace.s32);
+      final share = (slack - top) / 2;
+      big = Rect.fromLTWH((size.width - side) / 2, top, side, height);
+      if (hasChild(_Part.times)) {
+        positionChild(
+          _Part.times,
+          Offset((size.width - timesW) / 2, big.bottom + VSpace.s4),
+        );
+      }
       if (hasChild(_Part.blocks)) {
         positionChild(
           _Part.blocks,
-          Offset(VSpace.s24, top + side + gap + share),
+          Offset(VSpace.s24, top + height + under + share),
         );
       }
     }

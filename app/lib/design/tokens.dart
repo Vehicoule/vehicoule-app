@@ -36,6 +36,10 @@ abstract final class VSize {
   /// Icon sizes: inline badge, list and button icon, empty-state icon.
   static const iconSmall = 16.0, icon = 24.0, iconLarge = 48.0;
 
+  /// Slider tracks (M3E sizes): « s » (24) for a plain slider; « m » (40) for the
+  /// volume, whose speaker sits inside the track (M3E inset icons start at « m »).
+  static const sliderTrack = 24.0, volumeTrack = 40.0;
+
   /// A chip's leading icon (M3 chips: 18).
   static const chipIcon = 18.0;
 
@@ -97,6 +101,9 @@ abstract final class VSize {
 
   /// The wave edge: amplitude, wavelength and how much of the picture it crops.
   static const waveAmplitude = 5.0, waveLength = 48.0, waveCrop = 10.0;
+
+  /// How much taller than wide the Vague's cover may grow on a tall screen.
+  static const waveTallest = 1.15;
 
   /// App bar height, and the artwork docked in it by a flexible header.
   static const appBar = 64.0, dockedArt = 40.0;
