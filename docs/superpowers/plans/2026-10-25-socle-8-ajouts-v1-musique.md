@@ -48,7 +48,7 @@ viennent après ce plan.
   tâches produisent le code et la configuration ; chaque mise en ligne est une étape
   **(utilisateur)**, consignée au ledger dans « Pending user confirmation ». Ne jamais lancer
   `publish.sh`, ne jamais lire ni copier `~/.config/vehicoule/feed-keys/`.
-- Ordre d'exécution : 1 à 20, dans l'ordre. Chaque sous-agent tourne en opus, effort high.
+- Ordre d'exécution : 1 à 13, 13b, 14 à 20, dans l'ordre. Chaque sous-agent tourne en opus, effort high.
 - **Identité :** `com.vehicoule` (Android, bundle, préfixe des canaux de plateforme
   `com.vehicoule/<nom>`), `https://vehicoule.com`. Liens internes `vehicoule://<route>`.
 - **Domaines :** `Domain` (Rust, pont) et `Domain` (Dart, `app/lib/domains.dart`, plan 5) ne
@@ -926,7 +926,58 @@ notification par jour. Réglage par domaine (R12 : chaque jour ou jamais).
   main : la notification paraît et ouvre l'accueil ; sur macOS, la notification paraît.
 - [ ] **Step 4 : commit** : `feat: résumé quotidien des sorties de tes artistes`.
 
-### Task 14 : contrat `vehicoule:music` 1.2.0 (`identify`, `translate`)
+### Task 13b : manifeste — une version de contrat par paquet
+
+Spec livres (2026-10-25-livres-design.md §4.1) et spec anime §4.1 : un plugin peut exporter
+plusieurs paquets (AniList : `vehicoule:anime`, `vehicoule:books`, `vehicoule:tracker`). Le
+champ unique `contract` ne peut pas le dire. Ruling (ledger) : une table `contracts`
+(paquet → version) dans le manifeste **et** dans chaque entrée du feed, qui remplace
+`contract`, sans repli sur l'ancien champ (aucun feed n'est republié avant cette tâche). La
+version reste lisible avant le téléchargement : l'app trie les entrées du feed sans charger
+le wasm.
+
+**Files :**
+- Modify : `core/plugin-host/src/{manifest.rs,feed.rs,engine.rs}`, `core/core/src/plugins.rs`
+  (filtre des entrées), les manifestes des guests de test sous `core/plugin-host/guests/` et
+  `core/core/tests/guests/`, les tests qui écrivent un manifeste ou une entrée ;
+  `vehicoule-plugins/plugins/*/manifest.json` et le script du feed (déclaration seulement,
+  rien n'est publié) ; `vehicoule-ytmusic-socle/crates/plugin/manifest.json`.
+- Test : `core/plugin-host/src/manifest.rs` (tests du module), `core/core/src/plugins/tests.rs`.
+
+**Interfaces :**
+- Produces :
+  ```rust
+  pub struct Manifest { /* … */ pub contracts: BTreeMap<String, String> } // "music" → "1.1"
+  pub struct FeedEntry { /* … */ pub contracts: BTreeMap<String, String> }
+  ```
+  ```json
+  { "id": "deezer", "contracts": { "music": "1.1" }, "…": "…" }
+  ```
+- Règles :
+  - une table vide ou une version mal formée → manifeste refusé ;
+  - un paquet que l'hôte ne connaît pas (`anime`, `books`, `tracker` en v1) ou une majeure
+    non gérée → l'entrée du feed est ignorée sans erreur (un AniList publié plus tard ne
+    casse pas une app v1) ;
+  - au chargement, chaque paquet déclaré doit être exporté par le composant, et le
+    composant n'exporte aucun paquet non déclaré (les exports sont déjà lus pour les
+    capacités, socle §4.3) ;
+  - les champs inconnus du manifeste restent acceptés (`adult`, `replaces-mihon`,
+    `user-domains` viendront avec l'anime et les livres) : pas de `deny_unknown_fields`.
+
+- [ ] **Step 1 : tests qui échouent**
+  ```rust
+  #[test] fn manifest_reads_one_version_per_package()
+  #[test] fn manifest_rejects_empty_or_malformed_contracts()
+  #[test] fn manifest_accepts_unknown_fields()          // {"adult": true, "user-domains": [...]} → Ok
+  #[tokio::test] async fn feed_skips_entries_with_unknown_packages()   // {"anime": "1.0"} → ignorée, aucune erreur
+  #[tokio::test] async fn load_refuses_a_declared_package_the_component_does_not_export()
+  ```
+- [ ] **Step 2 : implémenter.**
+- [ ] **Step 3 : vérifier** (vérifications globales ; dans `vehicoule-plugins` et
+  `vehicoule-ytmusic-socle`, `cargo test` ; feed de dev reconstruit avec `contracts`).
+- [ ] **Step 4 : commit** : `feat(plugin-host): une version de contrat par paquet dans le manifeste et le feed`.
+
+### Task 14 : contrat `vehicoule:music` 1.2.0 (`identify`, `translate`, `tempo`)
 
 Ajout mineur (socle §4.3), comme `browse` au plan 7.
 
@@ -935,10 +986,12 @@ Ajout mineur (socle §4.3), comme `browse` au plan 7.
   interfaces exportées), `core/contract/src/lib.rs`, les copies vendorisées
   (`core/plugin-host/guests/wit/world.wit`, `core/core/tests/guests/wit/world.wit`),
   `sdk/src/lib.rs` si une version y est écrite, `core/plugin-host/src/{lib.rs,calls.rs,manifest.rs}`
-  (`Capability::{Identify, Translate}`, appels, contrat `1.2` accepté), un composant de test
+  (`Capability::{Identify, Translate, Tempo}`, appels, contrat `1.2` accepté), un composant de test
   sous `core/plugin-host/guests/`, `core/core/src/{error.rs,router.rs}` (miroir du pont,
   `cap_name`), `app/lib/l10n/errors.dart` et ARB (« Il te faut une source pour reconnaître
   un morceau. », « Il te faut une source pour traduire les paroles. »).
+- Modify (`vehicoule-plugins`) : `plugins/deezer/` (contrat 1.2, export `tempo` depuis `bpm` de
+  `/track/{id}`, `0` → `none`), son `manifest.json` (`contracts`).
 - Test : `core/contract/tests/`, `core/plugin-host/tests/calls.rs`.
 
 **Interfaces :**
@@ -957,10 +1010,17 @@ Ajout mineur (socle §4.3), comme `browse` au plan 7.
       /// `source-lang` : BCP 47 ou "auto" ; une ligne rendue par ligne reçue, dans l'ordre.
       lines: func(lines: list<string>, source-lang: string, target-lang: string) -> result<list<string>, error>;
   }
+  interface tempo {
+      use types.{error, track-ref};
+      /// BPM du titre, `none` si le catalogue ne le connaît pas (spec livres §6.5 : défilement
+      /// webtoon au tempo ; ajouté ici pour éviter une 1.3).
+      tempo: func(track: track-ref) -> result<option<f32>, error>;
+  }
   ```
   ```rust
   impl Host { pub async fn identify(&self, p: &Plugin, clip: Vec<i16>, region: &str) -> Result<Vec<Identified>, CallError>;
-              pub async fn translate(&self, p: &Plugin, lines: Vec<String>, source: &str, target: &str) -> Result<Vec<String>, CallError>; }
+              pub async fn translate(&self, p: &Plugin, lines: Vec<String>, source: &str, target: &str) -> Result<Vec<String>, CallError>;
+              pub async fn tempo(&self, p: &Plugin, track: TrackRef) -> Result<Option<f32>, CallError>; }
   ```
   Tags locaux `contract-v1.2.0` et `plugin-host-v1.2.0` à la fin (jamais poussés par la tâche).
 
@@ -970,6 +1030,9 @@ Ajout mineur (socle §4.3), comme `browse` au plan 7.
   #[tokio::test] async fn plugin_1_1_loads_in_host_1_2_without_the_new_capabilities()
   #[tokio::test] async fn identify_reaches_the_guest_and_back()
   #[tokio::test] async fn translate_must_return_one_line_per_line()   // un guest qui en rend moins → CallError::Internal
+  #[tokio::test] async fn tempo_reaches_the_guest_and_back()
+  // vehicoule-plugins, plugin deezer (contrat 1.2) : exporte `tempo` depuis le champ `bpm` de /track/{id}
+  #[test] fn deezer_tempo_reads_bpm()                                // fixture bpm 0 → none ; 128.0 → some(128.0)
   ```
   ```dart
   test('every CoreError variant has a message in both languages', ...); // existant : couvre NoPlugin(identify|translate)
@@ -977,7 +1040,7 @@ Ajout mineur (socle §4.3), comme `browse` au plan 7.
 - [ ] **Step 2 : implémenter.** Si le test de compatibilité 1.1 → 1.2 échoue, s'arrêter et
   le signaler (BLOCKED), sans contournement (même règle qu'au plan 7).
 - [ ] **Step 3 : vérifier** (vérifications globales).
-- [ ] **Step 4 : commit** : `feat(contract): vehicoule:music 1.2.0, capacités identify et translate`.
+- [ ] **Step 4 : commit** : `feat(contract): vehicoule:music 1.2.0, capacités identify, translate et tempo` (et, dans `vehicoule-plugins`, `feat(deezer): tempo depuis le bpm`).
 
 ### Task 15 : paroles M1 — romanisées en local et traduites
 
