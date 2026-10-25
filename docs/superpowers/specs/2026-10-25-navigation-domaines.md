@@ -109,25 +109,58 @@ Partager un titre, un album, un artiste, une playlist, une série, un épisode (
 donné) ou un livre donne un lien web qui ouvre l'app si elle est installée, et une page web
 sinon.
 
-- **Forme** : `https://vehicoule.app/<domaine>/<type>/<réf>[/<slug>]?t=<secondes>`, par exemple
-  `vehicoule.app/anime/episode/anilist:21:1071/one-piece?t=754`. Le slug sert seulement à la
-  lisibilité.
-- **Réf neutre** : seulement des identifiants de **catalogue public** (Deezer, ISRC, AniList,
-  MyAnimeList…), jamais un id interne (UUID propre à l'appareil) ni une référence de source de
-  lecture. Chez le destinataire, ses propres sources résolvent la lecture. Le lien ne pointe
-  donc jamais vers un contenu hébergé illégalement, et il marche quelle que soit la source.
-- **Playlist perso** : sa liste d'ids de catalogue voyage compressée dans le **fragment**
-  (`#…`), jamais envoyé au serveur, jusqu'à 200 titres. Au-delà, le partage propose la
-  playlist tronquée. Ouvrir le lien propose « Enregistrer dans mes playlists ».
+- **Référence Vehicoule** : `<catégorie>/<fournisseur><id>`, courte et calculée sans serveur.
+  Deux personnes obtiennent la même référence pour le même contenu.
+
+  | Catégorie | Lettre | Exemple |
+  |---|---|---|
+  | titre | `t` | `vehicoule.app/t/d3135556` |
+  | album | `a` | `vehicoule.app/a/d302127` |
+  | artiste | `r` | `vehicoule.app/r/d27` |
+  | playlist (éditoriale) | `l` | `vehicoule.app/l/d908622995` |
+  | playlist perso | `p` | `vehicoule.app/p/7Hq2x` (ci-dessous) |
+  | série | `s` | `vehicoule.app/s/a21` |
+  | épisode | `e` | `vehicoule.app/e/a21-1071?t=12m34` |
+  | livre / manga, chapitre | `b`, `c` | `vehicoule.app/c/a30013-1100` |
+
+  La **lettre du fournisseur** dit quel catalogue public l'id désigne, par catégorie :
+  titres `d` Deezer, `i` ISRC, `m` MusicBrainz ; séries et livres `a` AniList,
+  `k` MyAnimeList. Si un catalogue disparaît (le risque Deezer du socle §9), les liens déjà
+  partagés gardent leur sens et les nouveaux prennent un autre fournisseur. `?t=` donne un
+  instant (`12m34` ou des secondes).
+- **Jamais** d'id interne (UUID propre à l'appareil) ni de référence de source de lecture :
+  chez le destinataire, ses propres sources lisent. Le lien ne pointe jamais vers un contenu
+  hébergé illégalement, et il marche quelle que soit la source.
+- **La même référence partout** : `vehicoule://t/d3135556`, palette ⌘K, liens collés.
+- **Playlist perso** : son contenu n'existe que sur l'appareil, d'où un **petit service de
+  stockage** :
+  - il garde la liste des références et le nom, sans compte ni identifiant d'appareil ;
+  - le code est un hachage court du contenu : la même liste donne le même code, et rien ne
+    se modifie après coup ;
+  - 200 titres au plus ; débit plafonné par IP ;
+  - la feuille de partage le dit : « Ce lien publie la liste des titres » ;
+  - **repli** : si le service refuse (quota atteint, hors ligne), le lien porte la liste
+    compressée dans le fragment (`vehicoule.app/p#…`, jamais envoyé au serveur). Il est
+    long, mais il marche toujours ;
+  - ouvrir le lien propose « Enregistrer dans mes playlists ».
 - **App installée** : Android App Links (`assetlinks.json`) et liens universels Apple
-  (`apple-app-site-association`) sur `vehicoule.app`. Le concentrateur `links()` route ces
-  URL comme les `vehicoule://`.
-- **App absente** : une page statique (même hébergement que les autres sous-domaines, sans
-  serveur applicatif) affiche l'aperçu (titre, pochette ou affiche) en le demandant au
-  catalogue public depuis le navigateur. Elle propose « Ouvrir dans Vehicoule »
-  (`vehicoule://open?…`, utile quand les liens universels ne marchent pas, par exemple une app
-  macOS non notarisée) et « Télécharger l'app ». Les aperçus des messageries (Open Graph)
-  restent génériques, faute de serveur.
+  (`apple-app-site-association`). Le système les vérifie à l'installation, pas à chaque clic.
+  Le concentrateur `links()` route ces URL comme les `vehicoule://`.
+- **App absente** : une page statique décode la référence et demande l'aperçu (titre,
+  pochette ou affiche) au catalogue public **depuis le navigateur**. Elle propose « Ouvrir
+  dans Vehicoule » (`vehicoule://…`, utile quand les liens universels ne marchent pas, par
+  exemple une app macOS non notarisée) et « Télécharger l'app ». Les aperçus des messageries
+  (Open Graph) restent génériques : un aperçu par lien ferait passer chaque clic par le
+  service.
+- **Hébergement : offre gratuite de Cloudflare.**
+  - Pages : la page statique, `assetlinks.json`, `apple-app-site-association` (requêtes
+    statiques gratuites et illimitées) ;
+  - un Worker + KV pour `/p/` seulement : 100 000 requêtes et 100 000 lectures par jour,
+    **1 000 écritures par jour**, soit 1 000 nouvelles playlists partagées par jour.
+    Au-delà, le repli ci-dessus prend le relais sans erreur visible. Si ça devient le goulot,
+    D1 ou l'offre payante (5 $ / mois) ne changent que le Worker ;
+  - les redirections `feeds.`, `updates.` et `telemetry.` (socle §12) sont des règles de
+    redirection, gratuites aussi.
 - **Vie privée** : aucun identifiant d'utilisateur ni d'appareil dans le lien, aucun suivi
   sur la page.
 - Entrée « Partager » dans le menu expressif (spec UI §5.2) et dans le ⋮ du lecteur ; feuille
