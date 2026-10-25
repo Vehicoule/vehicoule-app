@@ -100,7 +100,7 @@ abstract final class VSize {
   static const carouselScrim = 0.6, carouselBand = 0.5, carouselText = 200.0;
 
   /// The surface's opacity under the Vague's header: its icons read on any cover.
-  static const headerScrim = 0.88;
+  static const headerScrim = 0.88, headerScrimFade = 72.0;
 
   /// The thin stroke of small progress icons (download).
   static const iconStroke = 3.0;

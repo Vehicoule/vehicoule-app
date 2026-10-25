@@ -262,7 +262,7 @@ class _VNowPlayingState extends State<VNowPlaying>
       MediaQuery.paddingOf(context).top + _headerHeight;
 
   double _scrimHeight(BuildContext context) =>
-      _headerBottom(context) + VSpace.s24;
+      _headerBottom(context) + VSize.headerScrimFade;
 
   /// Solid under the header, fading out below it.
   LinearGradient _scrim(BuildContext context) {
