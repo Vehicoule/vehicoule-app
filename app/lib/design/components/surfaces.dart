@@ -584,21 +584,25 @@ class VSearchBarState extends State<VSearchBar> {
     // focus. Otherwise the field, its hint and its icons jump at the click and again
     // at the close. Full screen (a phone) keeps M3's ← and its own height.
     final docked = MediaQuery.sizeOf(context).width >= VBreakpoints.medium;
+    final nothing = widget.suggestions(context, _controller.text).isEmpty;
     return M3ESearchAnchor.bar(
       searchController: _controller,
       barHintText: AppLocalizations.of(context).searchHint,
       barLeading: const VSymbol(VIcons.search),
       barTrailing: trailing,
       constraints: docked
-          ? const BoxConstraints(
-              minHeight: VSize.titleSearchHeight,
-              maxHeight: VSize.titleSearchHeight,
-            )
+          // At least 48, taller for a tall script or large text (never clipped).
+          ? const BoxConstraints(minHeight: VSize.titleSearchHeight)
           : null,
       expandOnFocus: !docked,
       viewHeaderHeight: docked ? VSize.titleSearchHeight : null,
       viewLeading: docked ? const VSymbol(VIcons.search) : null,
       viewTrailing: docked ? trailing : null,
+      // Nothing to suggest: the open view is the field alone. M3E still lays out
+      // its results card; see-through and flat, it no longer shows as a strip under
+      // the field at each click.
+      viewBackgroundColor: docked && nothing ? const Color(0x00000000) : null,
+      viewElevation: docked && nothing ? 0 : null,
       viewHintText: AppLocalizations.of(context).searchHint,
       onSubmitted: widget.onSubmitted,
       // The docked view is as tall as its suggestions: no empty panel.

@@ -24,6 +24,18 @@
   "viewPlayer": "Player",
   "viewLyrics": "Lyrics",
   "viewQueue": "Queue",
+  "playerTimes": "{position} / {duration}",
+  "@playerTimes": {
+    "description": "The ring's reading under it: where the track is, then its length.",
+    "placeholders": {
+      "position": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
   "viewMenu": "{view} view",
   "@viewMenu": {
     "placeholders": {

@@ -91,6 +91,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get viewQueue => 'Queue';
 
   @override
+  String playerTimes(String position, String duration) {
+    return '$position / $duration';
+  }
+
+  @override
   String viewMenu(String view) {
     return '$view view';
   }

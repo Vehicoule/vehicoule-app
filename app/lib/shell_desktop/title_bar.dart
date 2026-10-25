@@ -77,7 +77,6 @@ class TitleBar extends StatelessWidget {
                   offset: const Offset(0, -VSpace.s8),
                   child: SizedBox(
                     width: searchWidth,
-                    height: VSize.titleSearchHeight,
                     child: VSearchBar(
                       key: search,
                       shortcut: defaultTargetPlatform == TargetPlatform.macOS

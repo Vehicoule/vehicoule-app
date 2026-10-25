@@ -454,6 +454,40 @@ void main() {
     expect(field(), rest);
   }, variant: mac);
 
+  testWidgets('U9: an empty search opens no strip under its field', (
+    tester,
+  ) async {
+    final r = Rig();
+    await r.pump(tester, size: desktop);
+    final bar = _rect(tester, find.byType(VSearchBar));
+    // What shows under the field: a surface with a colour or a shadow.
+    Iterable<Rect> below() => find
+        .byType(Material)
+        .evaluate()
+        .where((e) {
+          final m = e.widget as Material;
+          return (m.color?.a ?? 0) > 0 || m.elevation > 0;
+        })
+        .map((e) => tester.getRect(find.byWidget(e.widget)))
+        .where(
+          (m) =>
+              m.height > 0.5 &&
+              m.top >= bar.bottom - 0.5 &&
+              m.top <= bar.bottom + VSpace.s24 &&
+              m.left >= bar.left - VSpace.s24 &&
+              m.right <= bar.right + VSpace.s24,
+        );
+    final before = below().toSet();
+    await tester.tap(find.byType(EditableText).first);
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      // No suggestions yet (Task 6): nothing but the field, no results card.
+      expect(below().toSet().difference(before), isEmpty, reason: 'frame $i');
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await settle(tester, 12);
+  }, variant: mac);
+
   testWidgets('U12: the domain menu is hidden with one domain', (tester) async {
     final r = Rig();
     await r.pump(tester, size: desktop);

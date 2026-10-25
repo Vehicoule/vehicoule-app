@@ -13,8 +13,16 @@ abstract final class VIcons {
   static const add = IconData(0xe145, fontFamily: _f);
   static const addToQueue = IconData(0xe03d, fontFamily: _f); // queue_music
   static const album = IconData(0xe019, fontFamily: _f);
-  static const arrowBack = IconData(0xe5c4, fontFamily: _f);
-  static const arrowForward = IconData(0xe5c8, fontFamily: _f);
+  static const arrowBack = IconData(
+    0xe5c4,
+    fontFamily: _f,
+    matchTextDirection: true,
+  );
+  static const arrowForward = IconData(
+    0xe5c8,
+    fontFamily: _f,
+    matchTextDirection: true,
+  );
   static const bedtime = IconData(0xf159, fontFamily: _f);
   static const check = IconData(0xe668, fontFamily: _f);
   static const chevronRight = IconData(0xe5cc, fontFamily: _f);
@@ -78,8 +86,16 @@ abstract final class VIcons {
   static const link = IconData(0xe157, fontFamily: _f);
   static const notifications = IconData(0xe7f4, fontFamily: _f);
   static const palette = IconData(0xe3b7, fontFamily: _f);
-  static const panelClose = IconData(0xf705, fontFamily: _f);
-  static const panelOpen = IconData(0xf704, fontFamily: _f);
+  static const panelClose = IconData(
+    0xf705,
+    fontFamily: _f,
+    matchTextDirection: true,
+  );
+  static const panelOpen = IconData(
+    0xf704,
+    fontFamily: _f,
+    matchTextDirection: true,
+  );
   static const pushPin = IconData(0xf10d, fontFamily: _f);
   static const selectAll = IconData(0xe162, fontFamily: _f);
   static const speaker = IconData(0xe32d, fontFamily: _f);

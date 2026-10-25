@@ -242,6 +242,12 @@ abstract class AppLocalizations {
   /// **'File'**
   String get viewQueue;
 
+  /// The ring's reading under it: where the track is, then its length.
+  ///
+  /// In fr, this message translates to:
+  /// **'{position} / {duration}'**
+  String playerTimes(String position, String duration);
+
   /// No description provided for @viewMenu.
   ///
   /// In fr, this message translates to:

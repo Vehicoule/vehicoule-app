@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart' show NumberFormat;
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -31,13 +32,14 @@ enum PlayerSize { compact, medium, large }
 
 enum PlayerStyle { disc, wave }
 
-/// "3:26", or "1:02:03" past an hour.
-String vTime(int ms) {
+/// "3:26", or "1:02:03" past an hour, in [locale]'s digits.
+String vTime(int ms, {String? locale}) {
   final s = (ms / 1000).floor();
-  final h = s ~/ 3600,
-      m = s ~/ 60 % 60,
-      sec = (s % 60).toString().padLeft(2, '0');
-  return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$sec' : '$m:$sec';
+  final h = s ~/ 3600, m = s ~/ 60 % 60, sec = s % 60;
+  final one = NumberFormat('0', locale), two = NumberFormat('00', locale);
+  return h > 0
+      ? '${one.format(h)}:${two.format(m)}:${two.format(sec)}'
+      : '${one.format(m)}:${two.format(sec)}';
 }
 
 /// The player's slow state. The position is separate ([VNowPlaying.position]): it ticks
@@ -399,7 +401,7 @@ class _VNowPlayingState extends State<VNowPlaying>
           )
         : null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
+      padding: const EdgeInsetsDirectional.fromSTEB(
         VSpace.s16,
         VSpace.s8,
         VSpace.s16,
@@ -544,46 +546,47 @@ class _VNowPlayingState extends State<VNowPlaying>
   /// The flying artwork at [side] for the flight's progress [t] (0 = big, 1 = in the
   /// compact header). The compact header keeps the disc in both styles (spec UI §5.5):
   /// in the Wave style the wave fades into the disc over the middle of the flight.
-  Widget _art(
-    double side,
-    double t, {
-    double? height,
-  }) => ValueListenableBuilder(
-    valueListenable: widget.position,
-    builder: (context, ms, _) {
-      final p = data.progressAt(ms);
-      Widget disc() => VArtwork(
-        itemId: data.track.id,
-        size: math.min(side, height ?? side),
-        playing: data.playing,
-        progress: p,
-        onSeek: _seek,
-        seekStep: _seekStep,
-        semanticLabel: data.track.album?.title,
-      );
-      if (_disc) return disc();
-      final f = ((t - 0.35) / 0.3).clamp(0.0, 1.0);
-      final wave = VWaveArtwork(
-        itemId: data.track.id,
-        width: side,
-        height: height,
-        progress: p,
-        playing: data.playing,
-        onSeek: _seek,
-        seekStep: _seekStep,
-      );
-      // Always the same Stack with keyed children, so the wave's phase and the disc's
-      // turn survive the fade; a child is left out only while it is invisible.
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          if (f < 1)
-            Opacity(key: const ValueKey('wave'), opacity: 1 - f, child: wave),
-          if (f > 0)
-            Opacity(key: const ValueKey('disc'), opacity: f, child: disc()),
-        ],
-      );
-    },
+  Widget _art(double side, double t, {double? height}) => Directionality(
+    // The ring and the wave run left to right in every locale (M3 media): a tap
+    // seeks where it lands, the arrow keys go the same way.
+    textDirection: TextDirection.ltr,
+    child: ValueListenableBuilder(
+      valueListenable: widget.position,
+      builder: (context, ms, _) {
+        final p = data.progressAt(ms);
+        Widget disc() => VArtwork(
+          itemId: data.track.id,
+          size: math.min(side, height ?? side),
+          playing: data.playing,
+          progress: p,
+          onSeek: _seek,
+          seekStep: _seekStep,
+          semanticLabel: data.track.album?.title,
+        );
+        if (_disc) return disc();
+        final f = ((t - 0.35) / 0.3).clamp(0.0, 1.0);
+        final wave = VWaveArtwork(
+          itemId: data.track.id,
+          width: side,
+          height: height,
+          progress: p,
+          playing: data.playing,
+          onSeek: _seek,
+          seekStep: _seekStep,
+        );
+        // Always the same Stack with keyed children, so the wave's phase and the disc's
+        // turn survive the fade; a child is left out only while it is invisible.
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            if (f < 1)
+              Opacity(key: const ValueKey('wave'), opacity: 1 - f, child: wave),
+            if (f > 0)
+              Opacity(key: const ValueKey('disc'), opacity: f, child: disc()),
+          ],
+        );
+      },
+    ),
   );
 
   /// « Lecture depuis » over the source · moon and time left · output · ⤢ · ⋮ · the size
@@ -715,28 +718,35 @@ class _VNowPlayingState extends State<VNowPlaying>
   /// ends under the wave.
   Widget _times(BuildContext context) {
     final theme = Theme.of(context);
+    final l = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
+    String time(int ms) => vTime(ms, locale: locale);
     final style =
         (_disc ? theme.textTheme.labelLarge : theme.textTheme.labelMedium)
             ?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
               fontFeatures: const [FontFeature.tabularFigures()],
             );
-    return ValueListenableBuilder(
-      key: VNowPlaying.progressKey,
-      valueListenable: widget.position,
-      builder: (context, ms, _) => _disc
-          ? Text(
-              '${vTime(ms)} / ${vTime(data.durationMs)}',
-              style: style,
-              textAlign: TextAlign.center,
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(vTime(ms), style: style),
-                Text(vTime(data.durationMs), style: style),
-              ],
-            ),
+    // Media stays left to right in every locale (M3): the times read like the ring.
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: ValueListenableBuilder(
+        key: VNowPlaying.progressKey,
+        valueListenable: widget.position,
+        builder: (context, ms, _) => _disc
+            ? Text(
+                l.playerTimes(time(ms), time(data.durationMs)),
+                style: style,
+                textAlign: TextAlign.center,
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(time(ms), style: style),
+                  Text(time(data.durationMs), style: style),
+                ],
+              ),
+      ),
     );
   }
 
@@ -807,18 +817,22 @@ class _VNowPlayingState extends State<VNowPlaying>
     );
   }
 
-  Widget _controls({bool tall = false}) => VControls(
-    key: VNowPlaying.controlsKey,
-    playing: data.playing,
-    loading: data.loading,
-    shuffle: data.shuffle,
-    repeat: data.repeat,
-    tall: tall,
-    onPlayPause: actions.onPlayPause,
-    onNext: actions.onNext,
-    onPrevious: actions.onPrevious,
-    onShuffle: actions.onShuffle,
-    onRepeat: actions.onRepeat,
+  /// Media controls never flip (M3): left to right in every locale.
+  Widget _controls({bool tall = false}) => Directionality(
+    textDirection: TextDirection.ltr,
+    child: VControls(
+      key: VNowPlaying.controlsKey,
+      playing: data.playing,
+      loading: data.loading,
+      shuffle: data.shuffle,
+      repeat: data.repeat,
+      tall: tall,
+      onPlayPause: actions.onPlayPause,
+      onNext: actions.onNext,
+      onPrevious: actions.onPrevious,
+      onShuffle: actions.onShuffle,
+      onRepeat: actions.onRepeat,
+    ),
   );
 
   /// The title and artists with their three buttons. Beside the artwork ([wide]), the
@@ -1061,15 +1075,19 @@ class _VNowPlayingState extends State<VNowPlaying>
           const SizedBox(height: VSpace.s8),
         ],
         _visible(
-          ValueListenableBuilder(
-            valueListenable: widget.position,
-            builder: (context, ms, _) => VArtwork(
-              itemId: data.track.id,
-              size: VSize.strip - VSpace.s16,
-              playing: data.playing,
-              progress: data.progressAt(ms),
-              onSeek: _seek,
-              seekStep: _seekStep,
+          Directionality(
+            // Its ring seeks left to right in every locale, as in the player.
+            textDirection: TextDirection.ltr,
+            child: ValueListenableBuilder(
+              valueListenable: widget.position,
+              builder: (context, ms, _) => VArtwork(
+                itemId: data.track.id,
+                size: VSize.strip - VSpace.s16,
+                playing: data.playing,
+                progress: data.progressAt(ms),
+                onSeek: _seek,
+                seekStep: _seekStep,
+              ),
             ),
           ),
         ),

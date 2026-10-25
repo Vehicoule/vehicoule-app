@@ -49,6 +49,10 @@ class VViewSelector extends StatelessWidget {
         closeIcon: const VSymbol(VIcons.close),
         size: M3EFabSize.regular,
         color: M3EFabColor.secondary,
+        // M3E names the physical side: the bottom row's end.
+        position: Directionality.of(context) == TextDirection.rtl
+            ? M3EFabMenuPosition.left
+            : M3EFabMenuPosition.right,
         items: [
           for (final v in views)
             M3EFabMenuItem(

@@ -351,7 +351,10 @@ class VDomainMenu extends StatelessWidget {
             closeIcon: const VSymbol(VIcons.close),
             size: M3EFabSize.regular,
             color: M3EFabColor.secondary,
-            position: M3EFabMenuPosition.left,
+            // M3E names the physical side: the rail's start edge.
+            position: Directionality.of(context) == TextDirection.rtl
+                ? M3EFabMenuPosition.right
+                : M3EFabMenuPosition.left,
             items: [
               for (final d in domains)
                 M3EFabMenuItem(
