@@ -63,6 +63,15 @@ class GalleryCovers {
       );
       await core.start();
       await core.setOnline(online: true);
+      // Debug only: a local feed, `--dart-define=VEHICOULE_DEV_FEED=<url> --dart-define=
+      // VEHICOULE_DEV_FEED_KEY=<public key>` (debug builds of the core accept http).
+      const devFeed = String.fromEnvironment('VEHICOULE_DEV_FEED');
+      if (devFeed.isNotEmpty) {
+        await core.addFeed(
+          url: devFeed,
+          publicKey: const String.fromEnvironment('VEHICOULE_DEV_FEED_KEY'),
+        );
+      }
       await core.refreshFeeds();
       return GalleryCovers._();
     } on Object catch (e) {
