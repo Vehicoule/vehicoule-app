@@ -2,6 +2,7 @@
 // an Android tablet has none), the rail with its pinned items and the destination's
 // FAB, the content, the « en lecture » pane or its strip, and the immersive view over
 // all of it. Tab goes title bar → rail → content → pane (spec UI §4.4).
+import 'package:flutter/semantics.dart' show OrdinalSortKey;
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -35,6 +36,7 @@ class _DesktopShellState extends State<DesktopShell> {
   bool _rail = false, _immersive = false;
   final _search = GlobalKey<VSearchBarState>();
   final _paneBox = GlobalKey();
+  final _content = LayerLink();
 
   /// The strip's or the pane's rect for the video window (addendum §5.2).
   void _reportPane() {
@@ -105,9 +107,12 @@ class _DesktopShellState extends State<DesktopShell> {
     setState(() => _immersive = !_immersive);
   }
 
-  Widget _region(int order, Widget child) => FocusTraversalOrder(
-    order: NumericFocusOrder(order.toDouble()),
-    child: FocusTraversalGroup(policy: SkipEmptyScopes(), child: child),
+  Widget _region(int order, Widget child) => Semantics(
+    sortKey: OrdinalSortKey(order.toDouble()),
+    child: FocusTraversalOrder(
+      order: NumericFocusOrder(order.toDouble()),
+      child: FocusTraversalGroup(policy: SkipEmptyScopes(), child: child),
+    ),
   );
 
   @override
@@ -132,17 +137,12 @@ class _DesktopShellState extends State<DesktopShell> {
     final global = globals.indexWhere(
       (g) => at == g.$1 || at.startsWith('${g.$1}/'),
     );
-    // Changing domain: a FAB menu of the domains, hidden while there is one (U12).
+    // Changing domain: an M3E FAB menu of the domains, hidden while there is one.
     final domainMenu = domains.length < 2
         ? null
         : LayoutBuilder(
-            builder: (context, box) => VScreenFab(
-              action: VAction(
-                domainLabel(l, domain),
-                domainIcon(domain),
-                () {},
-              ),
-              items: [
+            builder: (context, box) => VDomainMenu(
+              domains: [
                 for (final d in domains)
                   VAction(
                     domainLabel(l, d),
@@ -152,7 +152,6 @@ class _DesktopShellState extends State<DesktopShell> {
                   ),
               ],
               extended: _rail && box.maxWidth >= VSize.railFabExtended,
-              startAligned: true,
             ),
           );
     final main = ScreenFabHost(
@@ -183,30 +182,35 @@ class _DesktopShellState extends State<DesktopShell> {
           Expanded(
             child: _region(
               3,
-              Padding(
-                padding: const EdgeInsets.only(bottom: VSpace.s8),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(VRadius.large),
-                  // The content is a card on the window, like the pane and the
-                  // strip (desktop-2): its own surface, so the pages' app bars
-                  // blend in.
-                  child: vOnSurface(
-                    context,
-                    vScreenSurface(scheme),
-                    Material(
-                      color: vScreenSurface(scheme),
-                      child: Stack(
-                        children: [
-                          Positioned.fill(child: widget.shell),
-                          // A selection's toolbar, where a phone has its mini player.
-                          if (bar != null)
-                            Positioned(
-                              left: VSpace.s16,
-                              right: VSpace.s16,
-                              bottom: VSpace.s16,
-                              child: Center(child: bar),
-                            ),
-                        ],
+              // The title bar's search is centred on this card.
+              CompositedTransformTarget(
+                link: _content,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: VSpace.s8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(VRadius.large),
+                    // The content is a card on the window, like the pane and the
+                    // strip (desktop-2): its own surface, so the pages' app bars
+                    // blend in.
+                    child: vOnSurface(
+                      context,
+                      vScreenSurface(scheme),
+                      Material(
+                        color: vScreenSurface(scheme),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(child: widget.shell),
+                            // A selection's toolbar, where a phone has its mini
+                            // player.
+                            if (bar != null)
+                              Positioned(
+                                left: VSpace.s16,
+                                right: VSpace.s16,
+                                bottom: VSpace.s16,
+                                child: Center(child: bar),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -243,9 +247,13 @@ class _DesktopShellState extends State<DesktopShell> {
                 child: FocusTraversalGroup(
                   policy: OrderedTraversalPolicy(),
                   child: SafeArea(
+                    // Laid out bottom-up so the content card paints before the
+                    // title bar, whose search follows the card (a layer link
+                    // needs its leader painted first). Focus and reading order stay
+                    // title bar → rail → content → pane (_region).
                     child: Column(
+                      verticalDirection: VerticalDirection.up,
                       children: [
-                        if (hasTitleBar) _region(1, TitleBar(search: _search)),
                         Expanded(
                           child: Padding(
                             // The cards' even gutter: content · pane · edge.
@@ -268,6 +276,22 @@ class _DesktopShellState extends State<DesktopShell> {
                             ),
                           ),
                         ),
+                        if (hasTitleBar)
+                          _region(
+                            1,
+                            TitleBar(
+                              search: _search,
+                              content: _content,
+                              searchWidth: TitleBar.searchWidthFor(
+                                MediaQuery.sizeOf(context).width -
+                                    vRailWidth(context, expanded: _rail) -
+                                    (_paneOpen
+                                        ? VSize.sideSheet
+                                        : VSize.strip) -
+                                    3 * VSpace.s8,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),

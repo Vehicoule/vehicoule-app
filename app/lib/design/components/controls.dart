@@ -12,6 +12,9 @@ import 'menu.dart';
 
 enum VIconStyle { standard, filled, tonal, outlined }
 
+/// M3E icon button sizes: 40 (the default) and 56 (the desktop strip's ⏯).
+enum VIconSize { small, medium }
+
 /// An icon-only button with its spoken label (and tooltip on desktop). [selected] makes
 /// it a toggle (the icon fills, the shape morphs).
 class VIconButton extends StatelessWidget {
@@ -23,6 +26,8 @@ class VIconButton extends StatelessWidget {
     this.selected,
     this.style = VIconStyle.standard,
     this.glyphFilled,
+    this.size = VIconSize.small,
+    this.glyph,
   });
 
   final IconData icon;
@@ -32,9 +37,13 @@ class VIconButton extends StatelessWidget {
   /// Null: not a toggle.
   final bool? selected;
   final VIconStyle style;
+  final VIconSize size;
 
   /// The glyph's FILL; by default filled when selected or in a filled button.
   final bool? glyphFilled;
+
+  /// Drawn instead of [icon] (the download state, with its progress).
+  final Widget? glyph;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -46,12 +55,22 @@ class VIconButton extends StatelessWidget {
     onTap: onPressed,
     excludeSemantics: true,
     child: M3EIconButton(
-      icon: VSymbol(
-        icon,
-        filled: glyphFilled ?? (selected ?? style == VIconStyle.filled),
-      ),
+      icon:
+          glyph ??
+          VSymbol(
+            icon,
+            filled: glyphFilled ?? (selected ?? style == VIconStyle.filled),
+          ),
       onPressed: onPressed,
       tooltip: label,
+      size: switch (size) {
+        VIconSize.small => M3EIconButtonSize.sm,
+        VIconSize.medium => M3EIconButtonSize.md,
+      },
+      // A square-ish container, like ⏯ in the player's group (the strip's ⏯).
+      shape: size == VIconSize.medium
+          ? M3EIconButtonShapeVariant.square
+          : M3EIconButtonShapeVariant.round,
       variant: switch (style) {
         VIconStyle.standard => M3EIconButtonVariant.standard,
         VIconStyle.filled => M3EIconButtonVariant.filled,
@@ -228,9 +247,11 @@ String _playLabel(
   required bool loading,
 }) => loading ? l.loading : (playing ? l.actionPause : l.actionPlay);
 
-/// Shuffle · ⏮ · ⏯ · ⏭ · repeat, an M3E button group whose widths morph on press. ⏯ is
-/// the one emphasized action (filled, twice as wide); it becomes the loading indicator
-/// while [loading]. All five always fit the width they get.
+/// Shuffle · ⏮ · ⏯ · ⏭ · repeat across the whole column (spec UI §5.5): a large M3E
+/// button group whose widths morph on press, the player's main action and the biggest
+/// thing in it. ⏯ is filled and the widest, ⏮ ⏭ tonal, shuffle and repeat toggles at the
+/// ends, all at least [VSize.control] high. ⏯ becomes the loading indicator while
+/// [loading].
 class VControls extends StatelessWidget {
   const VControls({
     super.key,
@@ -250,8 +271,12 @@ class VControls extends StatelessWidget {
   final Repeat repeat;
   final VoidCallback onPlayPause, onNext, onPrevious, onShuffle, onRepeat;
 
-  /// Large controls (a phone held upright): 72 high, the mockup's proportions.
+  /// A phone held upright: the controls are taller.
   final bool tall;
+
+  /// The group's width in units: ⏯ 1.5, ⏮ and ⏭ 1.25 each, the toggles 1 each (at
+  /// least 48 on a 360 dp phone and in the desktop pane).
+  static const _units = 6.0;
 
   @override
   Widget build(BuildContext context) {
@@ -270,57 +295,37 @@ class VControls extends StatelessWidget {
     ];
     return LayoutBuilder(
       builder: (context, box) {
-        // Six units (⏯ takes two) and four gaps.
         final room = box.maxWidth.isFinite
             ? box.maxWidth
-            : 6 * VSize.controlMax;
-        final unit = ((room - 4 * VSpace.s8) / 6).clamp(
-          VSize.menuTarget * 0.75,
-          VSize.controlMax,
-        );
-        final big = unit >= VSize.menuTarget;
+            : _units * VSize.controlMax;
+        final unit = (room - 4 * VSpace.s8) / _units;
+        final height = tall ? VSize.controlTall : VSize.control;
         final play = loading
-            ? VLoading(size: big ? VSize.playIcon : VSize.icon)
-            : VPlayPauseIcon(
-                playing: playing,
-                size: tall && big
-                    ? VSize.playIcon + VSpace.s8
-                    : big
-                    ? VSize.playIcon
-                    : VSize.icon,
-              );
-        M3EButtonGroupAction side(Widget icon, String label) =>
-            M3EButtonGroupAction(
-              icon: icon,
-              semanticLabel: label,
-              minWidth: unit,
-            );
-        // Shuffle and repeat are M3 standard icon toggles: no container, the icon in
-        // onSurfaceVariant, in primary with a filled glyph when on. ⏯ alone is the
-        // filled primary, so it dominates.
-        final clear = scheme.surface.withValues(alpha: 0);
-        final quiet = M3EButtonDecoration.styleFrom(
-          backgroundColor: clear,
-          selectedBackgroundColor: clear,
+            ? const VLoading(size: VSize.playIcon, onContainer: true)
+            : VPlayPauseIcon(playing: playing, size: VSize.playIcon);
+        // The toggles: their own container (M3E toggle buttons); on, they take the
+        // secondary colour, never ⏯'s primary.
+        final toggle = M3EButtonDecoration.styleFrom(
+          backgroundColor: scheme.surfaceContainerHighest,
           foregroundColor: scheme.onSurfaceVariant,
-          selectedForegroundColor: scheme.primary,
+          selectedBackgroundColor: scheme.secondary,
+          selectedForegroundColor: scheme.onSecondary,
         );
-        M3EButtonGroupAction toggle(Widget icon, String label) =>
+        M3EButtonGroupAction end(Widget icon, String label) =>
             M3EButtonGroupAction(
               icon: icon,
               semanticLabel: label,
               minWidth: unit,
-              decoration: quiet,
+              decoration: toggle,
+            );
+        M3EButtonGroupAction skip(Widget icon, String label) =>
+            M3EButtonGroupAction(
+              icon: icon,
+              semanticLabel: label,
+              minWidth: 1.25 * unit,
             );
         return M3EButtonGroup(
-          size: tall && big
-              ? M3EButtonSize.custom(
-                  height: VSize.controlTall,
-                  iconSize: VSize.playIcon - VSpace.s4,
-                )
-              : big
-              ? M3EButtonSize.md
-              : M3EButtonSize.sm,
+          size: M3EButtonSize.custom(height: height, iconSize: VSize.icon),
           style: M3EButtonStyle.tonal,
           spacing: VSpace.s8,
           multiSelect: true,
@@ -331,12 +336,12 @@ class VControls extends StatelessWidget {
             }
           },
           actions: [
-            toggle(VSymbol(VIcons.shuffle, filled: shuffle), l.actionShuffle),
-            side(VSymbol(VIcons.skipPrevious, filled: true), l.actionPrevious),
+            end(VSymbol(VIcons.shuffle, filled: shuffle), l.actionShuffle),
+            skip(VSymbol(VIcons.skipPrevious, filled: true), l.actionPrevious),
             M3EButtonGroupAction(
               icon: play,
               selectedIcon: play,
-              minWidth: 2 * unit,
+              minWidth: 1.5 * unit,
               semanticLabel: _playLabel(l, playing: playing, loading: loading),
               decoration: M3EButtonDecoration.styleFrom(
                 backgroundColor: scheme.primary,
@@ -345,8 +350,8 @@ class VControls extends StatelessWidget {
                 selectedForegroundColor: scheme.onPrimary,
               ),
             ),
-            side(VSymbol(VIcons.skipNext, filled: true), l.actionNext),
-            toggle(
+            skip(VSymbol(VIcons.skipNext, filled: true), l.actionNext),
+            end(
               VSymbol(
                 repeat == Repeat.one ? VIcons.repeatOne : VIcons.repeat,
                 filled: repeat != Repeat.off,
@@ -401,8 +406,9 @@ class VPlayPauseFab extends StatelessWidget {
   }
 }
 
-/// The volume (spec UI §4.2): an M3E slider with the speaker inside its track; upright
-/// in the desktop strip ([vertical]).
+/// The volume (spec UI §4.2, §5.5): the speaker, then a thin M3E slider whose handle
+/// stays inside the component; upright in the desktop strip ([vertical]), the speaker
+/// under it.
 class VVolume extends StatelessWidget {
   const VVolume({
     super.key,
@@ -417,26 +423,53 @@ class VVolume extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final slider = M3ESlider(
-      value: value,
-      onChanged: onChanged,
-      size: vSliderSize(VSize.volumeTrack),
-      semanticLabel: AppLocalizations.of(context).volumeLabel,
-      // Upright whichever way the slider runs.
-      icon: RotatedBox(
-        quarterTurns: vertical ? 1 : 0,
-        child: const VSymbol(VIcons.volume, filled: true),
-      ),
-      iconPosition: M3ESliderIconPosition.start,
-    );
+    final label = AppLocalizations.of(context).volumeLabel;
+    final size = vSliderSize(VSize.volumeTrack);
+    final slider = vertical
+        ? M3ESlider.vertical(
+            value: value,
+            onChanged: onChanged,
+            size: size,
+            semanticLabel: label,
+          )
+        : M3ESlider(
+            value: value,
+            onChanged: onChanged,
+            size: size,
+            semanticLabel: label,
+          );
     // M3E centres the handle on the track's end: at 0 or 100 % half of it would stick
-    // out past the component (and into the pane's margin). Inset by that half.
+    // out past the component. Inset by that half.
     final half = M3ETheme.of(context).sliderTheme.handleWidth / 2;
-    final inset = Padding(
-      padding: EdgeInsets.symmetric(horizontal: half),
-      child: slider,
+    final speaker = VSymbol(
+      VIcons.volume,
+      filled: true,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
     );
-    return vertical ? RotatedBox(quarterTurns: 3, child: inset) : inset;
+    return vertical
+        ? Column(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: half),
+                  child: slider,
+                ),
+              ),
+              const SizedBox(height: VSpace.s4),
+              speaker,
+            ],
+          )
+        : Row(
+            children: [
+              speaker,
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: half),
+                  child: slider,
+                ),
+              ),
+            ],
+          );
   }
 }
 

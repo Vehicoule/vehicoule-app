@@ -206,10 +206,15 @@ listes vides) est dans `docs/voice.md`.
 
 ### 4.2 Desktop (fenêtres ≥ 840 px)
 
-- **Barre de titre maison** (macOS : `TitleBarStyle.hidden`) :
-  - ← → pour l'historique de navigation (aussi ⌘[ ⌘]) ;
-  - au centre, **la recherche, toujours visible** (⌘F). Taper ouvre les suggestions (mêmes
-    règles que 6.2) en menu déroulant sous le champ ; Entrée ouvre les résultats dans Explorer ;
+- **Barre du haut maison** (macOS : `TitleBarStyle.hidden`), haute de 64 dp ; la zone des
+  feux tricolores de macOS reste libre ; tout est sur la ligne de la recherche :
+  - ← → à gauche pour l'historique de navigation (aussi ⌘[ ⌘]) ;
+  - **la recherche, toujours visible** (⌘F), haute de 48 dp et centrée verticalement (8 dp au
+    moins du haut de la fenêtre et du haut de la carte de contenu et du lecteur). Elle est
+    centrée sur la **carte de contenu**, pas sur la fenêtre, et large de 360 à 560 dp. Taper
+    ouvre les suggestions (mêmes règles que 6.2) en menu déroulant sous le champ ; la vue
+    ouverte garde la place, la hauteur, l'icône de recherche et la touche « ⌘F » de la barre
+    (rien ne saute au clic ni à la fermeture). Entrée ouvre les résultats dans Explorer ;
   - à droite, les téléchargements en cours, puis Sources.
 - **Rail à gauche**, replié (icônes) ↔ déplié :
   - Accueil et les destinations du domaine courant (3 en musique) ;
@@ -217,8 +222,11 @@ listes vides) est dans `docs/voice.md`.
     les collections que l'utilisateur épingle, en pochettes de 32 dp (titre et sous-titre
     quand le rail est déplié). Ce sont aussi des cibles de glisser-déposer : la ligne entière
     se borde en tirets avec « déposer ici » ;
-  - en bas, le choix du domaine (un FAB menu, masqué tant qu'il n'y a qu'un domaine), puis les
-    sections globales Téléchargements, Sources, Réglages, qui remplacent le ☰ du mobile.
+  - en bas, le choix du domaine : un **FAB menu M3E** avec l'icône du domaine courant (son nom
+    à côté quand le rail est déplié), qui s'ouvre vers le haut sur la liste des domaines, le
+    courant coché. **Masqué tant qu'il n'y a qu'un domaine** (la v1), comme la rangée de puces
+    de l'Accueil ; la galerie le montre avec trois domaines fictifs. Puis les sections
+    globales Téléchargements, Sources, Réglages, qui remplacent le ☰ du mobile.
 - **Routes** (addendum navigation entre domaines §3) : `/home`, `/music/explore`,
   `/music/library/…` ; une page d'entité s'ouvre dans la branche d'où elle vient, préfixée par
   le domaine (`/home/music/album/:id`, `/music/explore/album/:id`) ; `/downloads`, `/sources`,
@@ -236,9 +244,18 @@ listes vides) est dans `docs/voice.md`.
   - au survol d'une carte, un bouton ▶ apparaît.
 - **Panneau « en lecture » à droite** : le widget `NowPlaying` en taille moyenne (5.5), dans
   une side sheet standard.
-  - Il se replie en une **bande de 76 px**, symétrique du rail : pochette du disque avec son
-    anneau, like, ⏯, ⏭, volume. Cette bande est le mini-lecteur du desktop. Il n'y a ni
-    barre en bas ni mini-lecteur flottant.
+  - Il se replie en une **bande de 76 px**, symétrique du rail, cohérente avec le lecteur :
+    trois groupes répartis sur la hauteur, espacements en jetons :
+    - en haut, le bouton qui rouvre le panneau, puis la pochette du disque avec son anneau ;
+    - au milieu, ⏯ rempli (le plus gros, même style que dans le lecteur), ⏭ tonal, like ;
+    - en bas, le volume en slider **vertical** de 120 dp au plus, piste fine, poignée
+      visible, icône haut-parleur dessous.
+
+    Cette bande est le mini-lecteur du desktop. Il n'y a ni barre en bas ni mini-lecteur
+    flottant.
+  - **Le bouton qui change la taille du lecteur est toujours dans le coin haut droit de sa
+    surface, en dernier** : panneau = en-tête à droite (sortie audio · ⤢ · replier) ; bande =
+    en haut de la bande, au-dessus de la pochette ; immersif = le même coin (⤡), et Échap.
   - Déplié par défaut au-dessus de 1000 px, replié en dessous. Le choix de l'utilisateur
     (⌘⌥B) est retenu (`ui.now_playing_open`).
 - **Vue immersive** : une icône ⤢ dans l'en-tête du panneau, ou ⌘⇧F. Le lecteur prend toute la
@@ -371,9 +388,10 @@ file, like), puis des groupes séparés par des espaces. Même menu sur mobile e
 | Carousel multi-browse | Artiste (albums) |
 | Étagère (titre + rangée horizontale de cartes 108) | Accueil, Explorer |
 | FAB étendu → FAB | Sources : « Ajouter une source » (ouvre la feuille §6.7) ; sur desktop, le FAB de la destination se place en haut du rail |
-| FAB menu | Bibliothèque : « Nouvelle » (nouvelle playlist, importer un lien) ; Accueil : « Lancer », icône ▶ (`play_arrow`) pleine (mélanger mes likés, radio de ce que j'écoute, reprendre la dernière écoute) |
+| FAB menu | Bibliothèque : « Nouvelle » (nouvelle playlist, importer un lien) ; Accueil : « Lancer », icône ▶ (`play_arrow`) pleine (mélanger mes likés, radio de ce que j'écoute, reprendre la dernière écoute) ; lecteur : Paroles · Lecteur · File (5.5) ; rail desktop : le choix du domaine (4.2) |
 | Split button | Toute collection qui se lit, qui se réduit en FAB lecture au défilement : album, playlist, Top 50, genre : « Lire » \| ▾ (aléatoire, lire ensuite, ajouter à la file) ; artiste, likés, téléchargés : « Aléatoire » \| ▾ (lire dans l'ordre, radio, lire ensuite, ajouter à la file) |
-| Groupe de boutons connectés | Lecteur (like / playlist / télécharger), sélecteur Paroles · Lecteur · File, rangée rapide des menus, choix des Réglages |
+| Groupe de boutons | Contrôles du lecteur (aléatoire · ⏮ · ⏯ · ⏭ · répétition, grande taille) |
+| Groupe de boutons connectés | Rangée rapide des menus, choix des Réglages |
 | Loading indicator M3E | Résultats de recherche, chargement de page, premier lancement |
 | Progress ondulé | Anneau du disque (lecteur, mini-lecteur, bande desktop), bord en vague, téléchargements |
 | Toolbar flottante | Mini-lecteur (+ FAB ⏯) ; sélection multiple (+ FAB « Lire » ; ajouter à une playlist, télécharger, like, retirer dans la toolbar) |
@@ -402,26 +420,42 @@ Le même widget sert partout. Seules la taille et la mise en page changent :
 | **moyen** | panneau desktop |
 | **grand** | lecteur plein écran mobile, vue immersive desktop |
 
-**Les blocs, toujours dans cet ordre :**
+**Les blocs, toujours dans cet ordre** (la même colonne dans le panneau, l'immersif et le
+plein écran mobile) :
 
-1. En-tête : ⌄ ou replier · « Lecture depuis … » · sortie audio · ⤢ (desktop) · ⋮.
+1. En-tête : « Lecture depuis … » · sortie audio (desktop) · ⤢ (desktop) · ⋮ · **le bouton
+   de taille** (⌄ sur mobile, replier dans le panneau, ⤡ dans l'immersif), toujours dernier,
+   dans le coin haut droit.
    - Le ⋮ contient : Aller à l'album · Aller à l'artiste · **Minuterie** (15, 30, 45 ou 60 min,
      fin du titre, annuler) · « Ce n'est pas le bon morceau » · Détails du flux.
    - Quand une minuterie tourne, une lune et le temps restant s'affichent dans l'en-tête.
-2. La pochette, selon le style choisi (ci-dessous).
-3. Le titre (Google Sans arrondie) et les artistes.
-4. Le groupe connecté Like / Ajouter à une playlist / Télécharger.
-5. La progression (ci-dessous) et les temps.
-6. Le groupe de contrôles : aléatoire · ⏮ · ⏯ · ⏭ · répétition.
-   - C'est un button group M3E : les largeurs morphent à l'appui.
+2. La pochette, selon le style choisi (ci-dessous), dimensionnée pour que pochette, écart et
+   trait de progression tiennent dans sa boîte, avec un espace en jetons sous l'en-tête :
+   l'anneau ou la vague ne débordent jamais sur l'en-tête ni sur une séparation.
+3. Les temps : en Disque, centrés juste sous l'anneau, en une ligne `1:14 / 3:26`
+   (labelLarge, chiffres tabulaires, onSurfaceVariant) ; en Vague, sous la vague, à gauche et
+   à droite.
+4. Le titre (Google Sans arrondie) et les artistes à gauche ; à droite du titre, **trois
+   boutons icônes standard** (sans conteneur) : J'aime (bascule), Ajouter à une playlist,
+   Télécharger (icône de téléchargement, pleine une fois téléchargé, anneau de progression
+   pendant).
+5. Le groupe de contrôles : aléatoire · ⏮ · ⏯ · ⏭ · répétition, sur toute la largeur de la
+   colonne. C'est l'action principale du lecteur : rien d'autre dans la colonne n'est plus
+   gros.
+   - Un button group M3E grande taille (64 dp de haut au moins, 72 sur un téléphone
+     tenu droit) : aléatoire et répétition en bascules aux extrémités, ⏮ et ⏭ tonals, ⏯
+     rempli et le plus large. Les largeurs morphent à l'appui.
    - ⏯ morphe et devient le loading indicator pendant un chargement.
-7. Le **sélecteur Paroles · Lecteur · File**, centré en bas : un groupe de boutons connectés M3E
-   (Lecteur au milieu).
-   - Le bouton actif est plein, avec son icône et son libellé ; les autres n'ont que l'icône.
-     Les largeurs morphent au changement.
-   - Sur desktop, le volume se place juste au-dessus.
+6. La **rangée du bas** : à gauche, le volume (desktop), un slider M3E à piste fine et
+   poignée visible qui prend la place restante, 240 dp au plus ; sur mobile, à sa place, le
+   bouton de sortie audio. À droite, un **FAB menu M3E** qui remplace le sélecteur : son icône
+   est celle de la vue courante, il s'ouvre vers le haut sur Paroles · Lecteur · File
+   (l'entrée courante cochée).
 
-**Les trois vues** du sélecteur partagent le même cadre :
+Les écarts verticaux viennent des jetons, sans bande morte ; la colonne se centre si l'écran
+est plus haut que nécessaire.
+
+**Les trois vues** du FAB menu partagent le même cadre :
 
 - **Lecteur** : tous les blocs.
 - **Paroles** : la pochette se rétracte en en-tête compact (transition partagée). Les paroles
@@ -439,13 +473,13 @@ Le même widget sert partout. Seules la taille et la mise en page changent :
     arrondi, et la pochette entière redevient visible.
   - Autour, l'**anneau ondulé est la progression**. On le fait glisser pour avancer.
     Sémantique : un slider accessible, avec ←/→ au clavier.
-  - Les temps sont sous l'anneau.
+  - Les temps sont sous l'anneau, en une ligne centrée.
 - **Vague.** La pochette est en pleine largeur, et son **bord bas est une onde** qui ondule
   pendant la lecture et s'aplatit en pause.
   - La partie déjà jouée de l'onde est tracée en `primary` : **le bord est la progression**.
     On glisse le long du bord pour avancer, avec la même sémantique de slider.
   - L'onde rogne le bas de l'image d'environ 10 px.
-  - Les temps sont sous le titre.
+  - Les temps sont sous la vague, aux deux bouts.
 
 Dans les deux styles, le mini-lecteur, la bande desktop et l'en-tête compact gardent la pochette
 du disque. Avec « réduire les animations », il n'y a ni rotation ni ondulation : la forme et
@@ -646,7 +680,7 @@ carte). Viennent ensuite les titres populaires, puis les albums en carousel mult
 (`surfaceContainer`), sans dégradé.
 
 - On l'ouvre depuis le mini-lecteur (↑ ou toucher).
-- On le ferme avec ⌄ ou en glissant vers le bas.
+- On le ferme avec ⌄ (en haut à droite) ou en glissant vers le bas.
 - La sortie audio ouvre le sélecteur du système.
 - File et Paroles sont des vues du lecteur, pas des feuilles.
 

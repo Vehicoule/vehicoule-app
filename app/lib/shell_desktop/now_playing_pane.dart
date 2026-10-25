@@ -70,9 +70,9 @@ class NowPlayingPane extends StatelessWidget {
                       color: vScreenSurface(Theme.of(context).colorScheme),
                       child: SizedBox(
                         width: VSize.strip,
-                        child: SingleChildScrollView(
+                        child: Padding(
                           padding: const EdgeInsets.symmetric(
-                            vertical: VSpace.s16,
+                            vertical: VSpace.s8,
                           ),
                           child: VNowPlaying(
                             data: data,
@@ -85,10 +85,7 @@ class NowPlayingPane extends StatelessWidget {
                             lyrics: lyricsView,
                             queue: queueView,
                             axis: Axis.vertical,
-                            volume: SizedBox(
-                              height: VSize.stripVolume,
-                              child: volume(vertical: true),
-                            ),
+                            volume: volume(vertical: true),
                           ),
                         ),
                       ),

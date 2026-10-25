@@ -92,11 +92,11 @@ void main() {
     final art = tester.getRect(find.byKey(VNowPlaying.artworkKey));
     final controls = tester.getRect(find.byKey(VNowPlaying.controlsKey));
     final selector = tester.getRect(find.byKey(VNowPlaying.selectorKey));
-    expect(art.top - header.bottom, lessThanOrEqualTo(VSpace.s32));
-    expect(
-      selector.top - controls.bottom,
-      lessThanOrEqualTo(VSpace.s32 + VSpace.s16),
-    );
+    // Centred: the room left shared above and below, a token gap at least.
+    final above = art.top - header.bottom,
+        below = selector.top - controls.bottom;
+    expect(above, greaterThanOrEqualTo(VSpace.s16));
+    expect((above - below).abs(), lessThanOrEqualTo(VSpace.s24));
     // Large controls where the height allows it.
     expect(controls.height, greaterThanOrEqualTo(VSize.controlTall));
   });
@@ -543,7 +543,7 @@ void main() {
     }
   });
 
-  testWidgets('shuffle and repeat are standard icon toggles; ⏯ dominates', (
+  testWidgets('shuffle and repeat are toggles at the ends; ⏯ dominates', (
     tester,
   ) async {
     await show(
@@ -565,19 +565,12 @@ void main() {
     const on = {WidgetState.selected}, off = <WidgetState>{};
     for (final i in [0, 4]) {
       final d = g.actions[i].decoration!;
-      for (final state in [on, off]) {
-        expect(
-          d.backgroundColor?.resolve(state)?.a,
-          0,
-          reason: 'no container, $i $state',
-        );
-      }
-      expect(d.foregroundColor?.resolve(on), s.primary, reason: 'on: primary');
-      expect(
-        d.foregroundColor?.resolve(off),
-        s.onSurfaceVariant,
-        reason: 'off',
-      );
+      // M3E toggle buttons: their own container; on, the secondary colour, never
+      // ⏯'s primary.
+      expect(d.backgroundColor?.resolve(off), s.surfaceContainerHighest);
+      expect(d.backgroundColor?.resolve(on), s.secondary, reason: 'on');
+      expect(d.foregroundColor?.resolve(on), s.onSecondary);
+      expect(d.foregroundColor?.resolve(off), s.onSurfaceVariant);
     }
     // ⏯: the filled primary, the widest; ⏮ and ⏭ keep the group's tonal look.
     expect(g.actions[2].decoration!.backgroundColor?.resolve(off), s.primary);

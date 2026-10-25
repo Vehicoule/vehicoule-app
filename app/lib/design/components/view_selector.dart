@@ -4,14 +4,13 @@ import 'package:material_ui/material_ui.dart';
 import '../../l10n/app_localizations.dart';
 import '../haptics.dart';
 import '../symbols.dart';
-import '../tokens.dart';
 
 enum PlayerView { player, lyrics, queue }
 
-/// Paroles · Lecteur · File, centred at the bottom of the player (spec UI §5.5, item 7):
-/// an M3E connected button group, Lecteur in the middle. The active button is filled,
-/// with its icon and label; the others show their icon only. [views] narrows the choice
-/// (the immersive view has no « Lecteur »).
+/// Paroles · Lecteur · File (spec UI §5.5, item 5): an M3E FAB menu at the end of the
+/// player's bottom row. Its icon is the current view's; it opens upwards on the views,
+/// the current one checked. [views] narrows the choice (the immersive view has no
+/// « Lecteur »).
 class VViewSelector extends StatelessWidget {
   const VViewSelector({
     super.key,
@@ -24,54 +23,45 @@ class VViewSelector extends StatelessWidget {
   final ValueChanged<PlayerView> onChanged;
   final List<PlayerView> views;
 
-  /// Left to right: the shared axis follows this order.
+  /// Top to bottom in the open menu (File nearest the FAB); the shared axis follows it.
   static const order = [PlayerView.lyrics, PlayerView.player, PlayerView.queue];
+
+  static IconData iconOf(PlayerView v) => switch (v) {
+    PlayerView.player => VIcons.musicNote,
+    PlayerView.lyrics => VIcons.lyrics,
+    PlayerView.queue => VIcons.queue,
+  };
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final scheme = Theme.of(context).colorScheme;
     String label(PlayerView v) => switch (v) {
       PlayerView.player => l.viewPlayer,
       PlayerView.lyrics => l.viewLyrics,
       PlayerView.queue => l.viewQueue,
     };
-    IconData icon(PlayerView v) => switch (v) {
-      PlayerView.player => VIcons.musicNote,
-      PlayerView.lyrics => VIcons.lyrics,
-      PlayerView.queue => VIcons.queue,
-    };
-    // A connected group given a width shares it equally; given none (a Row), each
-    // button takes its own: the active one, with its label, is wider.
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        M3EButtonGroup(
-          type: M3EButtonGroupType.connected,
-          style: M3EButtonStyle.tonal,
-          size: M3EButtonSize.md,
-          selectionRequired: true,
-          selectedIndex: views.indexOf(value),
-          onSelectedIndexChanged: (i) {
-            if (i == null || views[i] == value) return;
-            VHaptics.selection();
-            onChanged(views[i]);
-          },
-          decoration: M3EButtonDecoration.styleFrom(
-            selectedBackgroundColor: scheme.primary,
-            selectedForegroundColor: scheme.onPrimary,
-          ),
-          actions: [
-            for (final v in views)
-              M3EButtonGroupAction(
-                minWidth: VSize.selectorSegment,
-                icon: VSymbol(icon(v), filled: v == value),
-                selectedLabel: Text(label(v)),
-                semanticLabel: label(v),
-              ),
-          ],
-        ),
-      ],
+    return Semantics(
+      label: l.viewMenu(label(value)),
+      child: M3EFabMenu(
+        // Keyed by the view: the closed FAB shows the new view's icon at once.
+        key: ValueKey(value),
+        icon: VSymbol(iconOf(value), filled: true),
+        closeIcon: const VSymbol(VIcons.close),
+        size: M3EFabSize.regular,
+        color: M3EFabColor.secondary,
+        items: [
+          for (final v in views)
+            M3EFabMenuItem(
+              icon: VSymbol(v == value ? VIcons.check : iconOf(v)),
+              label: label(v),
+              onPressed: () {
+                if (v == value) return;
+                VHaptics.selection();
+                onChanged(v);
+              },
+            ),
+        ],
+      ),
     );
   }
 }

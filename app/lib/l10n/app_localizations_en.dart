@@ -91,6 +91,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get viewQueue => 'Queue';
 
   @override
+  String viewMenu(String view) {
+    return '$view view';
+  }
+
+  @override
   String get actionPlay => 'Play';
 
   @override
@@ -518,6 +523,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get domainMusic => 'Music';
+
+  @override
+  String get domainAnime => 'Anime';
+
+  @override
+  String get domainBooks => 'Books';
 
   @override
   String get actionHistoryBack => 'Previous page';

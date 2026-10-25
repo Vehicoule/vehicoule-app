@@ -242,6 +242,12 @@ abstract class AppLocalizations {
   /// **'File'**
   String get viewQueue;
 
+  /// No description provided for @viewMenu.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vue {view}'**
+  String viewMenu(String view);
+
   /// No description provided for @actionPlay.
   ///
   /// In fr, this message translates to:
@@ -1063,6 +1069,18 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Musique'**
   String get domainMusic;
+
+  /// No description provided for @domainAnime.
+  ///
+  /// In fr, this message translates to:
+  /// **'Anime'**
+  String get domainAnime;
+
+  /// No description provided for @domainBooks.
+  ///
+  /// In fr, this message translates to:
+  /// **'Livres'**
+  String get domainBooks;
 
   /// No description provided for @actionHistoryBack.
   ///

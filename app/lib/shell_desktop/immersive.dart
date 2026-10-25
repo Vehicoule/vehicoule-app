@@ -77,6 +77,13 @@ class _ImmersivePlayerState extends State<ImmersivePlayer> {
                       onImmersive: widget.onExit,
                       immersive: true,
                       wide: true,
+                      volume: ValueListenableBuilder(
+                        valueListenable: scope.player.volume,
+                        builder: (context, v, _) => VVolume(
+                          value: v,
+                          onChanged: scope.player.setVolume,
+                        ),
+                      ),
                     ),
                   ),
                 );

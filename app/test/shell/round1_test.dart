@@ -278,12 +278,8 @@ void main() {
       final r = Rig();
       r.api.prefs['ui.rail_expanded'] = 'true';
       await r.pump(tester, size: desktop);
-      await tester.tap(
-        find.descendant(
-          of: find.byType(VSideSheet),
-          matching: find.bySemanticsLabel('File'),
-        ),
-      );
+      // The queue view (the pane's view menu is tested in round2_test).
+      r.playback.view = PlayerView.queue;
       await settle(tester, 10);
       final row = find.descendant(
         of: find.byType(VSideSheet),

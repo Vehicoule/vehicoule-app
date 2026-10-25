@@ -56,6 +56,8 @@ void main() {
           VListGroup,
           VNavigationBar,
           VNavigationRail,
+          // The domain switch, with three domains (U12).
+          VDomainMenu,
           VSearchBar,
           VLargeAppBar,
           VCircularProgress,

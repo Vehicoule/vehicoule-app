@@ -143,21 +143,22 @@ void main() {
     }
   });
 
-  testWidgets('2: the times flank the base of the ring', (tester) async {
+  testWidgets('2: the times read the ring, centred right under it', (
+    tester,
+  ) async {
     await show(tester, player());
     final art = tester.getRect(find.byKey(VNowPlaying.artworkKey));
     final times = tester.getRect(find.byKey(VNowPlaying.progressKey));
-    expect(times.left, closeTo(art.left, VSpace.s16));
-    expect(times.right, closeTo(art.right, VSpace.s16));
-    expect(times.top, greaterThanOrEqualTo(art.bottom - VSpace.s32));
+    expect(times.center.dx, closeTo(art.center.dx, 0.5));
+    expect(times.top, greaterThanOrEqualTo(art.bottom));
     expect(
-      times.bottom,
-      lessThanOrEqualTo(art.bottom + VSpace.s24),
+      times.top,
+      lessThanOrEqualTo(art.bottom + VSpace.s8 + 0.5),
       reason: 'right under it',
     );
   });
 
-  testWidgets('3: a download shows its icon in a progress ring, then a check', (
+  testWidgets('3: a download shows its icon in a progress ring, then filled', (
     tester,
   ) async {
     await show(
@@ -171,20 +172,24 @@ void main() {
     expect(find.byType(M3EProgressIndicator), findsOneWidget);
     await show(tester, const VDownloadIcon(state: DownloadStateView.done));
     expect(
-      find.byWidgetPredicate((w) => w is VSymbol && w.icon == VIcons.check),
+      find.byWidgetPredicate(
+        (w) => w is VSymbol && w.icon == VIcons.downloaded && w.filled,
+      ),
       findsOneWidget,
     );
     expect(find.byType(M3EProgressIndicator), findsNothing);
   });
 
-  testWidgets('4: the timer is a tonal chip beside the output', (tester) async {
+  testWidgets('4: the timer is a tonal chip before the header actions', (
+    tester,
+  ) async {
     await show(tester, player());
     final chip = tester.getRect(find.text('24 min'));
-    final output = tester.getRect(find.bySemanticsLabel('Sortie audio'));
+    final more = tester.getRect(find.bySemanticsLabel("Plus d'options"));
     final label = tester.getRect(find.text('Lecture depuis'));
-    expect(chip.center.dy, closeTo(output.center.dy, 4));
+    expect(chip.center.dy, closeTo(more.center.dy, 4));
     expect(chip.left, greaterThan(label.right));
-    expect(chip.right, lessThanOrEqualTo(output.left));
+    expect(chip.right, lessThanOrEqualTo(more.left));
   });
 
   testWidgets('5: the theme follows the playing artwork', (tester) async {
@@ -288,7 +293,8 @@ void main() {
     final title = tester.getRect(find.byKey(VNowPlaying.titleKey));
     expect(art.height, greaterThan(art.width));
     expect(art.height, lessThanOrEqualTo(art.width * 1.15 + 0.5));
-    expect(title.top - art.bottom, lessThanOrEqualTo(VSpace.s32 + VSpace.s16));
+    // Under the wave: its times, then the title, no dead band.
+    expect(title.top - art.bottom, lessThanOrEqualTo(3 * VSpace.s32));
   });
 
   testWidgets('8a: the heart fills with a spring; reduce motion is instant', (
@@ -364,28 +370,6 @@ void main() {
     expect(mid, lessThan(start.dx), reason: 'still springing back');
     await tester.pump(const Duration(seconds: 2));
     expect(tester.getCenter(title).dx, closeTo(start.dx, 0.5));
-  });
-
-  testWidgets('8c: the selector widths morph; instant with reduce motion', (
-    tester,
-  ) async {
-    var view = PlayerView.player;
-    Widget sel() => Center(
-      child: StatefulBuilder(
-        builder: (context, set) =>
-            VViewSelector(value: view, onChanged: (v) => set(() => view = v)),
-      ),
-    );
-    await show(tester, sel(), reduce: false);
-    final before = tester.getSize(find.bySemanticsLabel('Paroles').first).width;
-    await tester.tap(find.bySemanticsLabel('Paroles').first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 60));
-    final mid = tester.getSize(find.bySemanticsLabel('Paroles').first).width;
-    await tester.pumpAndSettle();
-    final after = tester.getSize(find.bySemanticsLabel('Paroles').first).width;
-    expect(after, greaterThan(before));
-    expect(mid, inExclusiveRange(before, after), reason: 'morphs');
   });
 
   testWidgets('8d: a pressed control widens (button group squish)', (

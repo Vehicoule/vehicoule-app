@@ -31,6 +31,14 @@
   "viewPlayer": "Lecteur",
   "viewLyrics": "Paroles",
   "viewQueue": "File",
+  "viewMenu": "Vue {view}",
+  "@viewMenu": {
+    "placeholders": {
+      "view": {
+        "type": "String"
+      }
+    }
+  },
   "actionPlay": "Lire",
   "actionPause": "Mettre en pause",
   "actionNext": "Titre suivant",
@@ -212,6 +220,8 @@
   },
   "actionOpenMenu": "Ouvrir le menu",
   "domainMusic": "Musique",
+  "domainAnime": "Anime",
+  "domainBooks": "Livres",
   "actionHistoryBack": "Page précédente",
   "actionHistoryForward": "Page suivante",
   "actionSearch": "Rechercher",

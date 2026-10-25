@@ -325,6 +325,59 @@ class _VFabDockState extends State<VFabDock> {
   }
 }
 
+/// The domain switch at the bottom of the desktop rail (spec UI §4.2): an M3E FAB menu
+/// with the current domain's icon, its name beside it in the expanded rail. It opens
+/// upwards on [domains], the current one ([VAction.selected]) checked. The shell shows
+/// none while there is a single domain: a switch with nothing to switch.
+class VDomainMenu extends StatelessWidget {
+  const VDomainMenu({super.key, required this.domains, this.extended = false});
+
+  final List<VAction> domains;
+  final bool extended;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = domains.firstWhere(
+      (d) => d.selected,
+      orElse: () => domains.first,
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Semantics(
+          label: current.label,
+          child: M3EFabMenu(
+            icon: VSymbol(current.icon, filled: true),
+            closeIcon: const VSymbol(VIcons.close),
+            size: M3EFabSize.regular,
+            color: M3EFabColor.secondary,
+            position: M3EFabMenuPosition.left,
+            items: [
+              for (final d in domains)
+                M3EFabMenuItem(
+                  icon: VSymbol(d.selected ? VIcons.check : d.icon),
+                  label: d.label,
+                  onPressed: d.selected ? null : d.onSelected,
+                ),
+            ],
+          ),
+        ),
+        if (extended) ...[
+          const SizedBox(width: VSpace.s12),
+          Flexible(
+            child: Text(
+              current.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 /// The FAB menu (Bibliothèque: nouvelle playlist, importer un lien).
 ///
 /// [label] names it (« Nouvelle », « Lancer »); [icon] is its closed glyph.

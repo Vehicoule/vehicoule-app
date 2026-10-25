@@ -122,7 +122,8 @@ class NowPlayingActions {
 }
 
 /// The one player (spec UI §5.5), presentation only. Its blocks, always in this order:
-/// header · artwork · title · like/playlist/download · times · controls · view selector.
+/// header (the size toggle last, top right) · artwork · times · title with like /
+/// playlist / download · controls · the bottom row (volume or output, the view menu).
 ///
 /// - [PlayerSize.compact]: the mini player (spec UI §5.3): an M3E floating toolbar
 ///   (artwork with its ring, title, artists, like, a menu) and the ⏯ FAB beside it, with
@@ -373,38 +374,61 @@ class _VNowPlayingState extends State<VNowPlaying>
           _header(context),
           Expanded(child: _body(context)),
         ],
-        if (widget.volume case final volume?)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: VSpace.s16),
-            child: Row(
-              children: [
-                if (actions.onOutput case final output?)
-                  VIconButton(
-                    icon: VIcons.speaker,
-                    label: AppLocalizations.of(context).actionOutput,
-                    onPressed: output,
-                  ),
-                const SizedBox(width: VSpace.s8),
-                Expanded(child: volume),
-              ],
-            ),
-          ),
-        Padding(
-          padding: const EdgeInsets.only(top: VSpace.s8, bottom: VSpace.s16),
-          child: _selector(VViewSelector.order, widget.view),
-        ),
+        _bottomRow(context, VViewSelector.order, widget.view),
       ],
     );
   }
 
-  Widget _selector(List<PlayerView> views, PlayerView value) => Center(
-    child: VViewSelector(
-      key: VNowPlaying.selectorKey,
-      value: value,
-      views: views,
-      onChanged: widget.onView,
-    ),
-  );
+  /// The volume (desktop) or the audio output (phone) at the start, the view menu at the
+  /// end (spec UI §5.5, item 5): the volume takes the room left, 240 at most.
+  Widget _bottomRow(
+    BuildContext context,
+    List<PlayerView> views,
+    PlayerView value,
+  ) {
+    final Widget? start = widget.volume != null
+        ? ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: VSize.volumeMax),
+            child: widget.volume,
+          )
+        : actions.onOutput != null && !_outputInHeader
+        ? VIconButton(
+            icon: VIcons.devices,
+            label: AppLocalizations.of(context).actionOutput,
+            onPressed: actions.onOutput,
+          )
+        : null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        VSpace.s16,
+        VSpace.s8,
+        VSpace.s16,
+        VSpace.s16,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: start,
+            ),
+          ),
+          const SizedBox(width: VSpace.s16),
+          VViewSelector(
+            key: VNowPlaying.selectorKey,
+            value: value,
+            views: views,
+            onChanged: widget.onView,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The output sits in the header on desktop (the pane, the immersive view); on a
+  /// phone it takes the volume's place in the bottom row.
+  bool get _outputInHeader =>
+      widget.size == PlayerSize.medium || widget.immersive;
 
   double get _seekStep => data.durationMs <= 0
       ? 0.05
@@ -427,7 +451,8 @@ class _VNowPlayingState extends State<VNowPlaying>
             box.maxHeight >= VSize.tallPlayer;
         return AnimatedBuilder(
           animation: _side,
-          builder: (context, _) => _layers(context, _side.value, reduced, tall),
+          builder: (context, _) =>
+              _layers(context, _side.value, reduced, tall, widget.wide),
         );
       },
     );
@@ -438,13 +463,14 @@ class _VNowPlayingState extends State<VNowPlaying>
     double t,
     bool reduced,
     bool tall,
+    bool wide,
   ) => CustomMultiChildLayout(
     delegate: _PlayerLayout(
       slotKey: _slotKey,
       sideKey: _sideKey,
       t: t,
       reduced: reduced,
-      wide: widget.wide,
+      wide: wide,
       disc: _disc,
       bleed: _bleed,
       margin: tall ? VSpace.s16 : VSpace.s24,
@@ -464,11 +490,11 @@ class _VNowPlayingState extends State<VNowPlaying>
             ignoring: t > 0,
             child: Opacity(
               opacity: 1 - t,
-              child: _blocks(context, tall: tall),
+              child: _blocks(context, tall: tall, wide: wide),
             ),
           ),
         ),
-      if (t < 1 && !widget.wide)
+      if (t < 1 && !wide)
         LayoutId(
           key: const ValueKey('np.layer.controls'),
           id: _Part.controls,
@@ -480,7 +506,7 @@ class _VNowPlayingState extends State<VNowPlaying>
             ),
           ),
         ),
-      if (t < 1 && _disc && !widget.wide)
+      if (t < 1 && !wide)
         LayoutId(
           key: const ValueKey('np.layer.times'),
           id: _Part.times,
@@ -560,10 +586,10 @@ class _VNowPlayingState extends State<VNowPlaying>
     },
   );
 
-  /// ⌄ · « Lecture depuis » over the source · moon and time left · output · ⤢ · ⋮, on one
-  /// row (the mockup's header): the source ellipsizes, the actions never move. The
-  /// desktop pane folds with its panel icon; the immersive view leaves with ⤡ at the end.
-  /// In the pane the output sits by the volume instead.
+  /// « Lecture depuis » over the source · moon and time left · output · ⤢ · ⋮ · the size
+  /// toggle, on one row (spec UI §5.5): the source ellipsizes, the actions never move.
+  /// The toggle is always last, top right of the player's surface (⌄ on a phone, fold
+  /// on the desktop pane, ⤡ in the immersive view).
   Widget _header(BuildContext context) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
@@ -575,23 +601,35 @@ class _VNowPlayingState extends State<VNowPlaying>
     );
     Widget button(IconData icon, String label, VoidCallback? onPressed) =>
         VIconButton(icon: icon, label: label, onPressed: onPressed);
+    final Widget? toggle = immersive
+        ? (widget.onImmersive == null
+              ? null
+              : button(
+                  VIcons.closeFullscreen,
+                  l.actionExitImmersive,
+                  widget.onImmersive,
+                ))
+        : actions.onCollapse == null
+        ? null
+        : button(
+            pane ? VIcons.panelClose : VIcons.collapse,
+            l.actionCollapse,
+            actions.onCollapse,
+          );
     return Padding(
       key: VNowPlaying.headerKey,
-      padding: const EdgeInsets.symmetric(horizontal: VSpace.s8),
+      padding: const EdgeInsetsDirectional.only(
+        start: VSpace.s16,
+        end: VSpace.s8,
+      ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: VSize.playerHeader),
         child: Row(
           children: [
-            if (!immersive && actions.onCollapse != null)
-              button(
-                pane ? VIcons.panelClose : VIcons.collapse,
-                l.actionCollapse,
-                actions.onCollapse,
-              ),
-            const SizedBox(width: VSpace.s4),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     l.playingFromLabel,
@@ -611,7 +649,7 @@ class _VNowPlayingState extends State<VNowPlaying>
               ),
             ),
             const SizedBox(width: VSpace.s4),
-            // A running timer: a small tonal chip beside the output.
+            // A running timer: a small tonal chip before the actions.
             if (sleep != null || data.sleepEndOfTrack)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: VSpace.s4),
@@ -655,20 +693,10 @@ class _VNowPlayingState extends State<VNowPlaying>
                   ),
                 ),
               ),
-            if (actions.onOutput != null && !(pane && widget.volume != null))
+            if (actions.onOutput != null && _outputInHeader)
               button(VIcons.devices, l.actionOutput, actions.onOutput),
-            if (widget.onImmersive != null)
-              immersive
-                  ? button(
-                      VIcons.closeFullscreen,
-                      l.actionExitImmersive,
-                      widget.onImmersive,
-                    )
-                  : button(
-                      VIcons.fullscreen,
-                      l.actionImmersive,
-                      widget.onImmersive,
-                    ),
+            if (!immersive && widget.onImmersive != null)
+              button(VIcons.fullscreen, l.actionImmersive, widget.onImmersive),
             if (actions.onMenu != null)
               Builder(
                 builder: (b) => button(VIcons.more, l.actionMore, () {
@@ -676,27 +704,39 @@ class _VNowPlayingState extends State<VNowPlaying>
                   actions.onMenu!(box.localToGlobal(Offset.zero) & box.size);
                 }),
               ),
+            ?toggle,
           ],
         ),
       ),
     );
   }
 
+  /// The ring's reading, centred under it as one line (Disque); the Vague keeps its two
+  /// ends under the wave.
   Widget _times(BuildContext context) {
-    final style = Theme.of(context).textTheme.labelMedium?.copyWith(
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
+    final theme = Theme.of(context);
+    final style =
+        (_disc ? theme.textTheme.labelLarge : theme.textTheme.labelMedium)
+            ?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            );
     return ValueListenableBuilder(
       key: VNowPlaying.progressKey,
       valueListenable: widget.position,
-      builder: (context, ms, _) => Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(vTime(ms), style: style),
-          Text(vTime(data.durationMs), style: style),
-        ],
-      ),
+      builder: (context, ms, _) => _disc
+          ? Text(
+              '${vTime(ms)} / ${vTime(data.durationMs)}',
+              style: style,
+              textAlign: TextAlign.center,
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(vTime(ms), style: style),
+                Text(vTime(data.durationMs), style: style),
+              ],
+            ),
     );
   }
 
@@ -735,31 +775,35 @@ class _VNowPlayingState extends State<VNowPlaying>
         actions.onLike();
       }, selected: data.liked);
 
+  /// Like, add to a playlist, download: standard icon buttons trailing the title.
   Widget _actions(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final group = VConnectedGroup(
-      actions: [
-        _like(l),
-        VAction(
-          l.actionAddToPlaylist,
-          VIcons.playlistAdd,
-          actions.onAddToPlaylist,
+    final download = data.download;
+    return Row(
+      key: VNowPlaying.actionsKey,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _likeButton(l),
+        VIconButton(
+          icon: VIcons.playlistAdd,
+          label: l.actionAddToPlaylist,
+          onPressed: actions.onAddToPlaylist,
         ),
-        VAction(
-          l.actionDownload,
-          VIcons.download,
-          actions.onDownload,
-          leading: VDownloadIcon(
-            state: data.download,
+        VIconButton(
+          icon: VIcons.download,
+          label: switch (download) {
+            DownloadStateView.done => l.downloaded,
+            DownloadStateView.queued ||
+            DownloadStateView.running => l.downloading,
+            _ => l.actionDownload,
+          },
+          onPressed: actions.onDownload,
+          glyph: VDownloadIcon(
+            state: download,
             progress: data.downloadProgress,
           ),
         ),
       ],
-    );
-    // A compact group, centred (the mockup), not stretched across the player.
-    return Center(
-      key: VNowPlaying.actionsKey,
-      child: SizedBox(width: 3 * VSize.controlMax, child: group),
     );
   }
 
@@ -777,28 +821,26 @@ class _VNowPlayingState extends State<VNowPlaying>
     onRepeat: actions.onRepeat,
   );
 
-  /// Everything under the artwork: the times under the ring (Disc) or under the title
-  /// (Wave), the connected group, the controls. [tall] (a phone held upright) has large
-  /// controls and wider gaps.
-  Widget _blocks(BuildContext context, {bool tall = false}) {
-    final gap = tall ? VSpace.s24 : VSpace.s16;
+  /// The title and artists with their three buttons. Beside the artwork ([wide]), the
+  /// times above and the controls under them.
+  Widget _blocks(BuildContext context, {bool tall = false, bool wide = false}) {
+    final row = Row(
+      children: [
+        Expanded(child: _title(context)),
+        const SizedBox(width: VSpace.s8),
+        _actions(context),
+      ],
+    );
+    if (!wide) return row;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // In the column the Disc's times sit under the ring (their own layer); in two
-        // columns they lead the blocks.
-        if (_disc && widget.wide) ...[_times(context), SizedBox(height: gap)],
-        _title(context),
-        if (!_disc) ...[const SizedBox(height: VSpace.s12), _times(context)],
-        SizedBox(height: gap),
-        _actions(context),
-        // In the column the controls are their own part: the spare height goes
-        // between the two groups.
-        if (widget.wide) ...[
-          SizedBox(height: _controlsGap(tall)),
-          _controls(tall: tall),
-        ],
+        Center(child: _times(context)),
+        const SizedBox(height: VSpace.s24),
+        row,
+        SizedBox(height: _controlsGap(tall)),
+        _controls(tall: tall),
       ],
     );
   }
@@ -824,8 +866,9 @@ class _VNowPlayingState extends State<VNowPlaying>
     child: (v == PlayerView.queue ? widget.queue : widget.lyrics)(context),
   );
 
-  /// Desktop full window: the artwork and title on the left, lyrics or queue on the
-  /// right, the controls along the bottom (spec UI §4.2).
+  /// Desktop full window (spec UI §4.2, §5.5): the player's own column on the left (the
+  /// artwork, the times, the title, the controls, the bottom row), lyrics or queue on
+  /// the right.
   Widget _immersive(BuildContext context) {
     final side = widget.view == PlayerView.queue
         ? PlayerView.queue
@@ -846,91 +889,26 @@ class _VNowPlayingState extends State<VNowPlaying>
                 children: [
                   Expanded(
                     flex: 5,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: VSpace.s32,
-                        vertical: VSpace.s16,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            child: LayoutBuilder(
-                              builder: (context, box) {
-                                final s = box.biggest.shortestSide;
-                                return Center(
-                                  child: SizedBox.square(
-                                    key: VNowPlaying.artworkKey,
-                                    dimension: s,
-                                    child: _art(s, 0),
-                                  ),
-                                );
-                              },
-                            ),
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: _layers(
+                            context,
+                            0,
+                            reduceMotion(context),
+                            false,
+                            false,
                           ),
-                          const SizedBox(height: VSpace.s16),
-                          _title(context),
-                          const SizedBox(height: VSpace.s8),
-                          _times(context),
-                        ],
-                      ),
+                        ),
+                        _bottomRow(context, const [
+                          PlayerView.lyrics,
+                          PlayerView.queue,
+                        ], side),
+                      ],
                     ),
                   ),
                   Expanded(flex: 6, child: _sideContent(context, side)),
                 ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                VSpace.s24,
-                VSpace.s8,
-                VSpace.s24,
-                VSpace.s16,
-              ),
-              child: LayoutBuilder(
-                builder: (context, box) {
-                  final controls = SizedBox(
-                    width: 6 * VSize.controlMax + 4 * VSpace.s8,
-                    child: _controls(),
-                  );
-                  final selector = _selector(const [
-                    PlayerView.lyrics,
-                    PlayerView.queue,
-                  ], side);
-                  // Wide: one row; narrower, the controls above the group and
-                  // the selector.
-                  if (box.maxWidth >= VSize.immersiveRow) {
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: Align(
-                            alignment: AlignmentDirectional.centerStart,
-                            child: _actions(context),
-                          ),
-                        ),
-                        const SizedBox(width: VSpace.s16),
-                        controls,
-                        const SizedBox(width: VSpace.s16),
-                        Expanded(
-                          child: Align(
-                            alignment: AlignmentDirectional.centerEnd,
-                            child: selector,
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      controls,
-                      const SizedBox(height: VSpace.s16),
-                      Row(
-                        children: [_actions(context), const Spacer(), selector],
-                      ),
-                    ],
-                  );
-                },
               ),
             ),
           ],
@@ -1065,14 +1043,23 @@ class _VNowPlayingState extends State<VNowPlaying>
     );
   }
 
-  /// The collapsed desktop pane: a 76 px band, the mirror of the rail (spec UI §4.2):
-  /// the disc with its ring, like, ⏯, ⏭ and the volume.
+  /// The collapsed desktop pane: a 76 px band, the mirror of the rail (spec UI §4.2), in
+  /// three groups spread over its height: at the top the toggle that opens the pane and
+  /// the disc with its ring; in the middle ⏯ (the biggest, as in the player), ⏭ and
+  /// like; at the bottom the upright volume.
   Widget _strip(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Column(
-      key: VNowPlaying.compactKey,
+    final top = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (actions.onOpen case final open?) ...[
+          VIconButton(
+            icon: VIcons.panelOpen,
+            label: l.actionOpenPlayer,
+            onPressed: open,
+          ),
+          const SizedBox(height: VSpace.s8),
+        ],
         _visible(
           ValueListenableBuilder(
             valueListenable: widget.position,
@@ -1086,45 +1073,70 @@ class _VNowPlayingState extends State<VNowPlaying>
             ),
           ),
         ),
-        const SizedBox(height: VSpace.s8),
-        _likeButton(l),
-        const SizedBox(height: VSpace.s4),
+      ],
+    );
+    final middle = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
         if (data.loading)
           const SizedBox.square(
-            dimension: VSize.menuTarget,
+            dimension: VSize.fab,
             child: Center(child: VLoading(size: VSize.playIcon)),
           )
         else
           VIconButton(
             icon: data.playing ? VIcons.pause : VIcons.play,
             label: data.playing ? l.actionPause : l.actionPlay,
-            // Not a toggle: M3E squares a selected toggle; the strip's ⏯ stays round.
+            // Not a toggle: M3E squares a selected toggle; ⏯ keeps its shape.
             style: VIconStyle.filled,
+            size: VIconSize.medium,
             onPressed: () {
               VHaptics.light();
               actions.onPlayPause();
             },
           ),
-        const SizedBox(height: VSpace.s4),
+        const SizedBox(height: VSpace.s8),
         VIconButton(
           icon: VIcons.skipNext,
           label: l.actionNext,
+          style: VIconStyle.tonal,
           glyphFilled: true,
           onPressed: actions.onNext,
         ),
-        if (widget.volume case final volume?) ...[
-          const SizedBox(height: VSpace.s8),
-          volume,
-        ],
-        if (actions.onOpen case final open?) ...[
-          const SizedBox(height: VSpace.s8),
-          VIconButton(
-            icon: VIcons.panelOpen,
-            label: l.actionOpenPlayer,
-            onPressed: open,
-          ),
-        ],
+        const SizedBox(height: VSpace.s8),
+        _likeButton(l),
       ],
+    );
+    final bottom = widget.volume == null
+        ? const SizedBox.shrink()
+        : SizedBox(height: VSize.stripVolume, child: widget.volume);
+    return LayoutBuilder(
+      builder: (context, box) {
+        if (!box.hasBoundedHeight) {
+          return Column(
+            key: VNowPlaying.compactKey,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              top,
+              const SizedBox(height: VSpace.s24),
+              middle,
+              const SizedBox(height: VSpace.s24),
+              bottom,
+            ],
+          );
+        }
+        // Spread over the height; scrolled below the room the three groups need.
+        return SingleChildScrollView(
+          child: SizedBox(
+            height: math.max(box.maxHeight, VSize.stripMin),
+            child: Column(
+              key: VNowPlaying.compactKey,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [top, middle, bottom],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1175,7 +1187,6 @@ class _PlayerLayout extends MultiChildLayoutDelegate {
   @override
   void performLayout(Size size) {
     const m = VSpace.s24;
-    final gap = disc ? VSpace.s8 : VSpace.s16;
     Rect big;
     if (wide) {
       final half = size.width / 2;
@@ -1203,69 +1214,71 @@ class _PlayerLayout extends MultiChildLayoutDelegate {
         side,
       );
     } else {
-      final w = size.width - 2 * VSpace.s24;
+      // The column's edge: the M3 phone margin, so the controls keep 48 dp targets
+      // on a 360 dp phone and in the pane.
+      const edge = VSpace.s16;
+      final w = size.width - 2 * edge;
       final loose = BoxConstraints(
         minWidth: w,
         maxWidth: w,
         maxHeight: size.height,
       );
-      // Title and actions, then the controls group.
+      // Title row, then the controls group, both the column's width.
       final titleH = hasChild(_Part.blocks)
           ? layoutChild(_Part.blocks, loose).height
           : 0.0;
       final controlsH = hasChild(_Part.controls)
           ? layoutChild(_Part.controls, loose).height
           : 0.0;
-      final blocksH = titleH + (controlsH > 0 ? controlsGap + controlsH : 0);
-      // The Disc's times: under the ring, as wide as it (lecteur-v3).
+      // The times: one centred line (Disque), or the wave's two ends.
       var times = Size.zero;
-      final timesW = math.min(size.width - 2 * margin, cap);
       if (hasChild(_Part.times)) {
         times = layoutChild(
           _Part.times,
-          BoxConstraints(minWidth: timesW, maxWidth: timesW),
+          disc
+              ? BoxConstraints(maxWidth: w)
+              : BoxConstraints(minWidth: w, maxWidth: w),
         );
       }
-      final under = hasChild(_Part.times)
-          ? VSpace.s4 + times.height + VSpace.s16
-          : gap;
-      final room = size.height - blocksH - under - (bleed ? 0 : 2 * VSpace.s8);
+      // A token gap under the header (the ring never touches it), the times just
+      // under the artwork, then the title and the controls.
+      final above = bleed ? 0.0 : VSpace.s16;
+      final under = VSpace.s8 + times.height + VSpace.s24;
+      final below = titleH + (controlsH > 0 ? controlsGap + controlsH : 0);
+      final fixed = above + under + below + VSpace.s8;
       final side = [
         bleed ? size.width : size.width - 2 * margin,
-        room,
+        size.height - fixed,
         bleed ? size.width : cap,
       ].reduce(math.min).clamp(0.0, double.infinity);
       // The Vague may grow taller than wide (up to 1.15×, the cover cropped) to take
       // the room that would otherwise sit between the wave and the title.
       var height = side;
       if (bleed) {
-        final spare = size.height - side - under - blocksH - 2 * VSpace.s16;
+        final spare = size.height - side - fixed - VSpace.s16;
         height = side + spare.clamp(0.0, side * (VSize.waveTallest - 1));
       }
-      // What's left is shared out (above the artwork, between it and the blocks,
-      // below the controls) rather than left as two bands.
-      final slack = math.max(0.0, size.height - height - under - blocksH);
-      // Above the artwork: at most 32, the header stays close to it.
-      final top = bleed ? 0.0 : math.min(slack / 3, VSpace.s32);
-      final share = (slack - top) / 2;
+      // The room left: the column is centred in it (Disque); the Vague, pinned to the
+      // top, shares it between its gaps. No dead band.
+      final slack = math.max(0.0, size.height - fixed - height);
+      final top = above + (bleed ? 0.0 : slack / 2);
+      final share = bleed ? slack / 3 : 0.0;
       big = Rect.fromLTWH((size.width - side) / 2, top, side, height);
+      final timesY = big.bottom + VSpace.s8;
       if (hasChild(_Part.times)) {
         positionChild(
           _Part.times,
-          Offset((size.width - timesW) / 2, big.bottom + VSpace.s4),
+          Offset(disc ? (size.width - times.width) / 2 : edge, timesY),
         );
       }
-      // The Disc's title follows its times (no band between them): the spare height
-      // goes between the title group and the controls, and under the controls. The
-      // Vague keeps its gap under the wave (lecteur-v3 C).
-      final y = top + height + under + (disc ? 0 : share);
+      final y = timesY + times.height + VSpace.s24 + share;
       if (hasChild(_Part.blocks)) {
-        positionChild(_Part.blocks, Offset(VSpace.s24, y));
+        positionChild(_Part.blocks, Offset(edge, y));
       }
       if (hasChild(_Part.controls)) {
         positionChild(
           _Part.controls,
-          Offset(VSpace.s24, y + titleH + controlsGap + (disc ? share : 0)),
+          Offset(edge, y + titleH + controlsGap + share),
         );
       }
     }

@@ -24,6 +24,14 @@
   "viewPlayer": "Player",
   "viewLyrics": "Lyrics",
   "viewQueue": "Queue",
+  "viewMenu": "{view} view",
+  "@viewMenu": {
+    "placeholders": {
+      "view": {
+        "type": "String"
+      }
+    }
+  },
   "actionPlay": "Play",
   "actionPause": "Pause",
   "actionNext": "Next track",
@@ -161,6 +169,8 @@
   "appName": "Vehicoule",
   "actionOpenMenu": "Open the menu",
   "domainMusic": "Music",
+  "domainAnime": "Anime",
+  "domainBooks": "Books",
   "actionHistoryBack": "Previous page",
   "actionHistoryForward": "Next page",
   "actionSearch": "Search",

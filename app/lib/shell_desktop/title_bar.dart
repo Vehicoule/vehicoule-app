@@ -24,11 +24,22 @@ bool get hasTitleBar => switch (defaultTargetPlatform) {
   _ => false,
 };
 
+/// The top bar (spec UI §4.2): 64 high, ← → at the left (after the macOS window
+/// buttons), the global actions at the right, all on the search's line; the window
+/// moves by it. The search, 48 high and [searchWidth] wide, is centred on the content
+/// card under it ([content], the card's link): 8 from the window's top and from the card.
 class TitleBar extends StatelessWidget {
-  const TitleBar({super.key, required this.search});
+  const TitleBar({
+    super.key,
+    required this.search,
+    required this.content,
+    required this.searchWidth,
+  });
 
   /// ⌘F opens it.
   final GlobalKey<VSearchBarState> search;
+  final LayerLink content;
+  final double searchWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -54,21 +65,29 @@ class TitleBar extends StatelessWidget {
               label: l.actionHistoryForward,
               onPressed: history.canGoForward ? history.forward : null,
             ),
+            // Laid out here, drawn over the content card's centre, just above it.
             Expanded(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: VSize.titleSearch,
-                  ),
-                  child: VSearchBar(
-                    key: search,
-                    shortcut: defaultTargetPlatform == TargetPlatform.macOS
-                        ? l.shortcutSearchApple
-                        : l.shortcutSearchOther,
-                    // Task 6: suggestions_view.dart.
-                    suggestions: (_, _) => const [],
-                    onSubmitted: (q) => context.go(
-                      Routes.search(NavHistory.of(context).domain, q),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: CompositedTransformFollower(
+                  link: content,
+                  showWhenUnlinked: false,
+                  targetAnchor: Alignment.topCenter,
+                  followerAnchor: Alignment.bottomCenter,
+                  offset: const Offset(0, -VSpace.s8),
+                  child: SizedBox(
+                    width: searchWidth,
+                    height: VSize.titleSearchHeight,
+                    child: VSearchBar(
+                      key: search,
+                      shortcut: defaultTargetPlatform == TargetPlatform.macOS
+                          ? l.shortcutSearchApple
+                          : l.shortcutSearchOther,
+                      // Task 6: suggestions_view.dart.
+                      suggestions: (_, _) => const [],
+                      onSubmitted: (q) => context.go(
+                        Routes.search(NavHistory.of(context).domain, q),
+                      ),
                     ),
                   ),
                 ),
@@ -90,6 +109,10 @@ class TitleBar extends StatelessWidget {
       ),
     );
   }
+
+  /// 360 to 560 wide, 16 from the card's edges when it can.
+  static double searchWidthFor(double card) =>
+      (card - 2 * VSpace.s16).clamp(VSize.titleSearchMin, VSize.titleSearch);
 }
 
 /// The window: its smallest size, its saved bounds (`ui.window_bounds`), and a close

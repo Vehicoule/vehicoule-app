@@ -21,7 +21,9 @@ String? _region(WidgetTester tester) {
   final c = FocusManager.instance.primaryFocus?.context;
   if (c == null) return null;
   bool inside(Finder f) => f.evaluate().any((e) => c == e || _isAncestor(e, c));
-  if (inside(find.byType(TitleBar))) return 'title';
+  if (inside(find.byType(TitleBar))) {
+    return 'title';
+  }
   if (inside(find.byType(VNavigationRail))) return 'rail';
   if (inside(find.byType(VSideSheet))) return 'pane';
   return 'content';
@@ -38,12 +40,15 @@ bool _isAncestor(Element a, BuildContext c) {
 
 /// Shows the queue in the pane, its rows a track table.
 Future<void> _queue(WidgetTester tester) async {
+  // The view menu, then File.
   await tester.tap(
     find.descendant(
       of: find.byType(VSideSheet),
-      matching: find.bySemanticsLabel('File'),
+      matching: find.byKey(VNowPlaying.selectorKey),
     ),
   );
+  await settle(tester, 10);
+  await tester.tap(find.text('File'));
   await settle(tester, 10);
 }
 

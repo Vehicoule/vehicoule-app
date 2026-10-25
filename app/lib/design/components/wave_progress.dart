@@ -240,7 +240,8 @@ class VDownloadIcon extends StatelessWidget {
     final reduced = reduceMotion(context);
     final (Widget icon, String label) = switch (state) {
       DownloadStateView.done => (
-        VSymbol(VIcons.check, filled: true, weight: 600, size: size),
+        // The download glyph, filled: « downloaded », not a bare ✓.
+        VSymbol(VIcons.downloaded, filled: true, size: size),
         l.downloaded,
       ),
       // The download icon inside an M3E circular progress, never a bare arc. Queued

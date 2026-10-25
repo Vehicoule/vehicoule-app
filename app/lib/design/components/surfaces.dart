@@ -75,6 +75,11 @@ class VPinned {
   final bool droppable;
 }
 
+/// The rail's width at rest, collapsed or expanded (the desktop shell lays out by it).
+double vRailWidth(BuildContext context, {required bool expanded}) => expanded
+    ? VSize.railExpanded
+    : M3ETheme.of(context).navigationRailTheme.collapsedWidth;
+
 /// The rail (spec UI §4.2): the destinations, then « Épinglés »; collapsed (icons and
 /// artworks) or [expanded]. Indices run over the destinations, then the pinned items.
 class VNavigationRail extends StatelessWidget {
@@ -268,7 +273,7 @@ class VNavigationRail extends StatelessWidget {
 
   /// The height the bottom block takes, kept free under the pinned list.
   double get _bottomHeight =>
-      (trailing == null ? 0 : VSize.menuTarget + VSpace.s8) +
+      (trailing == null ? 0 : VSize.fab + VSpace.s8) +
       globals.length * VSize.menuTarget +
       VSpace.s16;
 }
@@ -569,20 +574,38 @@ class VSearchBarState extends State<VSearchBar> {
   }
 
   @override
-  Widget build(BuildContext context) => M3ESearchAnchor.bar(
-    searchController: _controller,
-    barHintText: AppLocalizations.of(context).searchHint,
-    barLeading: const VSymbol(VIcons.search),
-    barTrailing: [
+  Widget build(BuildContext context) {
+    final trailing = [
       if (widget.shortcut case final key?)
         ExcludeSemantics(child: _Keycap(label: key)),
-    ],
-    viewHintText: AppLocalizations.of(context).searchHint,
-    onSubmitted: widget.onSubmitted,
-    // The docked view is as tall as its suggestions: no empty panel.
-    shrinkWrap: true,
-    suggestionsBuilder: (context, c) => widget.suggestions(context, c.text),
-  );
+    ];
+    // Docked (from 600 dp, the M3E rule): the view opens in the bar's own place,
+    // the same height, the same leading search icon and keycap, no widening on
+    // focus. Otherwise the field, its hint and its icons jump at the click and again
+    // at the close. Full screen (a phone) keeps M3's ← and its own height.
+    final docked = MediaQuery.sizeOf(context).width >= VBreakpoints.medium;
+    return M3ESearchAnchor.bar(
+      searchController: _controller,
+      barHintText: AppLocalizations.of(context).searchHint,
+      barLeading: const VSymbol(VIcons.search),
+      barTrailing: trailing,
+      constraints: docked
+          ? const BoxConstraints(
+              minHeight: VSize.titleSearchHeight,
+              maxHeight: VSize.titleSearchHeight,
+            )
+          : null,
+      expandOnFocus: !docked,
+      viewHeaderHeight: docked ? VSize.titleSearchHeight : null,
+      viewLeading: docked ? const VSymbol(VIcons.search) : null,
+      viewTrailing: docked ? trailing : null,
+      viewHintText: AppLocalizations.of(context).searchHint,
+      onSubmitted: widget.onSubmitted,
+      // The docked view is as tall as its suggestions: no empty panel.
+      shrinkWrap: true,
+      suggestionsBuilder: (context, c) => widget.suggestions(context, c.text),
+    );
+  }
 }
 
 enum VCarouselKind { hero, multiBrowse, uncontained }

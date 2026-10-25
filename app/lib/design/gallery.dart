@@ -1869,6 +1869,9 @@ class _NavigationSectionState extends State<_NavigationSection> {
   // Bibliothèque: the rail shows its FAB menu « Nouvelle ».
   int _tab = 2;
 
+  /// The domain switch with three domains (the app has one until anime and books).
+  int _domain = 0;
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
@@ -1904,6 +1907,23 @@ class _NavigationSectionState extends State<_NavigationSection> {
             VAction(l.actionImportLink, VIcons.addLink, _noop),
           ],
         },
+        trailing: VDomainMenu(
+          key: ValueKey('gallery.domains.$expanded'),
+          extended: expanded,
+          domains: [
+            for (final (i, (label, icon)) in [
+              (l.domainMusic, VIcons.musicNote),
+              (l.domainAnime, VIcons.anime),
+              (l.domainBooks, VIcons.books),
+            ].indexed)
+              VAction(
+                label,
+                icon,
+                () => setState(() => _domain = i),
+                selected: i == _domain,
+              ),
+          ],
+        ),
       ),
     );
     return _wrap([

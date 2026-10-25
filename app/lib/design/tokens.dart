@@ -45,22 +45,30 @@ abstract final class VSize {
   /// The standard side sheet that holds the desktop "now playing" pane.
   static const sideSheet = 360.0;
 
-  /// The desktop's own title bar, the room it leaves for the macOS window buttons, and
-  /// the widest its search bar gets (desktop-2).
-  static const titleBar = 52.0, windowButtons = 76.0, titleSearch = 570.0;
+  /// The desktop's top bar (spec UI §4.2): its height, the room it leaves for the macOS
+  /// window buttons, its search bar's height and width range (centred on the content).
+  static const titleBar = 64.0,
+      windowButtons = 76.0,
+      titleSearchHeight = 48.0,
+      titleSearchMin = 360.0,
+      titleSearch = 560.0;
 
   /// A pinned collection's cover in the rail (desktop-2: 32, not a 24 glyph).
   static const pinnedArt = 32.0;
 
-  /// The upright volume in the desktop strip.
-  static const stripVolume = 160.0;
+  /// The upright volume in the desktop strip (its speaker included), and the height
+  /// under which the strip's three groups scroll instead of spreading out.
+  static const stripVolume = 120.0, stripMin = 440.0;
 
   /// Icon sizes: inline badge, list and button icon, empty-state icon.
   static const iconSmall = 16.0, icon = 24.0, iconLarge = 48.0;
 
-  /// Slider tracks (M3E sizes): « s » (24) for a plain slider; « m » (40) for the
-  /// volume, whose speaker sits inside the track (M3E inset icons start at « m »).
-  static const sliderTrack = 24.0, volumeTrack = 40.0;
+  /// Slider tracks (M3E sizes): « s » (24) for a plain slider; « xs » (16) for the
+  /// volume, a thin track with its speaker beside it.
+  static const sliderTrack = 24.0, volumeTrack = 16.0;
+
+  /// The widest the player's volume gets, beside the view menu (spec UI §5.5).
+  static const volumeMax = 240.0;
 
   /// A chip's leading icon (M3 chips: 18).
   static const chipIcon = 18.0;
@@ -81,9 +89,9 @@ abstract final class VSize {
   /// The header row of the player.
   static const playerHeader = 56.0;
 
-  /// The widest a control button gets (⏯ takes two), and the controls' height when the
-  /// player has the room (a phone held upright).
-  static const controlMax = 72.0, controlTall = 72.0;
+  /// The player's controls (spec UI §5.5): the widest a unit gets (⏯ takes two), their
+  /// height, taller on a phone held upright.
+  static const controlMax = 72.0, control = 64.0, controlTall = 72.0;
 
   /// From this body height the large player uses tall controls.
   static const tallPlayer = 640.0;

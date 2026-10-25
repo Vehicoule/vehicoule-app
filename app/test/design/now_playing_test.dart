@@ -108,7 +108,6 @@ void main() {
           VNowPlaying.headerKey,
           VNowPlaying.artworkKey,
           VNowPlaying.titleKey,
-          VNowPlaying.actionsKey,
           VNowPlaying.controlsKey,
           VNowPlaying.selectorKey,
         ].map(top).toList();
@@ -124,27 +123,22 @@ void main() {
           }
           expect(order[i], greaterThan(order[i - 1]), reason: '$why: block $i');
         }
-        final times = top(VNowPlaying.progressKey);
-        if (style == PlayerStyle.wave) {
-          final title = tester.getRect(find.byKey(VNowPlaying.titleKey));
-          expect(
-            times - title.bottom,
-            greaterThanOrEqualTo(VSpace.s8),
-            reason: 'a gap under the artists',
-          );
+        // Like / playlist / download trail the title, on its row.
+        final title = tester.getRect(find.byKey(VNowPlaying.titleKey));
+        final buttons = tester.getRect(find.byKey(VNowPlaying.actionsKey));
+        expect(buttons.left, greaterThanOrEqualTo(title.right - 0.5));
+        expect(buttons.center.dy, inInclusiveRange(title.top, title.bottom));
+        // The times: under the artwork, above the title.
+        final times = tester.getRect(find.byKey(VNowPlaying.progressKey));
+        final art = tester.getRect(find.byKey(VNowPlaying.artworkKey));
+        expect(times.top, greaterThanOrEqualTo(art.bottom - 0.5), reason: why);
+        expect(times.bottom, lessThanOrEqualTo(title.top), reason: why);
+        if (style == PlayerStyle.disc) {
+          expect(find.text('2:00 / 6:09'), findsOneWidget, reason: why);
+        } else {
+          expect(find.text('2:00'), findsOneWidget, reason: why);
+          expect(find.text('6:09'), findsOneWidget, reason: why);
         }
-        expect(
-          times,
-          greaterThan(order[1]),
-          reason: '$why: times under the artwork',
-        );
-        expect(
-          times,
-          lessThan(order[4]),
-          reason: '$why: times above the controls',
-        );
-        expect(find.text('2:00'), findsOneWidget, reason: why);
-        expect(find.text('6:09'), findsOneWidget, reason: why);
         expect(find.text('Lecture depuis'), findsOneWidget, reason: why);
         expect(
           find.text('Random Access Memories'),
@@ -206,33 +200,21 @@ void main() {
     },
   );
 
-  testWidgets('view selector switches views and widens the active one', (
-    tester,
-  ) async {
+  testWidgets('the view menu opens on the views and picks one', (tester) async {
     final views = <PlayerView>[];
     await show(
       tester,
-      Center(
+      Align(
+        alignment: Alignment.bottomRight,
         child: VViewSelector(value: PlayerView.player, onChanged: views.add),
       ),
     );
-    final active = tester.getSize(find.bySemanticsLabel('Lecteur').first).width;
-    final idle = tester.getSize(find.bySemanticsLabel('Paroles').first).width;
-    expect(active, greaterThan(idle));
-    // (M3E measures each button's selected and unselected widths offstage.)
-    expect(find.text('Lecteur').hitTestable(), findsOneWidget);
-    expect(
-      find.text('Paroles').hitTestable(),
-      findsNothing,
-      reason: 'only the active one shows its label',
-    );
-    // Paroles · Lecteur · File: Lecteur in the middle.
-    final lyrics = tester.getCenter(find.bySemanticsLabel('Paroles').first);
-    final queue = tester.getCenter(find.bySemanticsLabel('File').first);
-    final player = tester.getCenter(find.bySemanticsLabel('Lecteur').first);
-    expect(lyrics.dx, lessThan(player.dx));
-    expect(player.dx, lessThan(queue.dx));
-    await tester.tap(find.bySemanticsLabel('Paroles'));
+    expect(find.text('Paroles'), findsNothing, reason: 'closed: its FAB only');
+    await tester.tap(find.byType(VViewSelector));
+    await tester.pump();
+    await tester.pump(VDurations.long);
+    await tester.tap(find.text('Paroles'));
+    await tester.pump(VDurations.long);
     expect(views, [PlayerView.lyrics]);
   });
 
@@ -314,7 +296,7 @@ void main() {
     final header = tester.widget(find.byKey(VNowPlaying.headerKey));
     position.value = 130000;
     await tester.pump();
-    expect(find.text('2:10'), findsOneWidget);
+    expect(find.text('2:10 / 6:09'), findsOneWidget);
     expect(identical(tester.widget(find.byType(VControls)), controls), isTrue);
     expect(
       identical(tester.widget(find.byKey(VNowPlaying.headerKey)), header),
@@ -397,7 +379,7 @@ void main() {
   });
 
   testWidgets(
-    'the header is one row: fold · « Lecture depuis » over the source · ⤢ · ⋮',
+    'the header is one row: « Lecture depuis » over the source · ⤢ · ⋮ · fold',
     (tester) async {
       await show(
         tester,
@@ -430,8 +412,8 @@ void main() {
           .expandToInclude(from);
       expect(block.center.dy, closeTo(collapse.center.dy, 2));
       expect(block.center.dy, closeTo(more.center.dy, 2));
-      expect(from.left, greaterThanOrEqualTo(collapse.right));
       expect(from.right, lessThanOrEqualTo(more.left));
+      expect(more.right, lessThanOrEqualTo(collapse.left), reason: 'fold last');
       expect(find.text('24\u00a0min'), findsOneWidget);
     },
   );
@@ -740,12 +722,15 @@ void layoutTests() {
         FlutterError.onError = old;
         expect(errors.map((e) => e.exceptionAsString()), isEmpty);
         final bounds = Offset.zero & size;
+        final menu = tester.getRect(find.byKey(VNowPlaying.selectorKey));
+        expect(
+          bounds.contains(menu.topLeft) && bounds.contains(menu.bottomRight),
+          isTrue,
+          reason: 'the view menu at $menu',
+        );
         for (final l in [
           for (final r in reachable)
             immersive && r == 'Réduire' ? 'Quitter le plein écran' : r,
-          if (!immersive) 'Lecteur',
-          'Paroles',
-          'File',
         ]) {
           final f = find.bySemanticsLabel(l);
           expect(f, findsWidgets, reason: l);
@@ -782,14 +767,18 @@ void layoutTests() {
     }
   }
 
-  testWidgets('a tall phone keeps the artwork near the header, large', (
+  testWidgets('a tall phone centres a large column, no dead band', (
     tester,
   ) async {
     await show(tester, player(), size: const Size(412, 1100));
     final header = tester.getRect(find.byKey(VNowPlaying.headerKey));
     final art = tester.getRect(find.byKey(VNowPlaying.artworkKey));
-    expect(art.top - header.bottom, lessThanOrEqualTo(VSpace.s32));
+    final controls = tester.getRect(find.byKey(VNowPlaying.controlsKey));
+    final menu = tester.getRect(find.byKey(VNowPlaying.selectorKey));
     expect(art.width, greaterThanOrEqualTo(412 - 2 * VSpace.s16 - 0.5));
+    // The room left is shared above and below, not left as one band.
+    final above = art.top - header.bottom, below = menu.top - controls.bottom;
+    expect((above - below).abs(), lessThanOrEqualTo(VSpace.s24));
   });
 
   testWidgets(

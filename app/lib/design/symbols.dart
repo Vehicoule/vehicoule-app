@@ -29,6 +29,10 @@ abstract final class VIcons {
   static const devices = IconData(0xe326, fontFamily: _f);
   static const download = IconData(0xf090, fontFamily: _f);
   static const downloadDone = IconData(0xf091, fontFamily: _f);
+  static const downloaded = IconData(
+    0xf000,
+    fontFamily: _f,
+  ); // download_for_offline, filled once downloaded
   static const dragHandle = IconData(0xe25d, fontFamily: _f);
   static const error = IconData(0xf8b6, fontFamily: _f);
   static const explicit = IconData(0xe01e, fontFamily: _f);
@@ -36,6 +40,8 @@ abstract final class VIcons {
   static const favorite = IconData(0xe87e, fontFamily: _f);
   static const fullscreen = IconData(0xf1ce, fontFamily: _f); // open_in_full
   static const home = IconData(0xe9b2, fontFamily: _f);
+  static const anime = IconData(0xe639, fontFamily: _f); // live_tv
+  static const books = IconData(0xea19, fontFamily: _f); // menu_book
   static const library = IconData(0xe030, fontFamily: _f); // library_music
   static const lyrics = IconData(0xec0b, fontFamily: _f);
   static const menu = IconData(0xe5d2, fontFamily: _f);

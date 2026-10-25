@@ -173,12 +173,8 @@ void main() {
     api.prefs['ui.rail_expanded'] = 'true';
     api.prefs['ui.now_playing_open'] = 'true';
     await app(tester);
-    await tester.tap(
-      find.descendant(
-        of: find.byType(VSideSheet),
-        matching: find.bySemanticsLabel('File'),
-      ),
-    );
+    // The queue view (the pane's view menu is tested in round2_test).
+    playback.view = PlayerView.queue;
     await wait(tester);
     final row = find.descendant(
       of: find.byType(VSideSheet),
