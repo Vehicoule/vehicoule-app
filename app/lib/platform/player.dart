@@ -224,7 +224,8 @@ class PlayerAdapter {
     Duration(milliseconds: math.max(0, _position.value + delta.inMilliseconds)),
   );
 
-  /// A tap that starts a track (Rust answers with a `Play`): times the first sound.
+  /// A tap that starts a track (Rust answers with a `Play`), or ⏯ on a track loaded
+  /// paused: times the first sound.
   void markTap() {
     _tap = Stopwatch()..start();
     _setLoading(true);
@@ -248,7 +249,9 @@ class PlayerAdapter {
         _index = 0;
         _startedIndex = null;
         _failed = null;
-        _setLoading(true);
+        // A paused load (the restore at launch) is no loading, and no sound to time.
+        _setLoading(autoplay);
+        if (!autoplay) _tap = null;
         final at = positionMs.toInt();
         _position.value = at;
         _seeks++;

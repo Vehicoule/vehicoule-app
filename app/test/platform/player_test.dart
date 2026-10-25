@@ -334,6 +334,40 @@ void main() {
       ]);
     });
 
+    test(
+      'a paused load is not loading; play then loads until the sound',
+      () async {
+        final r = Rig();
+        final loading = <bool>[];
+        r.adapter.loading.listen(loading.add);
+        // The paused restore at launch.
+        r.commands.add(playCmd('e1', 'a', positionMs: 30000, autoplay: false));
+        await settle();
+        r.backend.indexes.add(0);
+        expect(loading, isEmpty);
+        // A tap answered by a paused load ends at the load.
+        r.adapter.markTap();
+        r.commands.add(playCmd('e1', 'a', positionMs: 30000, autoplay: false));
+        await settle();
+        expect(loading, [true, false]);
+        // ⏯ on the restored track: loading from the tap to the first sound.
+        r.adapter.markTap();
+        await r.adapter.play();
+        expect(r.backend.calls.last, 'play');
+        r.backend.positions.add(Duration.zero);
+        await settle();
+        expect(loading, [true, false, true]);
+        r.backend.positions.add(const Duration(milliseconds: 30200));
+        await settle();
+        expect(loading, [true, false, true, false]);
+        expect(
+          api.calls.where((c) => c.memberName == #crateApiSystemReportPerf),
+          hasLength(1),
+          reason: 'only the tap that led to sound is timed',
+        );
+      },
+    );
+
     test('first position after a tap reports tap-to-first-sound', () async {
       final r = Rig();
       r.adapter.markTap();
