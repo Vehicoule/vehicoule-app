@@ -224,11 +224,15 @@ class VControls extends StatelessWidget {
     required this.onPrevious,
     required this.onShuffle,
     required this.onRepeat,
+    this.tall = false,
   });
 
   final bool playing, loading, shuffle;
   final Repeat repeat;
   final VoidCallback onPlayPause, onNext, onPrevious, onShuffle, onRepeat;
+
+  /// Large controls (a phone held upright): 72 high, the mockup's proportions.
+  final bool tall;
 
   @override
   Widget build(BuildContext context) {
@@ -260,7 +264,11 @@ class VControls extends StatelessWidget {
             ? VLoading(size: big ? VSize.playIcon : VSize.icon)
             : VPlayPauseIcon(
                 playing: playing,
-                size: big ? VSize.playIcon : VSize.icon,
+                size: tall && big
+                    ? VSize.playIcon + VSpace.s8
+                    : big
+                    ? VSize.playIcon
+                    : VSize.icon,
               );
         M3EButtonGroupAction side(Widget icon, String label) =>
             M3EButtonGroupAction(
@@ -283,7 +291,14 @@ class VControls extends StatelessWidget {
               decoration: quiet,
             );
         return M3EButtonGroup(
-          size: big ? M3EButtonSize.md : M3EButtonSize.sm,
+          size: tall && big
+              ? M3EButtonSize.custom(
+                  height: VSize.controlTall,
+                  iconSize: VSize.playIcon - VSpace.s4,
+                )
+              : big
+              ? M3EButtonSize.md
+              : M3EButtonSize.sm,
           style: M3EButtonStyle.tonal,
           spacing: VSpace.s8,
           multiSelect: true,

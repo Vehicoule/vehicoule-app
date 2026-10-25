@@ -66,7 +66,10 @@ const vLocalizationsDelegates = <LocalizationsDelegate<dynamic>>[
 Widget vAppBuilder(BuildContext context, Widget? child) =>
     _M3EScope(child: child ?? const SizedBox.shrink());
 
-final _m3e = Expando<M3EThemeData>();
+final _m3e = Expando<M3EThemeData>(), _m3eReduced = Expando<M3EThemeData>();
+
+/// A spring that lands at once: what M3E's springs become with "reduce motion".
+const _instant = M3ESpring(stiffness: 100000, damping: 1);
 
 class _M3EScope extends StatelessWidget {
   const _M3EScope({required this.child});
@@ -76,7 +79,14 @@ class _M3EScope extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final data = _m3e[theme] ??= M3EThemeData.fromMaterial(theme).copyWith(
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final cache = reduced ? _m3eReduced : _m3e;
+    final data = cache[theme] ??= _data(theme, reduced);
+    return M3ETheme(data: data, child: child);
+  }
+
+  static M3EThemeData _data(ThemeData theme, bool reduced) {
+    final base = M3EThemeData.fromMaterial(theme).copyWith(
       fontFamily: VFonts.family,
       fontFamilyFallback: VFonts.fallback,
       focusRingTheme: M3EFocusRingTheme(
@@ -85,6 +95,17 @@ class _M3EScope extends StatelessWidget {
         gap: 2,
       ),
     );
-    return M3ETheme(data: data, child: child);
+    if (!reduced) return base;
+    // "Reduce motion" (spec UI §5.6): the components' own springs land at once.
+    return base.copyWith(
+      buttonTheme: base.buttonTheme.copyWith(shapeSpring: _instant),
+      buttonGroupTheme: base.buttonGroupTheme.copyWith(
+        neighborSquishSpring: _instant,
+      ),
+      toolbarTheme: base.toolbarTheme.copyWith(
+        labelSpring: _instant,
+        expandSpring: _instant,
+      ),
+    );
   }
 }

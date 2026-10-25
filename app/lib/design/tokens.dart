@@ -45,14 +45,15 @@ abstract final class VSize {
   /// The regular FAB (the mini player's ⏯) and the floating toolbar beside it.
   static const fab = 56.0, toolbar = 64.0;
 
-  /// The largest text scale inside a toolbar's fixed height (title and subtitle).
-  static const toolbarTextScale = 1.2;
-
   /// The header row of the player.
   static const playerHeader = 56.0;
 
-  /// The widest a control button gets (⏯ takes two).
-  static const controlMax = 72.0;
+  /// The widest a control button gets (⏯ takes two), and the controls' height when the
+  /// player has the room (a phone held upright).
+  static const controlMax = 72.0, controlTall = 72.0;
+
+  /// From this body height the large player uses tall controls.
+  static const tallPlayer = 640.0;
 
   /// From this width the immersive player has its group, controls and selector on one
   /// row.

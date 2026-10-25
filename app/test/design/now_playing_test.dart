@@ -113,6 +113,15 @@ void main() {
           VNowPlaying.selectorKey,
         ].map(top).toList();
         for (var i = 1; i < order.length; i++) {
+          // The Vague runs under the header, from the top (lecteur-v3, style C).
+          if (i == 1 && style == PlayerStyle.wave) {
+            expect(
+              order[1],
+              lessThanOrEqualTo(order[0]),
+              reason: '$why: bleeds',
+            );
+            continue;
+          }
           expect(order[i], greaterThan(order[i - 1]), reason: '$why: block $i');
         }
         final times = top(VNowPlaying.progressKey);

@@ -84,6 +84,10 @@ class VNavigationRail extends StatelessWidget {
           ? M3ENavigationRailType.expanded
           : M3ENavigationRailType.collapsed,
       onTypeChanged: (t) => onExpanded(t == M3ENavigationRailType.expanded),
+      // Collapsed: icons and artworks only (spec UI §4.2), the labels are spoken.
+      labelBehavior: expanded
+          ? M3ENavigationRailLabelBehavior.alwaysShow
+          : M3ENavigationRailLabelBehavior.alwaysHide,
       expandTooltip: l.actionExpandMenu,
       collapseTooltip: l.actionCollapseMenu,
       selectedIndex: selected,
@@ -344,8 +348,9 @@ class VListGroup extends StatelessWidget {
   }
 }
 
-/// A row of a settings group: a title, an optional line under it, and what it holds
-/// (a switch) or a choice under it (a connected group).
+/// A row of a settings group: the M3E list item (a title, an optional line under it,
+/// what it holds: a switch), or a choice under it (a connected group), which the M3E item
+/// has no slot for.
 class VListRow extends StatelessWidget {
   const VListRow({
     super.key,
@@ -354,7 +359,7 @@ class VListRow extends StatelessWidget {
     this.trailing,
     this.below,
     this.onTap,
-  });
+  }) : assert(title != null || below != null);
 
   /// Null for a row that is only a choice (the group's label names it).
   final String? title;
@@ -364,46 +369,32 @@ class VListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final choice = below;
+    if (choice == null) {
+      return M3EListItem(
+        headline: title!,
+        supportingText: subtitle,
+        trailing: trailing,
+        onTap: onTap,
+      );
+    }
+    // A choice spans the row under its optional title: a custom row, inside the same
+    // M3E segment as the items.
     final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: VSpace.s16,
-          vertical: VSpace.s12,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (title != null || trailing != null)
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (title != null)
-                          Text(title!, style: theme.textTheme.bodyLarge),
-                        if (subtitle != null)
-                          Text(
-                            subtitle!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  ?trailing,
-                ],
-              ),
-            if (below != null) ...[
-              if (title != null || trailing != null)
-                const SizedBox(height: VSpace.s12),
-              below!,
-            ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: VSpace.s16,
+        vertical: VSpace.s12,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (title != null) ...[
+            Text(title!, style: theme.textTheme.bodyLarge),
+            const SizedBox(height: VSpace.s12),
           ],
-        ),
+          choice,
+        ],
       ),
     );
   }
