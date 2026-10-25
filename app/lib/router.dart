@@ -227,12 +227,16 @@ class PlaceholderScreen extends StatelessWidget {
   Widget build(BuildContext context) => ScreenFab(
     action: fab,
     items: fabItems,
-    child: CustomScrollView(
-      slivers: [
-        VLargeAppBar(title: title, leading: domainMenuButton(context)),
-        const OfflineChipSliver(),
-        const SliverFillRemaining(hasScrollBody: false),
-      ],
+    // Its own surface: a route outside the shells (onboarding) has nothing behind it.
+    child: Material(
+      color: Theme.of(context).colorScheme.surface,
+      child: CustomScrollView(
+        slivers: [
+          VLargeAppBar(title: title, leading: domainMenuButton(context)),
+          const OfflineChipSliver(),
+          const SliverFillRemaining(hasScrollBody: false),
+        ],
+      ),
     ),
   );
 }

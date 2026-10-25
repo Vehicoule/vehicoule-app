@@ -53,7 +53,7 @@ Future<void> main() async {
 
   // 3. The core: the queue comes back and downloads resume on streams already heard.
   await start();
-  if (kDebugMode) unawaited(startDevFeed(player));
+  if (kDebugMode) await startDevFeed(player);
 
   // 4. The app.
   runApp(
