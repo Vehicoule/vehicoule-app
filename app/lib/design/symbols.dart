@@ -40,7 +40,6 @@ abstract final class VIcons {
   static const favorite = IconData(0xe87e, fontFamily: _f);
   static const fullscreen = IconData(0xf1ce, fontFamily: _f); // open_in_full
   static const home = IconData(0xe9b2, fontFamily: _f);
-  static const anime = IconData(0xe639, fontFamily: _f); // live_tv
   static const books = IconData(0xea19, fontFamily: _f); // menu_book
   static const library = IconData(0xe030, fontFamily: _f); // library_music
   static const lyrics = IconData(0xec0b, fontFamily: _f);
@@ -67,6 +66,7 @@ abstract final class VIcons {
   static const skipPrevious = IconData(0xe045, fontFamily: _f);
   static const stop = IconData(0xe047, fontFamily: _f);
   static const expandUp = IconData(0xe316, fontFamily: _f); // keyboard_arrow_up
+  static const video = IconData(0xe639, fontFamily: _f); // live_tv
   static const volume = IconData(0xe050, fontFamily: _f); // volume_up
   static const addLink = IconData(0xe178, fontFamily: _f);
   static const brightnessAuto = IconData(0xe1ab, fontFamily: _f);

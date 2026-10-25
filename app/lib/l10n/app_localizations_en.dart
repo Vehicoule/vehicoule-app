@@ -525,7 +525,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get domainMusic => 'Music';
 
   @override
-  String get domainAnime => 'Anime';
+  String get domainVideo => 'Videos';
 
   @override
   String get domainBooks => 'Books';

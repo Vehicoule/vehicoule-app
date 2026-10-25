@@ -480,7 +480,7 @@ void main() {
           child: VDomainMenu(
             extended: true,
             domains: [
-              for (final (i, d) in ['Musique', 'Anime', 'Livres'].indexed)
+              for (final (i, d) in ['Musique', 'Vidéos', 'Livres'].indexed)
                 VAction(
                   d,
                   VIcons.musicNote,
@@ -499,16 +499,16 @@ void main() {
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    for (final d in ['Anime', 'Livres']) {
+    for (final d in ['Vidéos', 'Livres']) {
       expect(find.text(d), findsOneWidget, reason: d);
     }
     expect(
       find.byWidgetPredicate((w) => w is VSymbol && w.icon == VIcons.check),
       findsOneWidget,
     );
-    await tester.tap(find.text('Anime'));
+    await tester.tap(find.text('Vidéos'));
     await tester.pump(VDurations.long);
-    expect(picked, ['Anime']);
+    expect(picked, ['Vidéos']);
   });
 
   testWidgets(

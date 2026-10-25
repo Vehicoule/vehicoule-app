@@ -1,5 +1,5 @@
 /// The app's domains (addendum « navigation entre domaines » §2, §3, §11): music in v1;
-/// anime and books join with their specs. The one list the branches, the bar, the rail,
+/// videos (films, series, anime) and books join with their specs. The one list the branches, the bar, the rail,
 /// the domain rail and the home chips are built from, and the one reading of the current
 /// domain ([domainOf]).
 library;
@@ -102,7 +102,7 @@ Domain? _named(String location) {
 /// The domain a location explicitly names (to write `ui.domain`), or null.
 Domain? namedDomain(String location) => _named(location);
 
-/// The two playback sessions (addendum §5): music now, video with the anime spec.
+/// The two playback sessions (addendum §5): music now, video with the videos spec.
 enum PlaybackSession { music }
 
 /// Tests: what [sessionTarget] answers.

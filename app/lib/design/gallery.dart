@@ -1869,7 +1869,7 @@ class _NavigationSectionState extends State<_NavigationSection> {
   // Bibliothèque: the rail shows its FAB menu « Nouvelle ».
   int _tab = 2;
 
-  /// The domain switch with three domains (the app has one until anime and books).
+  /// The domain switch with three domains (the app has one until videos and books).
   int _domain = 0;
 
   @override
@@ -1913,7 +1913,7 @@ class _NavigationSectionState extends State<_NavigationSection> {
           domains: [
             for (final (i, (label, icon)) in [
               (l.domainMusic, VIcons.musicNote),
-              (l.domainAnime, VIcons.anime),
+              (l.domainVideo, VIcons.video),
               (l.domainBooks, VIcons.books),
             ].indexed)
               VAction(

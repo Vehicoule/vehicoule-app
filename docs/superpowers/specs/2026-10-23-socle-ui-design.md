@@ -195,7 +195,7 @@ listes vides) est dans `docs/voice.md`.
   ☰ à gauche. Pas de barre de logo.
 - **☰ ouvre le rail déplié M3E en modal**. Il remplace le tiroir, qui n'est plus recommandé en
   M3E. Il contient :
-  - les domaines : Musique, puis Anime et Livres quand ils existent ;
+  - les domaines : Musique, puis Vidéos (films, séries et anime, code `video`) et Livres quand ils existent ;
   - les sections globales : Téléchargements, Sources, Réglages.
 
   La barre du bas montre les destinations du domaine courant.

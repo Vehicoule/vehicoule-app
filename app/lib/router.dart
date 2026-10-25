@@ -374,7 +374,7 @@ class PlaceholderScreen extends StatelessWidget {
   }
 }
 
-/// Accueil's filter chips under its title (Tout · Musique · Anime · Livres, addendum §4):
+/// Accueil's filter chips under its title (Tout · Musique · Vidéos · Livres, addendum §4):
 /// hidden while there is one domain, a choice with nothing to choose.
 class DomainChips extends StatelessWidget {
   const DomainChips({super.key});

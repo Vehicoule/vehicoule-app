@@ -1070,11 +1070,11 @@ abstract class AppLocalizations {
   /// **'Musique'**
   String get domainMusic;
 
-  /// No description provided for @domainAnime.
+  /// No description provided for @domainVideo.
   ///
   /// In fr, this message translates to:
-  /// **'Anime'**
-  String get domainAnime;
+  /// **'Vidéos'**
+  String get domainVideo;
 
   /// No description provided for @domainBooks.
   ///
