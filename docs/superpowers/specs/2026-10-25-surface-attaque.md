@@ -3,7 +3,7 @@
 Date : 2026-10-25 · Statut : approuvé par l'utilisateur le 2026-10-25
 
 Specs parentes : le socle (`2026-10-18-socle-musique-design.md`), l'addendum navigation et la
-spec anime du 2026-10-25. Vehicoule exécute des plugins tiers et lit des flux venus de sources
+spec vidéo du 2026-10-25. Vehicoule exécute des plugins tiers et lit des flux venus de sources
 tierces : tout ce qui parse du contenu non fiable est une surface d'attaque. Règle générale :
 **Rust partout où c'est possible, rien de web dans l'app, et le moins de code C possible
 exposé au contenu tiers.**
@@ -13,11 +13,11 @@ exposé au contenu tiers.**
 | # | Décision | Change |
 |---|---|---|
 | 1 | **Tout le trafic média passe par un proxy local** de la crate `stream` | socle §3.1 (« pas de serveur local en v1 ») |
-| 2 | **libmpv et FFmpeg recompilés réduits** aux formats utiles | socle §9, §12 ; spike anime (plan B taille) |
-| 3 | **WebView de `challenge` durcie** | spec anime §4.5 |
+| 2 | **libmpv et FFmpeg recompilés réduits** aux formats utiles | socle §9, §12 ; spike vidéo (plan B taille) |
+| 3 | **WebView de `challenge` durcie** | spec vidéo §4.5 |
 | 4 | **Une seule bibliothèque cryptographique** : rustls + aws-lc-rs | dépendances du cœur |
 | 5 | **Garde-fous de CI** sur les dépendances | socle §8 |
-| 6 | **Aucun HTML rendu dans l'app**, aucun moteur JS écrit en C | spec anime §4.5, future spec livres |
+| 6 | **Aucun HTML rendu dans l'app**, aucun moteur JS écrit en C | spec vidéo §4.5, future spec livres |
 
 ## 2. Proxy média local
 
@@ -40,13 +40,13 @@ refus des IP privées du socle §4.3.
   options `stream-lavf-o`) ; tout autre protocole ou hôte est refusé.
 - Les fichiers téléchargés et le cache passent par le même proxy : une seule logique de lecture
   pour l'en ligne, le hors ligne et le préchargement (« démarrage instantané du suivant »,
-  spec anime §6.1).
+  spec vidéo §6.1).
 - Musique et vidéo l'utilisent pareil. C'est le « serveur local » que le socle §11 prévoyait.
-- **Session du plugin** : quand la vidéo vient d'un plugin qui utilise `session` (spec anime
+- **Session du plugin** : quand la vidéo vient d'un plugin qui utilise `session` (spec vidéo
   §4.5), le proxy envoie les requêtes avec **sa boîte à cookies et son User-Agent** : un site
   derrière une protection anti-robots refuse sinon les segments que la page a autorisés.
 - Retour OAuth des trackers par lien vérifié `https://vehicoule.com/oauth/…`, jamais par le
-  schéma `vehicoule://` (spec anime §4.5).
+  schéma `vehicoule://` (spec vidéo §4.5).
 
 **Tests.** Une playlist HLS dont un segment pointe vers une IP privée → segment refusé, erreur
 typée ; une redirection hors des domaines du plugin → refusée ; un jeton faux → 404 ; mpv
@@ -57,6 +57,14 @@ le proxy ouvre alors une seconde écoute sur l'adresse du réseau local, **pour 
 la TV choisie**, avec un jeton propre à cette lecture, et seulement le temps de la lecture.
 Toute autre IP reçoit un refus ; la découverte (SSDP) ne répond qu'aux renderers, et l'app
 n'annonce aucun service. Arrêter la lecture sur la TV ferme l'écoute.
+
+**Exception : serveur personnel sur le réseau local** (spec vidéo §4.6). Un serveur Jellyfin,
+Emby, Plex ou Navidrome est souvent sur une IP privée, que la règle générale refuse.
+L'utilisateur accorde, à l'ajout, **une adresse (IP ou nom, et port) à un seul plugin**. L'hôte
+la garde et l'affiche dans Sources › Détails ; elle se retire à tout moment. Le proxy et
+`http` laissent passer cette adresse pour ce plugin seulement ; toute autre adresse privée
+reste refusée, pour lui comme pour les autres. Un plugin ne peut pas demander d'accord
+lui-même : seul l'écran d'ajout du serveur le propose.
 
 ## 3. libmpv et FFmpeg réduits
 
@@ -69,14 +77,14 @@ n'annonce aucun service. Arrêter la lecture sur la TV ferme l'écoute.
   - protocoles : `http` seulement (le TLS est fait par le proxy, d'où mbedTLS retiré de
     FFmpeg).
 - La licence reste LGPL (configuration de l'étape 1, rapport du 2026-10).
-- Effets : moins de code C exposé, binaire plus petit (plan B de taille du spike anime), et
+- Effets : moins de code C exposé, binaire plus petit (plan B de taille du spike vidéo), et
   une bibliothèque de moins (mbedTLS).
 - La recette de build vit dans le dépôt, reproductible en CI ; chaque mise à jour de FFmpeg ou
   de libmpv passe par elle.
 
 ## 4. WebView de `challenge`
 
-La seule technologie web dans l'app (spec anime §4.5). Elle reste, durcie :
+La seule technologie web dans l'app (spec vidéo §4.5). Elle reste, durcie :
 
 - ouverte **seulement à la demande de l'utilisateur** (« Ouvrir la page »), jamais en
   arrière-plan ni automatiquement ;
@@ -105,7 +113,7 @@ La seule technologie web dans l'app (spec anime §4.5). Elle reste, durcie :
 - **EPUB** (future spec livres) : rendu **natif** (XHTML lu en Rust, mise en page par
   Flutter), sans WebView ni JavaScript.
 - **JavaScript** : aucun moteur écrit en C nulle part ; aides Rust du SDK, et Boa (Rust)
-  seulement si le spike anime l'exige (spec anime §4.5).
+  seulement si le spike vidéo l'exige (spec vidéo §4.5).
 - **Images** : décodées par Flutter (moteur), taille plafonnée avant décodage par `stream`.
 
 ## 7. Dépendances
@@ -151,13 +159,25 @@ Du code C ou C++ est marqué **(C)**.
   connexions vers les seuls catalogues publics).
 - Aucun cookie ni suivi sur `vehicoule.com`.
 
+## 8 bis. Feeds résistants aux retraits
+
+La signature ed25519 d'un feed (socle §4.4) prouve sa provenance quel que soit l'endroit d'où
+il vient. Un feed peut donc avoir **plusieurs adresses miroirs** (GitHub, Codeberg, un
+hébergement statique, IPFS) :
+
+- le lien de source porte une liste d'URL (`feed=` répété) ; l'app essaie dans l'ordre et
+  garde la première qui répond avec une signature valide et une séquence au moins égale ;
+- le feed officiel embarque trois miroirs ;
+- un retrait sur un hébergeur ne coupe plus rien, et un miroir compromis ne peut ni modifier
+  un feed (signature) ni le ramener en arrière (séquence).
+
 ## 9. Impact sur les plans
 
 - **Plan 4 (cœur et pont) et crate `stream`** : le proxy local (§2) ; `PlayCommand` porte une
   URL du proxy. Avant les écrans d'écoute du plan 5.
 - **Plan 5, Task 3 (lecteur)** : options mpv `protocol_whitelist` ; test « mpv ne joint aucun
   autre hôte ».
-- **Étape 1 de l'anime** : la recette FFmpeg réduite remplace le simple passage à
+- **Étape 1 de la vidéo** : la recette FFmpeg réduite remplace le simple passage à
   `media_kit_libs_video` dans la mesure de taille.
 - **CI (plan 5, Task 8)** : `cargo deny`, `osv-scanner`, `cargo tree -i ring`.
-- **Plan 6 (plugins)** : rien ; le SDK gagne ses aides Rust avec la spec anime.
+- **Plan 6 (plugins)** : rien ; le SDK gagne ses aides Rust avec la spec vidéo.
