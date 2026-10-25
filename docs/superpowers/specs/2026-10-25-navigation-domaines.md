@@ -279,7 +279,10 @@ Hors ligne, l'entrée attend et part au retour du réseau, avec une notification
   - pour un extrait **capté au micro**, il faut une base d'empreintes de dizaines de millions
     de titres, et aucune n'est ouverte. Ce fournisseur vient donc d'un **feed tiers**, ajouté
     une fois par un lien de source, exactement comme YouTube Music (socle §4.4) : un toucher,
-    pas de clé.
+    pas de clé. Le contrat le permet entièrement dans le bac à sable : un plugin calcule
+    l'empreinte en Rust à partir des échantillons reçus et interroge son service par `http`,
+    comme le font les clients non officiels de Shazam (SongRec, en Rust). Comme ytmusic, un tel
+    plugin ne vit jamais dans les dépôts Vehicoule.
   - Sans fournisseur micro installé, le mode Écouter le dit en une phrase et renvoie vers
     « Ajoute une source ».
   - **Écartés** (2026-10-25) : ShazamKit (exige le programme développeur Apple payant, et une
