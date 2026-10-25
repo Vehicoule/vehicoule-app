@@ -1,6 +1,6 @@
 # Vehicoule — Domaine anime : design
 
-Date : 2026-10-25 · Statut : en relecture (v2 : types de l'hôte 1.1, cookies et vérification par l'utilisateur, `js`, focus audio)
+Date : 2026-10-25 · Statut : en relecture (v2 : types de l'hôte 1.1, cookies et vérification par l'utilisateur, JS dans le plugin, focus audio)
 
 Specs parentes : `2026-10-18-socle-musique-design.md` (le « socle »),
 `2026-10-23-socle-ui-design.md` (la « spec UI », branche `socle`) et
@@ -44,7 +44,8 @@ besoin.
 |---|---|
 | `items.kind` (§5.1) | + `anime`, `episode` (les livres ajoutent `book`, `chapter`) |
 | Tables communes (§5.2) | + `library_entries`, `categories`, `progress`, `bookmarks`, `source_bindings` (§3) ; `item_relations` (addendum §6) |
-| `vehicoule:host` | 1.1.0 : + `types`, `session` (cookies), `challenge`, `js`, `oauth`, filtres, `settings-schema` (§4.5) |
+| `vehicoule:host` | 1.1.0 : + `types`, `session` (cookies), `challenge`, `oauth`, filtres, `settings-schema` (§4.5) |
+| SDK | + décompacteur, AES compatible CryptoJS, option `js` (QuickJS compilé en WASM, dans le composant) (§4.5) |
 | Manifeste (§4.3) | + `adult: bool` ; Réglages › Sources « Afficher les sources pour adultes », désactivé par défaut |
 | Crate `stream` (§3.4) | + HLS : variantes, segments avec reprise, AES-128, playlist locale réécrite, sous-titres à côté (§7) |
 | Lecteur | + seconde session : `WatchState` dans le cœur, `VideoPlayerAdapter` côté Dart (§6.1) |
@@ -324,11 +325,19 @@ change. Les plugins musique 1.0 restent chargés tels quels.
   de `session` est celui de la WebView. L'app ne résout jamais une vérification à la place de
   l'utilisateur. Aniyomi a le même besoin (sites derrière une protection anti-robots) ; sans
   ça, une grande partie des sources est inutilisable.
-- **`js`** : beaucoup d'hébergeurs vidéo cachent l'URL derrière du JavaScript obscurci. C'est
-  l'interface prévue au socle §4.5 (QuickJS natif, sans compilation à la volée), livrée ici
-  parce que l'anime en a besoin dès la 1.0. `eval(code, budget)` renvoie une chaîne. Le
-  moteur n'a **ni réseau ni fichiers**, son temps et sa mémoire sont plafonnés, et une
-  instance neuve sert à chaque appel.
+- **Pas d'interface `js` dans l'hôte.** Beaucoup d'hébergeurs vidéo cachent l'URL derrière du
+  JavaScript obscurci, mais ce JavaScript reste **dans le bac à sable du plugin** :
+  - le **SDK** fournit en Rust ce qui couvre la plupart des cas, sans moteur JS : le
+    décompacteur « p,a,c,k,e,d » (Aniyomi fait de même en Kotlin), le déchiffrement AES
+    compatible CryptoJS, les variantes de base64 ;
+  - pour le reste, une option du SDK (`js`) embarque **QuickJS compilé en WASM** dans le
+    composant. Il tourne sous Pulley avec les budgets du plugin (fuel, epoch, mémoire) et n'a
+    ni réseau ni fichiers, puisque le plugin n'en a pas ;
+  - aucun moteur JS natif dans l'hôte, donc aucune nouvelle surface d'attaque, et la version
+    stores reste simple.
+
+  Le socle §4.5 (interface `js` native pour YouTube) ne change pas : son JavaScript est d'un
+  autre ordre de taille. Le spike (§10.1) mesure le coût de QuickJS en WASM sous Pulley.
 - **`oauth`** (import) : `begin(plugin)` déclenche le flux PKCE de `auth-config` dans le
   navigateur du système, retour par `vehicoule://oauth/<plugin>`. L'hôte garde les jetons
   dans le trousseau du système (Keystore Android, Keychain macOS) et les rafraîchit.
@@ -517,8 +526,9 @@ pour la musique.
   refusés), import d'une liste.
 - **`plugin-host`** : `oauth` (le jeton n'atteint jamais le composant ; un composant qui lit
   ses imports ne le trouve pas), `send-authorized` refusé hors des domaines déclarés,
-  `settings-schema` et filtres ; boîte à cookies isolée par plugin ; `js` sans réseau, coupé
-  par ses plafonds ; un plugin musique 1.0 chargé par l'hôte 1.1.
+  `settings-schema` et filtres ; boîte à cookies isolée par plugin ; un composant de test avec
+  l'option `js` du SDK, coupé par son fuel ; un plugin musique 1.0 chargé par l'hôte 1.1.
+- **SDK** : décompacteur et AES compatible CryptoJS sur des scripts réels enregistrés.
 - **Plugins** (feed officiel) : AniList, AnimeThemes, AniSkip, MyAnimeList sur réponses
   enregistrées.
 - **Dart** : ligne d'épisode (états), page série, gestes du lecteur, pistes retenues par
@@ -542,7 +552,7 @@ jetable, plus une sonde Rust pour le HLS.
 | Audio de la vidéo écran éteint, 30 min | sans coupure | Service `mediaPlayback` propre à la vidéo |
 | PiP automatique, Flutter ne dessine que la vidéo | OK sur Android 12+ | PiP manuel (bouton) |
 | Musique et vidéo jouent ensemble : le lecteur vidéo ne prend pas le focus audio exclusif, et `audio_service` ne met pas la musique en pause au démarrage d'un épisode | les deux audibles 10 min | La vidéo joue sans demander le focus audio, et la session musique ignore les pertes de focus causées par l'app elle-même |
-| QuickJS natif (`js`) sur Android arm64 : taille, plafonds de temps et de mémoire qui coupent | ≤ 2 Mio, une boucle infinie coupée | Moteur JS de la WebView système, isolé |
+| QuickJS compilé en WASM, dans un composant, sous Pulley sur Android arm64 : un script compacté typique, puis un script obscurci de 100 Ko | ≤ 300 ms et ≤ 2 s ; composant ≤ 2 Mio ; une boucle infinie coupée par le fuel | Interface hôte `js` (QuickJS natif, socle §4.5), version mineure de l'hôte |
 | Deux `MediaSession` (musique + vidéo) | l'écran verrouillé montre la dernière démarrée, chaque bouton atteint la bonne session | Une seule session système, qui bascule sur le dernier média démarré |
 | HLS téléchargé par la sonde Rust (AES-128 compris), lu hors ligne par mpv | lecture complète, avance rapide | Remux en un seul fichier (FFmpeg de libmpv) |
 | Taille : `media_kit_libs_audio` → `media_kit_libs_video` dans toute l'app, arm64 | **+25 Mio au plus** | libmpv vidéo recompilée sans les décodeurs inutiles |
