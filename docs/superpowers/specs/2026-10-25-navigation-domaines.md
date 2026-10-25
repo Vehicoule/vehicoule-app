@@ -4,13 +4,14 @@ Date : 2026-10-25 · Statut : approuvé par l'utilisateur le 2026-10-25
 
 Specs parentes : `2026-10-18-socle-musique-design.md` (le « socle ») et
 `2026-10-23-socle-ui-design.md` (la « spec UI », branche `socle`). Cet addendum fixe comment
-l'app accueille ses trois domaines — musique, anime, livres (ebooks et mangas) — **avant** que
+l'app accueille ses trois domaines — musique, vidéos (films, séries, animés), livres (ebooks et mangas) — **avant** que
 la Task 5 du plan 5 (routes et coques) ne fige une navigation propre à la musique. La v1 ne
 livre que la musique : presque tout ici est invisible en v1, mais les routes, la place des
 Réglages et la structure des coques doivent déjà être celles de l'état final.
 
-Noms internes des domaines : `music`, `anime`, `books` (comme les paquets WIT
-`vehicoule:music`, `vehicoule:anime`, `vehicoule:books`). Le libellé visible du domaine
+Noms internes des domaines : `music`, `video`, `books` (comme les paquets WIT
+`vehicoule:music`, `vehicoule:video`, `vehicoule:books`). Libellés visibles : Musique, Vidéos,
+Livres. Le libellé visible du domaine
 `books` (« Manga », « Livres »…) est fixé par sa spec.
 
 ## 1. Décisions
@@ -18,7 +19,7 @@ Noms internes des domaines : `music`, `anime`, `books` (comme les paquets WIT
 | Sujet | Décision |
 |---|---|
 | Modèle | **Accueil commun + sélecteur de domaine** : l'Accueil est le même pour tous les domaines ; les autres destinations sont celles du domaine courant |
-| Accueil | « Reprendre » (une carte par domaine en cours) puis un **fil mixte** alimenté par chaque domaine, filtrable par puces Tout · Musique · Anime · Livres |
+| Accueil | « Reprendre » (une carte par domaine en cours) puis un **fil mixte** alimenté par chaque domaine, filtrable par puces Tout · Musique · Vidéos · Livres |
 | Domaine courant | **Déduit de la route** ; il suit le contenu ouvert. Le ☰ (mobile) et le bas du rail (desktop) le changent exprès |
 | Réglages, Sources, Téléchargements | **Globaux**, hors de la barre de navigation, rangés par domaine à l'intérieur |
 | Bibliothèque, Explorer / Parcourir | **Par domaine** : leurs modèles diffèrent trop pour être unifiés |
@@ -36,7 +37,7 @@ Noms internes des domaines : `music`, `anime`, `books` (comme les paquets WIT
   | Domaine | Destinations après Accueil |
   |---|---|
   | Musique | Explorer · Bibliothèque |
-  | Anime | fixées par sa spec (modèle Aniyomi : Bibliothèque · Nouveautés · Historique · Parcourir) |
+  | Vidéos | Bibliothèque · Nouveautés · Historique · Parcourir (spec vidéo §5.1) |
   | Livres | fixées par sa spec |
 
   Une barre M3 porte de 3 à 5 destinations : Accueil + 4 au plus par domaine.
@@ -44,7 +45,7 @@ Noms internes des domaines : `music`, `anime`, `books` (comme les paquets WIT
   / Réglages » devient « Accueil / Explorer / Bibliothèque »). Il rejoint Sources et
   Téléchargements parmi les sections globales.
 - **☰ (mobile)** ouvre le rail déplié en modal :
-  1. les domaines (Musique, puis Anime et Livres quand ils existent) ;
+  1. les domaines (Musique, Vidéos, Livres) ;
   2. les sections globales : Téléchargements, Sources, Réglages.
 - **Desktop** : le rail montre Accueil et les destinations du domaine, puis les épinglés **du
   domaine courant** ; en bas, le choix du domaine, puis les sections globales. ⌘, ouvre
@@ -61,7 +62,7 @@ Noms internes des domaines : `music`, `anime`, `books` (comme les paquets WIT
 Le domaine courant n'est **pas un état à part** : il se lit dans la route (§3).
 
 - Ouvrir un épisode depuis l'Accueil, depuis « Dans ta bibliothèque » ou par un lien passe le
-  domaine courant à Anime : la barre montre les destinations anime, l'Accueil reste
+  domaine courant à Vidéos : la barre montre les destinations vidéo, l'Accueil reste
   sélectionné.
 - Sur l'Accueil seul ou une section globale, le domaine courant est `ui.domain`.
 - Chaque changement de domaine réécrit `ui.domain`.
@@ -82,15 +83,15 @@ Le domaine courant n'est **pas un état à part** : il se lit dans la route (§3
 
 Un seul `StatefulShellRoute.indexedStack`. Ses branches : **l'Accueil, puis chaque
 destination de chaque domaine**. La coque n'affiche que l'Accueil et les branches du domaine
-courant ; les autres gardent leur pile, si bien qu'on retrouve sa page anime en revenant.
+courant ; les autres gardent leur pile, si bien qu'on retrouve sa page vidéo en revenant.
 
 | Route | Rôle |
 |---|---|
 | `/home` | branche Accueil |
 | `/music/explore`, `/music/library` (+ `/music/library/liked`, `/downloaded`, `/top`, `/history`) | branches musique |
 | `/music/explore/album/:id`, `/music/library/artist/:id`… | une page ouverte dans la branche d'où elle vient (règle actuelle d'`openItem`, préfixée par le domaine) |
-| `/home/music/album/:id`, `/home/anime/series/:id`… | une page ouverte depuis l'Accueil : la branche Accueil reste sélectionnée, le domaine vient du segment après `/home` |
-| `/anime/…`, `/books/…` | réservées, remplies par leurs specs |
+| `/home/music/album/:id`, `/home/video/show/:id`… | une page ouverte depuis l'Accueil : la branche Accueil reste sélectionnée, le domaine vient du segment après `/home` |
+| `/video/…`, `/books/…` | remplies par leurs specs (spec vidéo §5) |
 | `/watch/:id`, `/read/:id` | lecteur vidéo et lecteur de livres, globaux, au-dessus des coques |
 | `/downloads`, `/sources`, `/settings`, `/settings/appearance`, `/settings/diagnostics` | sections globales (`/settings/sources` devient `/sources`) |
 | `/onboarding`, `/debug/gallery` | inchangées |
@@ -168,16 +169,16 @@ sinon.
 
 ## 4. Accueil commun
 
-1. **« Bonsoir »** (spec UI §6.1), puis les **puces** Tout · Musique · Anime · Livres. Le
+1. **« Bonsoir »** (spec UI §6.1), puis les **puces** Tout · Musique · Vidéos · Livres. Le
    choix est retenu (`ui.home_filter`). Les puces sont masquées tant qu'un seul domaine
    existe.
 2. **Reprendre** : une carte par domaine en cours — la file musique sauvegardée, l'épisode
    suivant, le chapitre suivant. La carte porte la forme du domaine (§8).
    - **Ordre appris** : les cartes sont triées selon ce que *tu* fais d'habitude à cette
-     heure-ci et ce jour-là (l'anime le soir, la musique le matin), calculé en local sur
+     heure-ci et ce jour-là (une série le soir, la musique le matin), calculé en local sur
      `plays`. Rien ne sort de l'appareil.
 3. **Le fil mixte** : chaque domaine fournit ses étagères au module `home` du cœur (la
-   musique : celles de la spec UI §6.1 ; l'anime : nouveaux épisodes de ta bibliothèque,
+   musique : celles de la spec UI §6.1 ; les vidéos : « À suivre », nouveaux épisodes de ta bibliothèque,
    etc.). Le cœur les entrelace en alternant les domaines ; le filtre n'en garde qu'un.
    Fin honnête, cache et hors ligne : inchangés (spec UI §7.2).
 4. **Un seul résumé par jour** pour les nouveautés : « 3 nouveaux épisodes, 2 chapitres,
@@ -193,14 +194,14 @@ la carte Reprendre de la file musique.
 
 - **Musique** : la session actuelle (file, `PlayerAdapter`, `audio_service`), inchangée. Le
   mini-lecteur, le panneau et la bande desktop, `VNowPlaying` restent **purement musique**.
-- **Vidéo** : un second lecteur `media_kit`, avec son état propre, posé par la spec anime.
+- **Vidéo** : un second lecteur `media_kit`, avec son état propre, posé par la spec vidéo.
 - **Les deux jouent ensemble.** Lancer un épisode ne touche pas à la musique. Le lecteur
   vidéo a son volume propre et, dans son en-tête, une commande **Musique** (titre + ⏯) pour
   couper l'un ou l'autre d'un toucher. Lire un livre ne joue rien : la musique continue.
 - **Session système** (écran verrouillé, notification, Now Playing macOS) : le système n'en
   montre qu'une. Elle suit **le dernier média démarré** ; l'autre reste pilotable dans l'app.
   La faisabilité sur Android (deux `MediaSession`, PiP) est un point du spike de la spec
-  anime.
+  vidéo.
 - **Minuterie de sommeil commune** : la minuterie (plan 7) arrête **toutes** les sessions,
   avec le même fondu.
 
@@ -248,8 +249,8 @@ Ce qui justifie le 3-en-1 : les domaines se parlent.
   `continues-at` (anime → chapitre : « le manga continue au chapitre 87 »), `soundtrack`
   (série → playlist).
 - Sources des relations : données ouvertes (AnimeThemes pour les génériques, relations
-  AniList), via des capacités des plugins, décrites dans la spec anime.
-- **Une page anime** montre ses génériques : un toucher les lit ou les like dans ta musique.
+  AniList), via des capacités des plugins, décrites dans la spec vidéo.
+- **La page d'un animé** montre ses génériques : un toucher les lit ou les like dans ta musique.
   Elle montre aussi « Adapté de ce manga » et « Le manga continue après l'épisode 24 ».
 - **Une playlist attachée à une série** (`soundtrack`) : tu associes une playlist, ou les
   génériques, à un anime ou un manga. À l'ouverture du lecteur de livres, une puce propose
@@ -273,8 +274,8 @@ bon domaine. **Aucune clé à saisir, jamais.**
 
 | Entrée | Appels, en parallèle | Retenu |
 |---|---|---|
-| Son (12 s au plus, micro ; sur desktop, le son de l'ordinateur au choix) | `music.identify` ; pendant un épisode, d'abord les thèmes connus de la série (`anime.themes`) | le titre, rattaché au catalogue musique (Deezer par ISRC, sinon recherche) |
-| Image (photo, capture, image partagée) | `anime.identify` et `books.identify` | la meilleure confiance au-dessus du seuil ; à égalité, les deux en cartes |
+| Son (12 s au plus, micro ; sur desktop, le son de l'ordinateur au choix) | `music.identify` ; pendant un épisode, d'abord les thèmes connus de la série (`video.themes`) | le titre, rattaché au catalogue musique (Deezer par ISRC, sinon recherche) |
+| Image (photo, capture, image partagée) | `video.identify` et `books.identify` | la meilleure confiance au-dessus du seuil ; à égalité, les deux en cartes |
 
 Résultat → la page de l'item par sa référence (§3.1) : un titre (▶, like, « Ajouter à une
 playlist »), un épisode **à l'instant trouvé**, un chapitre. Tout est gardé dans **« Reconnus »**
@@ -283,7 +284,7 @@ Hors ligne, l'entrée attend et part au retour du réseau, avec une notification
 
 ### Fournisseurs, sans clé de l'utilisateur
 
-- **Anime** : trace.moe, utilisable sans clé dans son quota gratuit.
+- **Vidéos** (animés) : trace.moe, utilisable sans clé dans son quota gratuit.
 - **Livres** : SauceNAO sans clé dans son quota anonyme ; le spike vérifie que ce quota
   existe toujours, sinon la capacité vient d'un feed tiers.
 - **Son** :
@@ -317,7 +318,7 @@ langage des formes (spec UI §2.3, addendum §8) :
   12 s : c'est le temps restant. Haptique légère sur les temps forts détectés.
 - **Montrer** : le viseur de l'appareil photo est **découpé dans la forme** (cookie). Toucher
   la forme capture : l'image se fige, puis la forme **passe d'une forme de domaine à l'autre**
-  (cookie musique, pilule 16:9 anime, arche livres) pendant l'analyse.
+  (cookie musique, pilule 16:9 vidéos, arche livres) pendant l'analyse.
 - **Trouvé** : la forme **se pose sur la forme du domaine trouvé**, avec une haptique
   « sélection », puis grandit en **container transform** jusqu'à la page du résultat. Pour un
   épisode, la pilule devient la vignette à l'instant trouvé ; pour un titre, le cookie devient
@@ -372,7 +373,7 @@ playlists, sa progression et sa bibliothèque.
 - **Écran** : Réglages › Sauvegarde : « Sauvegarder maintenant », « Restaurer », la date de la
   dernière sauvegarde. Le premier lancement propose « Restaurer une sauvegarde » en plus de
   « Commencer ».
-- **Importer depuis une autre app** : Aniyomi et Mihon (spec anime §3.5) ; les playlists
+- **Importer depuis une autre app** : Aniyomi et Mihon (spec vidéo §3.5), Trakt et Simkl ; les playlists
   Deezer et YouTube Music s'importent déjà par lien (socle §3.2).
 - Livrée dès la v1 musique.
 
@@ -380,7 +381,7 @@ playlists, sa progression et sa bibliothèque.
 
 Chaque domaine a **une forme de décor fixe** (spec UI §2.3), utilisée pour son icône dans le
 rail, ses états vides et ses cartes Reprendre : **cookie** pour la musique, **pilule 16:9**
-pour l'anime, **arche** (une page) pour les livres. On reconnaît le domaine d'une carte du fil
+pour les vidéos, **arche** (une page) pour les livres. On reconnaît le domaine d'une carte du fil
 mixte sans lire. La couleur reste unique (spec UI §2.2).
 
 ## 9. Desktop : palette ⌘K
@@ -394,8 +395,8 @@ ses entrées.
 ## 9 bis. « Ton année »
 
 Un bilan local de toutes les activités, calculé sur `plays` et jamais envoyé : minutes
-d'écoute, artistes et titres en tête, puis épisodes vus et chapitres lus quand ces domaines
-existent, et les croisements (l'OP le plus écouté de l'anime le plus regardé). Page globale
+d'écoute, artistes et titres en tête, puis films et épisodes vus, chapitres lus,
+et les croisements (l'OP le plus écouté de l'anime le plus regardé). Page globale
 `/recap/:year`, ouverte par une carte de l'Accueil en décembre et à tout moment depuis
 l'Historique. Livré dès la v1 musique ; chaque domaine y ajoute ses chiffres.
 
@@ -413,8 +414,8 @@ l'Historique. Livré dès la v1 musique ; chaque domaine y ajoute ses chiffres.
 
 ## 11. Contraintes pour la Task 5 du plan 5 (routes et coques)
 
-À appliquer **avant le point de contrôle du shell** ; le reste de l'addendum arrive avec le
-domaine anime.
+À appliquer **avant le point de contrôle du shell** ; le reste de l'addendum arrive avec les
+domaines vidéo et livres.
 
 1. **Routes** comme au §3 : `/home` ; `/music/explore`, `/music/library` et ses sous-routes ;
    pages d'entité sous `/<branche>/…` préfixées par le domaine (`/music/explore/album/:id`,
@@ -448,7 +449,7 @@ domaine anime.
     testWidgets('pinned are stored per domain', ...);                         // ui.pinned.music
     ```
 
-Ce qui **n'a rien à montrer avec un seul domaine** arrive avec la spec anime : le glisser de
+Ce qui **n'a rien à montrer avec un seul domaine** arrive avec la spec vidéo : le glisser de
 la barre, les puces visibles, la fenêtre vidéo, l'ordre appris de Reprendre. Tout le reste
 entre dans la v1 musique (§12).
 
@@ -484,11 +485,15 @@ entre dans la v1 musique (§12).
   - **sauvegarde** (§7 bis) : export chiffré, restauration par fusion HLC, sauvegarde
     automatique hebdomadaire (cœur, plan 3 ; écran Réglages › Sauvegarde, plan 5) ;
   - **mode économie** (§7) et **lire sur la TV** (§5.4) ;
+  - **serveurs personnels côté musique** : les plugins Jellyfin / Emby et Plex exportent aussi
+    `vehicoule:music`, et un plugin Navidrome / Subsonic rejoint le feed officiel ; fichiers
+    locaux (fournisseur `local` du cœur, socle §11), pour que l'app soit utile légalement dès
+    l'installation (spec vidéo §4.6) ;
   - **M1** paroles romanisées et traduites, **M3** son par sortie audio (§13) ;
   - **« C'est quoi ? »** (§6 bis), mode Écouter : capacité `music.identify` (contrat musique
     1.2, mineure), AcoustID dans le feed officiel, l'écran à grande forme (`VShapeStage` dans
     `design/`), la tuile des réglages rapides, « Reconnus ». Le mode Montrer arrive avec
-    l'anime et les livres.
+    les vidéos et les livres.
 
 ## 13. Idées propres à un domaine
 
@@ -496,9 +501,9 @@ entre dans la v1 musique (§12).
 |---|---|
 | **M1** Paroles romanisées (rōmaji calculés en local) et traduites ligne à ligne | v1 musique (révision de la spec UI, vue Paroles) |
 | **M3** Égaliseur et normalisation retenus par sortie audio (casque, enceinte, voiture) | v1 musique (filtres libmpv, Réglages › Lecture) |
-| Sauter le générique (AniSkip), avec la puce « Ajouter cet OP à ta musique » pendant le saut | spec anime |
-| Double sous-titres (japonais + français), toucher un mot en pause le copie | spec anime |
-| **M2** « Ton mix anime » : radio dont les graines sont les OP / ED des séries regardées | spec anime (étagère « Tes mixes ») |
+| Sauter le générique (AniSkip), avec la puce « Ajouter cet OP à ta musique » pendant le saut | spec vidéo |
+| Double sous-titres (japonais + français), toucher un mot en pause le copie | spec vidéo |
+| **M2** « Ton mix anime » : radio dont les graines sont les OP / ED des séries regardées | spec vidéo (étagère « Tes mixes ») |
 | **B1** Sens de lecture déduit des métadonnées puis retenu par série | spec livres |
 | **B2** Lecture case par case (détection des cases sur l'appareil) | spec livres |
 | **B3** Mode liseuse : e-ink, sans animation, touches de volume, rafraîchissement complet | spec livres |
