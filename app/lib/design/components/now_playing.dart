@@ -266,8 +266,11 @@ class _VNowPlayingState extends State<VNowPlaying>
   LinearGradient _scrim(BuildContext context) {
     final scrim = Theme.of(context).colorScheme.scrim;
     final height = _scrimHeight(context);
-    final hold = ((MediaQuery.paddingOf(context).top + _headerHeight) / height)
-        .clamp(0.0, 1.0);
+    // Even down to the header's content (its text and glyphs), then a long fall.
+    final hold =
+        ((MediaQuery.paddingOf(context).top + _headerHeight - VSpace.s8) /
+                height)
+            .clamp(0.0, 1.0);
     const steps = 8;
     final fall = [
       for (var i = 0; i <= steps; i++)
@@ -607,7 +610,12 @@ class _VNowPlayingState extends State<VNowPlaying>
                 child: DecoratedBox(
                   decoration: ShapeDecoration(
                     color: theme.colorScheme.secondaryContainer,
-                    shape: const StadiumBorder(),
+                    // On the Vague's scrim the tonal fill goes, an outline stays.
+                    shape: StadiumBorder(
+                      side: theme.colorScheme.secondaryContainer.a == 0
+                          ? BorderSide(color: theme.colorScheme.outlineVariant)
+                          : BorderSide.none,
+                    ),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(

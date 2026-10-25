@@ -101,7 +101,7 @@ abstract final class VSize {
 
   /// The dark scrim under the Vague's header (below the status bar): how dark under the
   /// header (its text reads at 4.5:1 on a white cover), and how far it reaches.
-  static const headerScrim = 0.66, headerScrimHeight = 96.0;
+  static const headerScrim = 0.58, headerScrimHeight = 96.0;
 
   /// The thin stroke of small progress icons (download).
   static const iconStroke = 3.0;

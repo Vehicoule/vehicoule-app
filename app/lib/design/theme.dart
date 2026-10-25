@@ -74,7 +74,7 @@ Color vScreenSurface(ColorScheme cs) =>
 final _onScrim = Expando<ThemeData>();
 
 /// Light content on a dark scrim over artwork (the Vague's header): white foregrounds
-/// and a light veil for tonal fills, for Material and M3E components alike.
+/// and outlines instead of tonal fills, for Material and M3E components alike.
 Widget vOnScrim(BuildContext context, Widget child) {
   final theme = Theme.of(context);
   const white = Color(0xFFFFFFFF);
@@ -82,8 +82,9 @@ Widget vOnScrim(BuildContext context, Widget child) {
     colorScheme: theme.colorScheme.copyWith(
       onSurface: white,
       onSurfaceVariant: white,
-      secondaryContainer: white.withValues(alpha: 0.16),
+      secondaryContainer: white.withValues(alpha: 0),
       onSecondaryContainer: white,
+      outlineVariant: white.withValues(alpha: 0.6),
     ),
   );
   return Theme(
