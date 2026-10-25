@@ -58,11 +58,7 @@ configuré ne peut pas ouvrir `file://`, `tcp://` ni un autre hôte.
   recompile avec une **liste blanche** :
   - conteneurs : HLS, MPEG-TS, MP4 / fMP4, Matroska / WebM, Ogg, MP3, FLAC, WAV ;
   - audio : AAC, MP3, FLAC, Opus, Vorbis ;
-  - vidéo : H.264, HEVC, AV1, VP9. **AV2** entre dans la liste quand un décodeur stable
-    existe dans FFmpeg : en octobre 2026, la spec est encore en brouillon, le seul décodeur
-    libre (dav2d, VideoLAN, BSD) est en 0.0.1, il n'y a aucun décodeur matériel, et le
-    décodage logiciel coûte environ cinq fois celui de l'AV1, hors de portée d'un téléphone.
-    Aucune source ne sert d'AV2 aujourd'hui ;
+  - vidéo : H.264, HEVC, AV1, VP9 ;
   - sous-titres : ASS / SSA, SRT, WebVTT ;
   - protocoles : `http` seulement (le TLS est fait par le proxy, d'où mbedTLS retiré de
     FFmpeg).
