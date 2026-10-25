@@ -103,6 +103,36 @@ dans la recherche ou partagé vers l'app, ouvre la bonne page dans le bon domain
 domaine déclare les hôtes qu'il reconnaît ; le concentrateur de liens existant (`links()`)
 les route. Les liens `vehicoule://` ne changent pas.
 
+### 3.1 Liens de partage
+
+Partager un titre, un album, un artiste, une playlist, une série, un épisode (à un instant
+donné) ou un livre donne un lien web qui ouvre l'app si elle est installée, et une page web
+sinon.
+
+- **Forme** : `https://vehicoule.app/<domaine>/<type>/<réf>[/<slug>]?t=<secondes>`, par exemple
+  `vehicoule.app/anime/episode/anilist:21:1071/one-piece?t=754`. Le slug sert seulement à la
+  lisibilité.
+- **Réf neutre** : seulement des identifiants de **catalogue public** (Deezer, ISRC, AniList,
+  MyAnimeList…), jamais un id interne (UUID propre à l'appareil) ni une référence de source de
+  lecture. Chez le destinataire, ses propres sources résolvent la lecture. Le lien ne pointe
+  donc jamais vers un contenu hébergé illégalement, et il marche quelle que soit la source.
+- **Playlist perso** : sa liste d'ids de catalogue voyage compressée dans le **fragment**
+  (`#…`), jamais envoyé au serveur, jusqu'à 200 titres. Au-delà, le partage propose la
+  playlist tronquée. Ouvrir le lien propose « Enregistrer dans mes playlists ».
+- **App installée** : Android App Links (`assetlinks.json`) et liens universels Apple
+  (`apple-app-site-association`) sur `vehicoule.app`. Le concentrateur `links()` route ces
+  URL comme les `vehicoule://`.
+- **App absente** : une page statique (même hébergement que les autres sous-domaines, sans
+  serveur applicatif) affiche l'aperçu (titre, pochette ou affiche) en le demandant au
+  catalogue public depuis le navigateur. Elle propose « Ouvrir dans Vehicoule »
+  (`vehicoule://open?…`, utile quand les liens universels ne marchent pas, par exemple une app
+  macOS non notarisée) et « Télécharger l'app ». Les aperçus des messageries (Open Graph)
+  restent génériques, faute de serveur.
+- **Vie privée** : aucun identifiant d'utilisateur ni d'appareil dans le lien, aucun suivi
+  sur la page.
+- Entrée « Partager » dans le menu expressif (spec UI §5.2) et dans le ⋮ du lecteur ; feuille
+  de partage du système.
+
 ## 4. Accueil commun
 
 1. **« Bonsoir »** (spec UI §6.1), puis les **puces** Tout · Musique · Anime · Livres. Le
@@ -283,6 +313,8 @@ entre dans la v1 musique (§12).
   - **« Pour le trajet »** et **budget de stockage** (§7) : la découverte du jour téléchargée
     en Wi-Fi et en charge (plan 4, service de téléchargement) ;
   - **liens collés** (§3) : liens Deezer et YouTube Music ;
+  - **liens de partage** (§3.1) : titres, albums, artistes, playlists ; App Links et liens
+    universels (plan 5, Task 4 : le concentrateur de liens), page statique sur `vehicoule.app` ;
   - **M1** paroles romanisées et traduites, **M3** son par sortie audio (§13).
 
 ## 13. Idées propres à un domaine
