@@ -5,7 +5,7 @@ Date : 2026-10-25 · Statut : approuvé par l'utilisateur le 2026-10-25
 Specs parentes : `2026-10-18-socle-musique-design.md` (le « socle »),
 `2026-10-23-socle-ui-design.md` (la « spec UI », branche `socle`),
 `2026-10-25-navigation-domaines.md` (l'« addendum »), `2026-10-25-video-design.md` (la « spec
-vidéo », qui remplace la spec vidéo) et `2026-10-25-surface-attaque.md`. Cette spec branche les livres (mangas, manhwa,
+vidéo », qui remplace la spec anime) et `2026-10-25-surface-attaque.md`. Cette spec branche les livres (mangas, manhwa,
 comics, romans, light novels, ebooks) sur le socle : même cœur, même hôte de plugins, même
 bibliothèque, mêmes coques, et les tables et contrats communs posés par la vidéo.
 
@@ -854,7 +854,7 @@ Le rapport va dans `docs/superpowers/reports/`, comme ceux de la musique et de l
 | Spec vidéo §4.1 : plugin AniList | Un seul plugin AniList exporte `vehicoule:video`, `vehicoule:books` et le tracker |
 | Spec vidéo §4.5 : `vehicoule:host` 1.1.0 | + interfaces `credentials` et `locale` (§4.5) ; `Accept-Language` ajouté par l'hôte. Même définition que la spec vidéo §4.7 : une seule interface pour les trois domaines |
 | Socle §4.3 : manifeste | + `replaces-mihon` (liste d'ids de sources Mihon) |
-| Contrat `vehicoule:music` | + capacité `tempo(track) -> option<f32>` (mineure), plugin Deezer |
+| Contrat `vehicoule:music` | + capacité `tempo: func(track: track-ref) -> result<option<f32>, error>` (mineure), plugin Deezer |
 | Surface d'attaque §7.1 : dépendances prévues | + `html5ever`, `cssparser`, `hyphenation`, `read-fonts`, `zip`, `sevenz-rust`, `hayro`, `resvg`, `mobi`, `rxing`, `jxl-oxide`, `rav1d` (tous Rust), décodeur RAR Rust si le spike le valide ; `cargo-fuzz` en CI |
 
 ## 13. Ce que cette spec ne couvre pas
