@@ -368,6 +368,46 @@ void main() {
       },
     );
 
+    test('a resume loads from the tap to the first sound', () async {
+      final r = Rig();
+      final loading = <bool>[];
+      r.adapter.loading.listen(loading.add);
+      r.commands.add(playCmd('e1', 'a'));
+      await settle();
+      r.backend.indexes.add(0);
+      r.backend.playings.add(true);
+      r.backend.positions.add(const Duration(seconds: 5));
+      await r.adapter.pause();
+      r.backend.playings.add(false);
+      r.adapter.markTap();
+      await r.adapter.play();
+      r.backend.playings.add(true);
+      await settle();
+      expect(loading, [true, false, true]);
+      r.backend.positions.add(const Duration(milliseconds: 5100));
+      await settle();
+      expect(loading, [true, false, true, false]);
+      // A tap while it plays is a track change: the old track's positions don't end it.
+      r.adapter.markTap();
+      r.backend.positions.add(const Duration(milliseconds: 5300));
+      await settle();
+      expect(loading, [true, false, true, false, true]);
+    });
+
+    test('a pause before any sound ends loading', () async {
+      final r = Rig();
+      final loading = <bool>[];
+      r.adapter.loading.listen(loading.add);
+      r.commands.add(playCmd('e1', 'a', autoplay: false));
+      await settle();
+      r.backend.indexes.add(0);
+      r.adapter.markTap();
+      await r.adapter.play();
+      await r.adapter.pause();
+      await settle();
+      expect(loading, [true, false]);
+    });
+
     test('first position after a tap reports tap-to-first-sound', () async {
       final r = Rig();
       r.adapter.markTap();

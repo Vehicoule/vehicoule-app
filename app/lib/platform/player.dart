@@ -224,11 +224,12 @@ class PlayerAdapter {
     Duration(milliseconds: math.max(0, _position.value + delta.inMilliseconds)),
   );
 
-  /// A tap that starts a track (Rust answers with a `Play`), or ⏯ on a track loaded
-  /// paused: times the first sound.
+  /// A tap that starts a track or resumes one: loading until the first sound, timed.
   void markTap() {
     _tap = Stopwatch()..start();
     _setLoading(true);
+    // While it plays, the tap changes track: the `Play` arms it, past the old positions.
+    if (!_playing) _awaitingSound = true;
   }
 
   Future<void> _run(PlayerCommand c) async {
@@ -324,6 +325,9 @@ class PlayerAdapter {
 
   /// Not on an error or the end: those stop it without a pause (a 403 would resume paused).
   void _paused() {
+    // Paused before any sound: nothing is loading any more, nothing to time.
+    _tap = null;
+    _setLoading(false);
     final e = _entry;
     if (e == null) return;
     final ms = _ms(_position.value);
