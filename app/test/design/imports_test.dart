@@ -81,6 +81,8 @@ void main() {
       ], ownBrick),
       isEmpty,
     );
-    expect(offending(outsideDesign(), ownBrick), isEmpty);
+    // Screens and shells only: elsewhere (the lock-screen artwork, the theme reading a
+    // cover for its seed, the Android widget) these calls are legitimate.
+    expect(offending(screens(), ownBrick), isEmpty);
   });
 }

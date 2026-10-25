@@ -294,4 +294,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get miniPlayerLabel => 'Mini-lecteur';
+
+  @override
+  String get playingFromLabel => 'Lecture depuis';
 }

@@ -116,5 +116,6 @@
   "actionOpenPlayer": "Ouvrir le lecteur",
   "actionStop": "Arrêter la lecture",
   "actionExitImmersive": "Quitter le plein écran",
-  "miniPlayerLabel": "Mini-lecteur"
+  "miniPlayerLabel": "Mini-lecteur",
+  "playingFromLabel": "Lecture depuis"
 }

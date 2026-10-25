@@ -291,4 +291,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get miniPlayerLabel => 'Mini player';
+
+  @override
+  String get playingFromLabel => 'Playing from';
 }

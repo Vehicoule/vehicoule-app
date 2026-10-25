@@ -136,8 +136,9 @@ void main() {
         );
         expect(find.text('2:00'), findsOneWidget, reason: why);
         expect(find.text('6:09'), findsOneWidget, reason: why);
+        expect(find.text('Lecture depuis'), findsOneWidget, reason: why);
         expect(
-          find.text('Lecture depuis Random Access Memories'),
+          find.text('Random Access Memories'),
           findsOneWidget,
           reason: why,
         );
@@ -379,38 +380,45 @@ void main() {
     expect(find.text('30 min'), findsOneWidget);
   });
 
-  testWidgets('the header is one row: ⌄ · « Lecture depuis … » · output · ⋮', (
-    tester,
-  ) async {
-    await show(
-      tester,
-      SizedBox(
-        width: VSize.sideSheet,
-        child: VNowPlaying(
-          data: data(sleepLeft: const Duration(minutes: 24)),
-          position: ValueNotifier(0),
-          size: PlayerSize.medium,
-          style: PlayerStyle.disc,
-          view: PlayerView.player,
-          onView: (_) {},
-          actions: actions,
-          lyrics: (_) => const SizedBox(),
-          queue: (_) => const SizedBox(),
-          onImmersive: () {},
+  testWidgets(
+    'the header is one row: fold · « Lecture depuis » over the source · ⤢ · ⋮',
+    (tester) async {
+      await show(
+        tester,
+        SizedBox(
+          width: VSize.sideSheet,
+          child: VNowPlaying(
+            data: data(sleepLeft: const Duration(minutes: 24)),
+            position: ValueNotifier(0),
+            size: PlayerSize.medium,
+            style: PlayerStyle.disc,
+            view: PlayerView.player,
+            onView: (_) {},
+            actions: actions,
+            lyrics: (_) => const SizedBox(),
+            queue: (_) => const SizedBox(),
+            onImmersive: () {},
+          ),
         ),
-      ),
-    );
-    final from = tester.getRect(
-      find.text('Lecture depuis Random Access Memories'),
-    );
-    final collapse = tester.getRect(find.bySemanticsLabel('Réduire'));
-    final more = tester.getRect(find.bySemanticsLabel("Plus d'options"));
-    expect(from.center.dy, closeTo(collapse.center.dy, 2));
-    expect(from.center.dy, closeTo(more.center.dy, 2));
-    expect(from.left, greaterThanOrEqualTo(collapse.right));
-    expect(from.right, lessThanOrEqualTo(more.left));
-    expect(find.text('24\u00a0min'), findsOneWidget);
-  });
+      );
+      final from = tester.getRect(find.text('Random Access Memories'));
+      expect(
+        tester.getRect(find.text('Lecture depuis')).bottom,
+        lessThanOrEqualTo(from.top + 0.5),
+        reason: 'the label over the source',
+      );
+      final collapse = tester.getRect(find.bySemanticsLabel('Réduire'));
+      final more = tester.getRect(find.bySemanticsLabel("Plus d'options"));
+      final block = tester
+          .getRect(find.text('Lecture depuis'))
+          .expandToInclude(from);
+      expect(block.center.dy, closeTo(collapse.center.dy, 2));
+      expect(block.center.dy, closeTo(more.center.dy, 2));
+      expect(from.left, greaterThanOrEqualTo(collapse.right));
+      expect(from.right, lessThanOrEqualTo(more.left));
+      expect(find.text('24\u00a0min'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'the shrink lands on the slot at any text size, and fades the views both ways',
@@ -568,6 +576,39 @@ const reachable = [
 ];
 
 void layoutTests() {
+  testWidgets('at 200 % text the mini player and the strip never overflow', (
+    tester,
+  ) async {
+    final errors = <FlutterErrorDetails>[];
+    final old = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = old);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await show(
+      tester,
+      Align(
+        alignment: Alignment.bottomCenter,
+        child: player(size: PlayerSize.compact),
+      ),
+      size: const Size(360, 800),
+    );
+    await show(
+      tester,
+      Align(
+        alignment: Alignment.topRight,
+        child: SizedBox(
+          width: VSize.strip,
+          child: player(size: PlayerSize.compact, axis: Axis.vertical),
+        ),
+      ),
+      size: const Size(800, 800),
+    );
+    FlutterError.onError = old;
+    expect(errors.map((e) => e.exceptionAsString()), isEmpty);
+    expect(find.bySemanticsLabel('Titre suivant'), findsOneWidget);
+  });
+
   testWidgets('the mini player is a floating toolbar with its FAB beside it', (
     tester,
   ) async {
@@ -644,8 +685,8 @@ void layoutTests() {
     calls.clear();
     await tester.tap(title);
     expect(calls, ['open']);
-    // The toolbar's menu has every gesture.
-    await tester.tap(find.bySemanticsLabel("Plus d'options"));
+    // The toolbar's menu (long press) has every gesture.
+    await tester.longPress(title);
     await tester.pumpAndSettle();
     for (final l in [
       'Titre suivant',

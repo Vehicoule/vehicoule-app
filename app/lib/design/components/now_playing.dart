@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
@@ -16,6 +17,7 @@ import '../symbols.dart';
 import '../tokens.dart';
 import 'artwork.dart';
 import 'controls.dart';
+import 'loading.dart';
 import 'menu.dart';
 import 'view_selector.dart';
 import 'wave_artwork.dart';
@@ -249,8 +251,19 @@ class _VNowPlayingState extends State<VNowPlaying>
       Expanded(child: _body(context)),
       if (widget.volume case final volume?)
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: VSpace.s24),
-          child: volume,
+          padding: const EdgeInsets.symmetric(horizontal: VSpace.s16),
+          child: Row(
+            children: [
+              if (actions.onOutput case final output?)
+                VIconButton(
+                  icon: VIcons.speaker,
+                  label: AppLocalizations.of(context).actionOutput,
+                  onPressed: output,
+                ),
+              const SizedBox(width: VSpace.s8),
+              Expanded(child: volume),
+            ],
+          ),
         ),
       Padding(
         padding: const EdgeInsets.only(top: VSpace.s8, bottom: VSpace.s16),
@@ -375,81 +388,108 @@ class _VNowPlayingState extends State<VNowPlaying>
     },
   );
 
-  /// ⌄ · « Lecture depuis … » · moon and time left · output · ⤢ · ⋮, on one row; the
-  /// source ellipsizes, the actions never move.
+  /// ⌄ · « Lecture depuis » over the source · moon and time left · output · ⤢ · ⋮, on one
+  /// row (the mockup's header): the source ellipsizes, the actions never move. The
+  /// desktop pane folds with its panel icon; the immersive view leaves with ⤡ at the end.
+  /// In the pane the output sits by the volume instead.
   Widget _header(BuildContext context) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final sleep = data.sleepLeft;
     final immersive = widget.immersive;
+    final pane = widget.size == PlayerSize.medium;
+    final small = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    Widget button(IconData icon, String label, VoidCallback? onPressed) =>
+        VIconButton(
+          icon: icon,
+          label: label,
+          style: VIconStyle.tonal,
+          onPressed: onPressed,
+        );
     return Padding(
       key: VNowPlaying.headerKey,
       padding: const EdgeInsets.symmetric(horizontal: VSpace.s8),
-      child: SizedBox(
-        height: VSize.playerHeader,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: VSize.playerHeader),
         child: Row(
           children: [
-            if (immersive && widget.onImmersive != null)
-              VIconButton(
-                icon: VIcons.collapse,
-                label: l.actionExitImmersive,
-                onPressed: widget.onImmersive,
-              )
-            else if (actions.onCollapse != null)
-              VIconButton(
-                icon: VIcons.collapse,
-                label: l.actionCollapse,
-                onPressed: actions.onCollapse,
+            if (!immersive && actions.onCollapse != null)
+              button(
+                pane ? VIcons.panelClose : VIcons.collapse,
+                l.actionCollapse,
+                actions.onCollapse,
               ),
             const SizedBox(width: VSpace.s4),
             Expanded(
-              child: Text(
-                l.playingFrom(data.sourceTitle),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // A running timer shares the label's line: the moon and the time
+                  // left, so the actions keep their room.
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          l.playingFromLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: small,
+                        ),
+                      ),
+                      if (sleep != null || data.sleepEndOfTrack) ...[
+                        const SizedBox(width: VSpace.s8),
+                        VSymbol(
+                          VIcons.bedtime,
+                          size: VSize.iconSmall,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: VSpace.s4),
+                        Text(
+                          data.sleepEndOfTrack
+                              ? l.sleepEndOfTrack
+                              : l.sleepMinutesLeft(
+                                  (sleep!.inSeconds / 60).ceil(),
+                                ),
+                          style: small?.copyWith(
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  Text(
+                    data.sourceTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: VSpace.s4),
-            if (sleep != null || data.sleepEndOfTrack) ...[
-              VSymbol(
-                VIcons.bedtime,
-                size: VSize.iconSmall,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: VSpace.s4),
-              Text(
-                data.sleepEndOfTrack
-                    ? l.sleepEndOfTrack
-                    : l.sleepMinutesLeft((sleep!.inSeconds / 60).ceil()),
-                style: theme.textTheme.labelMedium,
-              ),
-            ],
-            if (actions.onOutput != null)
-              VIconButton(
-                icon: VIcons.devices,
-                label: l.actionOutput,
-                onPressed: actions.onOutput,
-              ),
-            if (!immersive && widget.onImmersive != null)
-              VIconButton(
-                icon: VIcons.fullscreen,
-                label: l.actionImmersive,
-                onPressed: widget.onImmersive,
-              ),
+            if (actions.onOutput != null && !(pane && widget.volume != null))
+              button(VIcons.devices, l.actionOutput, actions.onOutput),
+            if (widget.onImmersive != null)
+              immersive
+                  ? button(
+                      VIcons.closeFullscreen,
+                      l.actionExitImmersive,
+                      widget.onImmersive,
+                    )
+                  : button(
+                      VIcons.fullscreen,
+                      l.actionImmersive,
+                      widget.onImmersive,
+                    ),
             if (actions.onMenu != null)
               Builder(
-                builder: (b) => VIconButton(
-                  icon: VIcons.more,
-                  label: l.actionMore,
-                  onPressed: () {
-                    final box = b.findRenderObject()! as RenderBox;
-                    actions.onMenu!(box.localToGlobal(Offset.zero) & box.size);
-                  },
-                ),
+                builder: (b) => button(VIcons.more, l.actionMore, () {
+                  final box = b.findRenderObject()! as RenderBox;
+                  actions.onMenu!(box.localToGlobal(Offset.zero) & box.size);
+                }),
               ),
           ],
         ),
@@ -512,8 +552,7 @@ class _VNowPlayingState extends State<VNowPlaying>
 
   Widget _actions(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return VConnectedGroup(
-      key: VNowPlaying.actionsKey,
+    final group = VConnectedGroup(
       actions: [
         _like(l),
         VAction(
@@ -531,6 +570,11 @@ class _VNowPlayingState extends State<VNowPlaying>
           ),
         ),
       ],
+    );
+    // A compact group, centred (the mockup), not stretched across the player.
+    return Center(
+      key: VNowPlaying.actionsKey,
+      child: SizedBox(width: 3 * VSize.controlMax, child: group),
     );
   }
 
@@ -757,58 +801,40 @@ class _VNowPlayingState extends State<VNowPlaying>
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        actions: [
-          M3EToolbarWidget(child: _likeButton(l)),
-          // Every gesture has its equivalent in this menu.
-          if (gestures)
-            M3EToolbarWidget(
-              child: Builder(
-                builder: (b) => VIconButton(
-                  icon: VIcons.more,
-                  label: l.actionMore,
-                  onPressed: () {
-                    final box = b.findRenderObject()! as RenderBox;
-                    showVMenu(
-                      b,
-                      anchor: box.localToGlobal(Offset.zero) & box.size,
-                      quick: const [],
-                      groups: [
-                        [
-                          VAction(
-                            l.actionPrevious,
-                            VIcons.skipPrevious,
-                            actions.onPrevious,
-                          ),
-                          VAction(
-                            l.actionNext,
-                            VIcons.skipNext,
-                            actions.onNext,
-                          ),
-                        ],
-                        [
-                          if (actions.onOpen case final open?)
-                            VAction(l.actionOpenPlayer, VIcons.expandUp, open),
-                          if (actions.onStop case final stop?)
-                            VAction(l.actionStop, VIcons.stop, stop),
-                        ],
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-        ],
+        actions: [M3EToolbarWidget(child: _likeButton(l))],
         floatingActionButton: _fab(),
         fabExpandsToolbar: false,
       ),
     );
     if (!gestures) return bar;
-    return _MiniGestures(
-      onNext: actions.onNext,
-      onPrevious: actions.onPrevious,
-      onOpen: actions.onOpen,
-      onStop: actions.onStop,
-      child: bar,
+    // Every gesture has its equivalent in the toolbar's menu (long press, right click)
+    // and as a spoken action.
+    final menu = [
+      VAction(l.actionPrevious, VIcons.skipPrevious, actions.onPrevious),
+      VAction(l.actionNext, VIcons.skipNext, actions.onNext),
+      if (actions.onOpen case final open?)
+        VAction(l.actionOpenPlayer, VIcons.expandUp, open),
+      if (actions.onStop case final stop?)
+        VAction(l.actionStop, VIcons.stop, stop),
+    ];
+    return Semantics(
+      customSemanticsActions: {
+        for (final a in menu)
+          CustomSemanticsAction(label: a.label): a.onSelected,
+      },
+      child: _MiniGestures(
+        onNext: actions.onNext,
+        onPrevious: actions.onPrevious,
+        onOpen: actions.onOpen,
+        onStop: actions.onStop,
+        onMenu: (at) => showVMenu(
+          context,
+          anchor: at,
+          quick: const [],
+          groups: [menu.sublist(0, 2), menu.sublist(2)],
+        ),
+        child: bar,
+      ),
     );
   }
 
@@ -833,9 +859,24 @@ class _VNowPlayingState extends State<VNowPlaying>
         ),
         const SizedBox(height: VSpace.s8),
         _likeButton(l),
-        const SizedBox(height: VSpace.s8),
-        _fab(),
-        const SizedBox(height: VSpace.s8),
+        const SizedBox(height: VSpace.s4),
+        if (data.loading)
+          const SizedBox.square(
+            dimension: VSize.menuTarget,
+            child: Center(child: VLoading(size: VSize.playIcon)),
+          )
+        else
+          VIconButton(
+            icon: data.playing ? VIcons.pause : VIcons.play,
+            label: data.playing ? l.actionPause : l.actionPlay,
+            selected: true,
+            style: VIconStyle.filled,
+            onPressed: () {
+              VHaptics.light();
+              actions.onPlayPause();
+            },
+          ),
+        const SizedBox(height: VSpace.s4),
         VIconButton(
           icon: VIcons.skipNext,
           label: l.actionNext,
@@ -844,6 +885,14 @@ class _VNowPlayingState extends State<VNowPlaying>
         if (widget.volume case final volume?) ...[
           const SizedBox(height: VSpace.s8),
           volume,
+        ],
+        if (actions.onOpen case final open?) ...[
+          const SizedBox(height: VSpace.s8),
+          VIconButton(
+            icon: VIcons.panelOpen,
+            label: l.actionOpenPlayer,
+            onPressed: open,
+          ),
         ],
       ],
     );
@@ -969,11 +1018,15 @@ class _MiniGestures extends StatefulWidget {
     required this.onPrevious,
     required this.onOpen,
     required this.onStop,
+    required this.onMenu,
   });
 
   final Widget child;
   final VoidCallback onNext, onPrevious;
   final VoidCallback? onOpen, onStop;
+
+  /// Opens the toolbar's menu at a global rect (a point for the pointer).
+  final ValueChanged<Rect> onMenu;
 
   @override
   State<_MiniGestures> createState() => _MiniGesturesState();
@@ -1035,6 +1088,12 @@ class _MiniGesturesState extends State<_MiniGestures>
   Widget build(BuildContext context) => GestureDetector(
     behavior: HitTestBehavior.translucent,
     onTap: widget.onOpen,
+    onLongPressStart: (d) => widget.onMenu(
+      Rect.fromLTWH(d.globalPosition.dx, d.globalPosition.dy, 0, 0),
+    ),
+    onSecondaryTapUp: (d) => widget.onMenu(
+      Rect.fromLTWH(d.globalPosition.dx, d.globalPosition.dy, 0, 0),
+    ),
     onPanUpdate: _update,
     onPanEnd: _end,
     child: AnimatedBuilder(

@@ -41,6 +41,7 @@ Widget row(
 );
 
 void main() {
+  largeTextTests();
   testWidgets('VTrackRow: number replaces artwork, same height', (
     tester,
   ) async {
@@ -213,6 +214,48 @@ void main() {
     expect(
       find.bySemanticsLabel(RegExp('^La vie en rose.*, Téléchargé')),
       findsOneWidget,
+    );
+  });
+}
+
+void largeTextTests() {
+  testWidgets('VTrackRow: the cookie artwork, and the equalizer beside ⋮', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness(row(Calls(), playing: true)));
+    final eq = find.byType(VEqualizer);
+    expect(eq, findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(VArtwork), matching: eq),
+      findsNothing,
+      reason: 'the cookie alone says it plays, the artwork stays clean',
+    );
+    final more = tester.getRect(find.bySemanticsLabel(fr().actionMore));
+    final bars = tester.getRect(eq);
+    expect(bars.right, lessThanOrEqualTo(more.left + 0.5));
+    expect(bars.left, greaterThan(tester.getRect(find.byType(VArtwork)).right));
+  });
+
+  testWidgets('VTrackRow: 56 tall, and it grows with the text up to 200 %', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness(Column(children: [row(Calls())])));
+    expect(tester.getSize(find.byType(VTrackRow)).height, VSize.trackRow);
+    final errors = <FlutterErrorDetails>[];
+    final old = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = old);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      harness(Column(children: [row(Calls(), playing: true, wide: true)])),
+    );
+    await tester.pump();
+    FlutterError.onError = old;
+    expect(errors.map((e) => e.exceptionAsString()), isEmpty);
+    expect(
+      tester.getSize(find.byType(VTrackRow)).height,
+      greaterThan(VSize.trackRow),
     );
   });
 }

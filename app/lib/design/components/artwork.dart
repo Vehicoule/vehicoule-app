@@ -378,11 +378,9 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     final ring = widget.progress != null;
     final inset = ring ? VSize.ringStroke + VSize.ringGap : 0.0;
     final art = widget.size - 2 * inset;
-    // A ring (and the turning cookie) is the playing sign on its own (spec UI §5.3).
-    final equalizer =
-        playing &&
-        !ring &&
-        (widget.kind == ArtKind.artist || art <= VSize.compactArt);
+    // The turning cookie is the playing sign on its own (spec UI §5.3, the
+    // shape-language mockup); an artist keeps its circle, so it has the equalizer.
+    final equalizer = playing && !ring && widget.kind == ArtKind.artist;
 
     // The picture, the equalizer's scrim and bars, all inside the shape.
     final inside = Stack(
@@ -423,7 +421,11 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
       alignment: Alignment.center,
       children: [
         SizedBox.square(dimension: art, child: picture),
-        if (widget.selected) _Check(size: art),
+        if (widget.selected)
+          SizedBox.square(
+            dimension: art,
+            child: _Check(size: art),
+          ),
       ],
     );
 
@@ -567,6 +569,7 @@ class _Picture extends StatelessWidget {
   }
 }
 
+/// The check of what is chosen: a small badge on the cookie's lower right edge.
 class _Check extends StatelessWidget {
   const _Check({required this.size});
 
@@ -575,21 +578,27 @@ class _Check extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Semantics(
-      label: AppLocalizations.of(context).selectedLabel,
-      child: Container(
-        width: size * 0.45,
-        height: size * 0.45,
-        decoration: BoxDecoration(
-          color: scheme.primary,
-          shape: BoxShape.circle,
-        ),
-        child: Center(
-          child: VSymbol(
-            VIcons.check,
-            size: size * 0.3,
-            color: scheme.onPrimary,
-            weight: 600,
+    final badge = size * 0.36;
+    return Align(
+      alignment: Alignment.bottomRight,
+      child: Semantics(
+        label: AppLocalizations.of(context).selectedLabel,
+        child: Container(
+          width: badge,
+          height: badge,
+          decoration: ShapeDecoration(
+            color: scheme.primary,
+            shape: CircleBorder(
+              side: BorderSide(color: scheme.surface, width: badge / 10),
+            ),
+          ),
+          child: Center(
+            child: VSymbol(
+              VIcons.check,
+              size: badge * 0.62,
+              color: scheme.onPrimary,
+              weight: 700,
+            ),
           ),
         ),
       ),

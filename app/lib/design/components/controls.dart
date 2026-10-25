@@ -268,6 +268,20 @@ class VControls extends StatelessWidget {
               semanticLabel: label,
               minWidth: unit,
             );
+        // Shuffle and repeat are plain icons until they are on (the mockup).
+        final quiet = M3EButtonDecoration.styleFrom(
+          backgroundColor: scheme.surface.withValues(alpha: 0),
+          selectedBackgroundColor: scheme.secondaryContainer,
+          foregroundColor: scheme.onSurfaceVariant,
+          selectedForegroundColor: scheme.onSecondaryContainer,
+        );
+        M3EButtonGroupAction toggle(Widget icon, String label) =>
+            M3EButtonGroupAction(
+              icon: icon,
+              semanticLabel: label,
+              minWidth: unit,
+              decoration: quiet,
+            );
         return M3EButtonGroup(
           size: big ? M3EButtonSize.md : M3EButtonSize.sm,
           style: M3EButtonStyle.tonal,
@@ -280,7 +294,7 @@ class VControls extends StatelessWidget {
             }
           },
           actions: [
-            side(VSymbol(VIcons.shuffle, filled: shuffle), l.actionShuffle),
+            toggle(VSymbol(VIcons.shuffle, filled: shuffle), l.actionShuffle),
             side(VSymbol(VIcons.skipPrevious, filled: true), l.actionPrevious),
             M3EButtonGroupAction(
               icon: play,
@@ -295,7 +309,7 @@ class VControls extends StatelessWidget {
               ),
             ),
             side(VSymbol(VIcons.skipNext, filled: true), l.actionNext),
-            side(
+            toggle(
               VSymbol(
                 repeat == Repeat.one ? VIcons.repeatOne : VIcons.repeat,
                 filled: repeat != Repeat.off,

@@ -631,6 +631,12 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Mini-lecteur'**
   String get miniPlayerLabel;
+
+  /// No description provided for @playingFromLabel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lecture depuis'**
+  String get playingFromLabel;
 }
 
 class _AppLocalizationsDelegate

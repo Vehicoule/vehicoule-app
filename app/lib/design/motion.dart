@@ -313,3 +313,30 @@ class _EntranceState extends State<_Entrance>
     );
   }
 }
+
+/// The mini player → player shared element, driven by the sheet's drag [extent] (0 = the
+/// mini player, 1 = the full player), not a Hero: the artwork's rect interpolates from
+/// [from] to [to] (both in the enclosing Stack's coordinates) and [builder] draws it at
+/// that side. Goes in a Stack.
+class VExtentFlight extends StatelessWidget {
+  const VExtentFlight({
+    super.key,
+    required this.extent,
+    required this.from,
+    required this.to,
+    required this.builder,
+  });
+
+  final double extent;
+  final Rect from, to;
+  final Widget Function(BuildContext context, double side) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    final rect = Rect.lerp(from, to, extent.clamp(0.0, 1.0))!;
+    return Positioned.fromRect(
+      rect: rect,
+      child: builder(context, rect.shortestSide),
+    );
+  }
+}

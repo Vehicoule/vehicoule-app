@@ -60,6 +60,7 @@ List<Type> transitionsAbove(WidgetTester tester) => [
 ];
 
 void main() {
+  extentFlightTests();
   testWidgets('reduce motion turns every page transition into a fade', (
     tester,
   ) async {
@@ -295,5 +296,44 @@ void main() {
       isFalse,
       reason: 'the menu is open, nothing moves',
     );
+  });
+}
+
+void extentFlightTests() {
+  testWidgets('the mini player artwork follows the sheet extent, no Hero', (
+    tester,
+  ) async {
+    const from = Rect.fromLTWH(16, 700, 56, 56);
+    const to = Rect.fromLTWH(24, 100, 360, 360);
+    Future<Rect> at(double extent) async {
+      await tester.pumpWidget(
+        harness(
+          Stack(
+            children: [
+              VExtentFlight(
+                extent: extent,
+                from: from,
+                to: to,
+                builder: (_, side) => SizedBox.square(
+                  key: const ValueKey('art'),
+                  dimension: side,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return tester.getRect(find.byKey(const ValueKey('art')));
+    }
+
+    expect(await at(0), from);
+    expect(await at(1), to);
+    expect(await at(0.5), Rect.lerp(from, to, 0.5));
+    expect(
+      await at(1.4),
+      to,
+      reason: 'an overshooting drag stays on the player',
+    );
+    expect(find.byType(Hero), findsNothing);
   });
 }

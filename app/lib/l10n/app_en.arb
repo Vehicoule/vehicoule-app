@@ -88,5 +88,6 @@
   "actionOpenPlayer": "Open the player",
   "actionStop": "Stop playback",
   "actionExitImmersive": "Exit full screen",
-  "miniPlayerLabel": "Mini player"
+  "miniPlayerLabel": "Mini player",
+  "playingFromLabel": "Playing from"
 }

@@ -58,6 +58,21 @@ abstract final class VIcons {
   static const stop = IconData(0xe047, fontFamily: _f);
   static const expandUp = IconData(0xe316, fontFamily: _f); // keyboard_arrow_up
   static const volume = IconData(0xe050, fontFamily: _f); // volume_up
+  static const addLink = IconData(0xe178, fontFamily: _f);
+  static const brightnessAuto = IconData(0xe1ab, fontFamily: _f);
+  static const darkMode = IconData(0xe51c, fontFamily: _f);
+  static const edit = IconData(0xe150, fontFamily: _f);
+  static const filter = IconData(0xe152, fontFamily: _f);
+  static const info = IconData(0xe88e, fontFamily: _f);
+  static const lightMode = IconData(0xe518, fontFamily: _f);
+  static const link = IconData(0xe157, fontFamily: _f);
+  static const notifications = IconData(0xe7f4, fontFamily: _f);
+  static const palette = IconData(0xe3b7, fontFamily: _f);
+  static const panelClose = IconData(0xf705, fontFamily: _f);
+  static const panelOpen = IconData(0xf704, fontFamily: _f);
+  static const pushPin = IconData(0xf10d, fontFamily: _f);
+  static const selectAll = IconData(0xe162, fontFamily: _f);
+  static const speaker = IconData(0xe32d, fontFamily: _f);
 }
 
 /// An icon whose FILL and wght axes animate (the heart that fills, the active tab that

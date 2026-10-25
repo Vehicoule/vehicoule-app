@@ -256,4 +256,53 @@ void main() {
     expect(r.top - row.bottom, inInclusiveRange(0, VSpace.s8));
     expect(r.right, lessThanOrEqualTo(row.right));
   });
+
+  testWidgets('the menu holds 200 % text without overflow', (tester) async {
+    final errors = <FlutterErrorDetails>[];
+    final old = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = old);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    late BuildContext ctx;
+    await tester.pumpWidget(
+      harness(
+        Builder(
+          builder: (c) {
+            ctx = c;
+            return const SizedBox.expand();
+          },
+        ),
+        reduce: true,
+      ),
+    );
+    VAction a(String l) => VAction(l, VIcons.album, () {});
+    showVMenu(
+      ctx,
+      anchor: const Rect.fromLTWH(300, 500, 48, 48),
+      quick: [a('Lire ensuite'), a('Ajouter à la file'), a("J'aime")],
+      groups: [
+        [
+          a("Aller à l'album"),
+          a("Aller à l'artiste"),
+          a('Ajouter à une playlist'),
+        ],
+        [a('Télécharger'), a('Retirer')],
+      ],
+    );
+    await tester.pump();
+    await tester.pump();
+    FlutterError.onError = old;
+    expect(errors.map((e) => e.exceptionAsString()), isEmpty);
+    final r = tester.getRect(find.byKey(VMenu.panelKey));
+    expect(
+      (Offset.zero & const Size(360, 640)).contains(
+        r.bottomRight - const Offset(1, 1),
+      ),
+      isTrue,
+    );
+  });
 }

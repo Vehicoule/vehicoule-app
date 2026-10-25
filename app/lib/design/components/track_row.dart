@@ -194,8 +194,9 @@ class _VTrackRowState extends State<VTrackRow>
         },
       ),
     );
-    return SizedBox(
-      height: VSize.trackRow,
+    // 56 at rest; taller when the text is (up to 200 %, spec UI §8).
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: VSize.trackRow),
       child: Padding(
         padding: const EdgeInsetsDirectional.only(
           start: VSpace.s16,
@@ -274,6 +275,13 @@ class _VTrackRowState extends State<VTrackRow>
               ),
               const SizedBox(width: VSpace.s8),
             ],
+            // What plays: the cookie on the artwork, the equalizer here (the
+            // shape-language mockup); a numbered row has it in place of its number.
+            if (_playing && widget.number == null && widget.leading == null)
+              const Padding(
+                padding: EdgeInsetsDirectional.only(start: VSpace.s8),
+                child: VEqualizer(size: VSize.icon),
+              ),
             Visibility.maintain(visible: showMore, child: more),
             if (widget.handleIndex != null)
               ReorderableDragStartListener(
