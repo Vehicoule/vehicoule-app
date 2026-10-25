@@ -967,6 +967,72 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Menu au bord'**
   String get galleryOpenMenuEdge;
+
+  /// No description provided for @fabLaunch.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lancer'**
+  String get fabLaunch;
+
+  /// No description provided for @fabNew.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nouvelle'**
+  String get fabNew;
+
+  /// No description provided for @launchShuffleLikes.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mélanger mes likés'**
+  String get launchShuffleLikes;
+
+  /// No description provided for @launchRadio.
+  ///
+  /// In fr, this message translates to:
+  /// **'Radio de ce que j\'écoute'**
+  String get launchRadio;
+
+  /// No description provided for @launchResume.
+  ///
+  /// In fr, this message translates to:
+  /// **'Reprendre la dernière écoute'**
+  String get launchResume;
+
+  /// No description provided for @actionPlayInOrder.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lire dans l\'ordre'**
+  String get actionPlayInOrder;
+
+  /// No description provided for @actionRadio.
+  ///
+  /// In fr, this message translates to:
+  /// **'Radio'**
+  String get actionRadio;
+
+  /// No description provided for @galleryFabHome.
+  ///
+  /// In fr, this message translates to:
+  /// **'Accueil'**
+  String get galleryFabHome;
+
+  /// No description provided for @galleryFabSources.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources'**
+  String get galleryFabSources;
+
+  /// No description provided for @galleryFabCollection.
+  ///
+  /// In fr, this message translates to:
+  /// **'Album'**
+  String get galleryFabCollection;
+
+  /// No description provided for @galleryFabArtist.
+  ///
+  /// In fr, this message translates to:
+  /// **'Artiste'**
+  String get galleryFabArtist;
 }
 
 class _AppLocalizationsDelegate

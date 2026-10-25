@@ -30,6 +30,9 @@ abstract final class VSize {
   /// The collapsed desktop "now playing" strip (spec UI §4.2), mirror of the rail.
   static const strip = 76.0;
 
+  /// The expanded rail (M3: 220 to 360), wide enough for its FAB's label.
+  static const railExpanded = 280.0;
+
   /// The standard side sheet that holds the desktop "now playing" pane.
   static const sideSheet = 360.0;
 

@@ -1201,73 +1201,216 @@ class _FabSection extends StatefulWidget {
 }
 
 class _FabSectionState extends State<_FabSection> {
-  bool _extended = true;
+  bool _extended = true, _collection = false, _artist = false;
+
+  /// A demo screen: its frame, named for the test of the one-main-action rule.
+  Widget _demo(String key, String title, Widget body) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(title, style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: VSpace.s8),
+      KeyedSubtree(
+        key: ValueKey('fab.demo.$key'),
+        child: _screen(VSize.sideSheet, VSize.sideSheet * 1.2, body),
+      ),
+    ],
+  );
+
+  /// A scrolling list that reports whether it has left its top.
+  Widget _scrolling(ValueChanged<bool> scrolled, List<Widget> children) =>
+      NotificationListener<ScrollUpdateNotification>(
+        onNotification: (n) {
+          scrolled(n.metrics.pixels > VSpace.s8);
+          return false;
+        },
+        child: ListView(children: children),
+      );
+
+  Widget _rows() => Column(
+    children: [
+      for (final (i, t) in sampleTracks.indexed)
+        VTrackRow(
+          track: t,
+          number: i + 1,
+          playing: false,
+          onTap: _noop,
+          onPlayNext: _noop,
+          quick: const [],
+          groups: const [],
+        ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return _wrap([
-      for (final s in VFabSize.values)
-        VFab(icon: VIcons.play, label: l.actionPlay, size: s, onPressed: _noop),
-      _screen(
-        VSize.sideSheet,
-        VSize.sideSheet,
-        Stack(
-          children: [
-            NotificationListener<ScrollUpdateNotification>(
-              onNotification: (n) {
-                final next = n.metrics.pixels <= VSpace.s8;
-                if (next != _extended) setState(() => _extended = next);
-                return false;
-              },
-              child: ListView(
+    Widget corner(Widget fab) =>
+        PositionedDirectional(end: VSpace.s16, bottom: VSpace.s16, child: fab);
+    // The split button sits in the collection's header, then shrinks into the FAB.
+    Widget collection(
+      String key,
+      String title,
+      String label,
+      IconData icon,
+      List<VAction> items,
+      bool collapsed,
+      ValueChanged<bool> onScrolled,
+    ) => _demo(
+      key,
+      title,
+      Stack(
+        children: [
+          _scrolling(onScrolled, [
+            Padding(
+              padding: const EdgeInsets.all(VSpace.s16),
+              child: Row(
                 children: [
-                  for (final (i, t) in sampleTracks.indexed)
-                    VTrackRow(
-                      track: t,
-                      number: i + 1,
-                      playing: false,
-                      onTap: _noop,
-                      onPlayNext: _noop,
-                      quick: const [],
-                      groups: const [],
+                  VArtwork(
+                    itemId: sampleCollections.first.$1,
+                    size: VSize.shelfCard,
+                    kind: key == 'artist' ? ArtKind.artist : ArtKind.item,
+                  ),
+                  const SizedBox(width: VSpace.s16),
+                  Expanded(
+                    child: Text(
+                      key == 'artist'
+                          ? 'Daft Punk'
+                          : sampleCollections.first.$2,
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
+                  ),
                 ],
               ),
             ),
-            PositionedDirectional(
-              end: VSpace.s16,
-              bottom: VSpace.s16,
-              child: VExtendedFab(
-                icon: VIcons.play,
-                label: l.actionPlay,
-                extended: _extended,
-                onPressed: _noop,
-              ),
+            _rows(),
+          ]),
+          AnimatedPositionedDirectional(
+            duration: vMotion(context, VDurations.medium),
+            curve: VCurves.emphasized,
+            end: VSpace.s16,
+            top: collapsed
+                ? VSize.sideSheet * 1.2 - VSize.fab - VSpace.s16
+                : VSize.shelfCard + VSpace.s32,
+            child: VSplitFab(
+              label: label,
+              icon: icon,
+              onPressed: _noop,
+              items: items,
+              collapsed: collapsed,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-      _screen(
-        VSize.sideSheet,
-        VSize.sideSheet,
-        Stack(
-          children: [
-            _filler(5),
-            PositionedDirectional(
-              end: VSpace.s16,
-              bottom: VSpace.s16,
-              child: VFabMenu(
-                items: [
-                  VAction(l.actionNewPlaylist, VIcons.playlistAdd, _noop),
-                  VAction(l.actionImportLink, VIcons.addLink, _noop),
-                ],
-              ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _wrap([
+          for (final s in VFabSize.values)
+            VFab(
+              icon: VIcons.play,
+              label: l.actionPlay,
+              size: s,
+              onPressed: _noop,
             ),
-          ],
-        ),
-      ),
-    ]);
+        ]),
+        const SizedBox(height: VSpace.s16),
+        _wrap([
+          // Accueil: launches.
+          _demo(
+            'home',
+            l.galleryFabHome,
+            Stack(
+              children: [
+                _filler(6),
+                corner(
+                  VFabMenu(
+                    label: l.fabLaunch,
+                    icon: VIcons.play,
+                    items: [
+                      VAction(l.launchShuffleLikes, VIcons.shuffle, _noop),
+                      VAction(l.launchRadio, VIcons.radio, _noop),
+                      VAction(l.launchResume, VIcons.history, _noop),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Bibliothèque: creations.
+          _demo(
+            'library',
+            l.navLibrary,
+            Stack(
+              children: [
+                _filler(6),
+                corner(
+                  VFabMenu(
+                    label: l.fabNew,
+                    items: [
+                      VAction(l.actionNewPlaylist, VIcons.playlistAdd, _noop),
+                      VAction(l.actionImportLink, VIcons.addLink, _noop),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Sources: the extended FAB that shrinks on scroll.
+          _demo(
+            'sources',
+            l.galleryFabSources,
+            Stack(
+              children: [
+                _scrolling((s) {
+                  if (s == _extended) setState(() => _extended = !s);
+                }, [_rows()]),
+                corner(
+                  VExtendedFab(
+                    icon: VIcons.add,
+                    label: l.actionAddSource,
+                    extended: _extended,
+                    onPressed: _noop,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          collection(
+            'collection',
+            l.galleryFabCollection,
+            l.actionPlay,
+            VIcons.play,
+            [
+              VAction(l.actionShuffle, VIcons.shuffle, _noop),
+              VAction(l.actionPlayNext, VIcons.playNext, _noop),
+              VAction(l.actionAddToQueue, VIcons.addToQueue, _noop),
+            ],
+            _collection,
+            (s) {
+              if (s != _collection) setState(() => _collection = s);
+            },
+          ),
+          collection(
+            'artist',
+            l.galleryFabArtist,
+            l.actionShuffle,
+            VIcons.shuffle,
+            [
+              VAction(l.actionPlayInOrder, VIcons.play, _noop),
+              VAction(l.actionRadio, VIcons.radio, _noop),
+              VAction(l.actionPlayNext, VIcons.playNext, _noop),
+              VAction(l.actionAddToQueue, VIcons.addToQueue, _noop),
+            ],
+            _artist,
+            (s) {
+              if (s != _artist) setState(() => _artist = s);
+            },
+          ),
+        ]),
+      ],
+    );
   }
 }
 
@@ -1356,21 +1499,20 @@ class _ToolbarSectionState extends State<_ToolbarSection> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    // Multiple selection (spec UI §5.4): the toolbar's actions, « Lire » in its FAB.
     final selection = [
-      VAction(l.actionPlayNext, VIcons.playNext, _noop),
       VAction(l.actionAddToPlaylist, VIcons.playlistAdd, _noop),
       VAction(l.actionDownload, VIcons.download, _noop),
+      VAction(l.actionLike, VIcons.favorite, _noop),
+      VAction(l.actionRemove, VIcons.delete, _noop),
     ];
     return _wrap([
       VViewSelector(value: _view, onChanged: (v) => setState(() => _view = v)),
+      // The count and « Annuler » belong to the app bar above (M3 selection); the
+      // toolbar holds the actions and « Lire ».
       VToolbar(
-        title: l.selectionCount(3),
-        leading: VIconButton(
-          icon: VIcons.close,
-          label: l.actionCancel,
-          onPressed: _noop,
-        ),
         actions: selection,
+        fab: VFab(icon: VIcons.play, label: l.actionPlay, onPressed: _noop),
       ),
       _screen(
         VSize.sideSheet,
@@ -1673,6 +1815,8 @@ class _NavigationSectionState extends State<_NavigationSection> {
         onSelected: (i) => setState(() => _tab = i),
         expanded: expanded,
         onExpanded: (_) {},
+        // The destination's FAB at the top of the rail (here Sources).
+        fab: VAction(l.actionAddSource, VIcons.add, _noop),
       ),
     );
     return _wrap([

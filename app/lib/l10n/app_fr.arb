@@ -189,5 +189,16 @@
   "galleryShowSheet": "Ouvrir une feuille",
   "galleryShowSourceSheet": "Ajouter une source",
   "galleryShowSideSheet": "Ouvrir une feuille latérale",
-  "galleryOpenMenuEdge": "Menu au bord"
+  "galleryOpenMenuEdge": "Menu au bord",
+  "fabLaunch": "Lancer",
+  "fabNew": "Nouvelle",
+  "launchShuffleLikes": "Mélanger mes likés",
+  "launchRadio": "Radio de ce que j'écoute",
+  "launchResume": "Reprendre la dernière écoute",
+  "actionPlayInOrder": "Lire dans l'ordre",
+  "actionRadio": "Radio",
+  "galleryFabHome": "Accueil",
+  "galleryFabSources": "Sources",
+  "galleryFabCollection": "Album",
+  "galleryFabArtist": "Artiste"
 }

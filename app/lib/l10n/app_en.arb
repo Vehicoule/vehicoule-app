@@ -144,5 +144,16 @@
   "galleryShowSheet": "Open a sheet",
   "galleryShowSourceSheet": "Add a source",
   "galleryShowSideSheet": "Open a side sheet",
-  "galleryOpenMenuEdge": "Menu at the edge"
+  "galleryOpenMenuEdge": "Menu at the edge",
+  "fabLaunch": "Start",
+  "fabNew": "New",
+  "launchShuffleLikes": "Shuffle my likes",
+  "launchRadio": "Radio from what I play",
+  "launchResume": "Resume where I left off",
+  "actionPlayInOrder": "Play in order",
+  "actionRadio": "Radio",
+  "galleryFabHome": "Home",
+  "galleryFabSources": "Sources",
+  "galleryFabCollection": "Album",
+  "galleryFabArtist": "Artist"
 }

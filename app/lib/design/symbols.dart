@@ -47,6 +47,8 @@ abstract final class VIcons {
   static const playNext = IconData(0xe05f, fontFamily: _f); // playlist_play
   static const playlistAdd = IconData(0xe03b, fontFamily: _f);
   static const queue = IconData(0xe03d, fontFamily: _f); // queue_music
+  static const radio = IconData(0xe03e, fontFamily: _f);
+  static const history = IconData(0xe889, fontFamily: _f);
   static const refresh = IconData(0xe5d5, fontFamily: _f);
   static const repeat = IconData(0xe040, fontFamily: _f);
   static const repeatOne = IconData(0xe041, fontFamily: _f);

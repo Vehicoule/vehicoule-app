@@ -473,4 +473,37 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get galleryOpenMenuEdge => 'Menu au bord';
+
+  @override
+  String get fabLaunch => 'Lancer';
+
+  @override
+  String get fabNew => 'Nouvelle';
+
+  @override
+  String get launchShuffleLikes => 'Mélanger mes likés';
+
+  @override
+  String get launchRadio => 'Radio de ce que j\'écoute';
+
+  @override
+  String get launchResume => 'Reprendre la dernière écoute';
+
+  @override
+  String get actionPlayInOrder => 'Lire dans l\'ordre';
+
+  @override
+  String get actionRadio => 'Radio';
+
+  @override
+  String get galleryFabHome => 'Accueil';
+
+  @override
+  String get galleryFabSources => 'Sources';
+
+  @override
+  String get galleryFabCollection => 'Album';
+
+  @override
+  String get galleryFabArtist => 'Artiste';
 }

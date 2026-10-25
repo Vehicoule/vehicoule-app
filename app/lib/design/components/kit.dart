@@ -82,16 +82,25 @@ class VExtendedFab extends StatelessWidget {
 }
 
 /// The FAB menu (Bibliothèque: nouvelle playlist, importer un lien).
+///
+/// [label] names it (« Nouvelle », « Lancer »); [icon] is its closed glyph.
 class VFabMenu extends StatelessWidget {
-  const VFabMenu({super.key, required this.items});
+  const VFabMenu({
+    super.key,
+    required this.items,
+    required this.label,
+    this.icon = VIcons.add,
+  });
 
   final List<VAction> items;
+  final String label;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: AppLocalizations.of(context).actionCreate,
+    label: label,
     child: M3EFabMenu(
-      icon: const VSymbol(VIcons.add),
+      icon: VSymbol(icon, filled: true),
       closeIcon: const VSymbol(VIcons.close),
       size: M3EFabSize.regular,
       items: [
@@ -155,12 +164,16 @@ class VToolbar extends StatelessWidget {
     this.title,
     this.leading,
     this.docked = false,
+    this.fab,
   });
 
   final List<VAction> actions;
   final String? title;
   final Widget? leading;
   final bool docked;
+
+  /// The FAB beside a floating toolbar (multiple selection: « Lire »).
+  final Widget? fab;
 
   @override
   Widget build(BuildContext context) {
@@ -189,6 +202,8 @@ class VToolbar extends StatelessWidget {
       titleText: title,
       actions: items,
       maxInlineActions: items.length,
+      floatingActionButton: fab,
+      fabExpandsToolbar: false,
     );
   }
 }

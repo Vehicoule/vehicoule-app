@@ -470,4 +470,37 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get galleryOpenMenuEdge => 'Menu at the edge';
+
+  @override
+  String get fabLaunch => 'Start';
+
+  @override
+  String get fabNew => 'New';
+
+  @override
+  String get launchShuffleLikes => 'Shuffle my likes';
+
+  @override
+  String get launchRadio => 'Radio from what I play';
+
+  @override
+  String get launchResume => 'Resume where I left off';
+
+  @override
+  String get actionPlayInOrder => 'Play in order';
+
+  @override
+  String get actionRadio => 'Radio';
+
+  @override
+  String get galleryFabHome => 'Home';
+
+  @override
+  String get galleryFabSources => 'Sources';
+
+  @override
+  String get galleryFabCollection => 'Album';
+
+  @override
+  String get galleryFabArtist => 'Artist';
 }

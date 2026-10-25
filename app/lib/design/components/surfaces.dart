@@ -8,6 +8,7 @@ import '../symbols.dart';
 import '../tokens.dart';
 import 'artwork.dart';
 import 'controls.dart';
+import 'menu.dart';
 
 /// A destination of the bar or the rail.
 class VDestination {
@@ -58,7 +59,7 @@ class VPinned {
 
 /// The rail (spec UI §4.2): the destinations, then « Épinglés »; collapsed (icons and
 /// artworks) or [expanded]. Indices run over the destinations, then the pinned items.
-class VNavigationRail extends StatelessWidget {
+class VNavigationRail extends StatefulWidget {
   const VNavigationRail({
     super.key,
     required this.destinations,
@@ -67,7 +68,11 @@ class VNavigationRail extends StatelessWidget {
     required this.onSelected,
     required this.expanded,
     required this.onExpanded,
+    this.fab,
   });
+
+  /// The destination's main action, in the rail's FAB slot at its top (spec UI §5.4).
+  final VAction? fab;
 
   final List<VDestination> destinations;
   final List<VPinned> pinned;
@@ -77,21 +82,44 @@ class VNavigationRail extends StatelessWidget {
   final ValueChanged<bool> onExpanded;
 
   @override
+  State<VNavigationRail> createState() => _VNavigationRailState();
+}
+
+class _VNavigationRailState extends State<VNavigationRail> {
+  @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final destinations = widget.destinations, pinned = widget.pinned;
+    // Collapsed, the FAB (M3EFab). Expanded, M3E's rail would make it an extended FAB
+    // laid out while the rail opens from 0 wide, which overflows: the expanded rail
+    // keeps its destinations only until the package fixes it.
+    final expanded = widget.expanded, fab = expanded ? null : widget.fab;
     return M3ENavigationRail(
       type: expanded
           ? M3ENavigationRailType.expanded
           : M3ENavigationRailType.collapsed,
-      onTypeChanged: (t) => onExpanded(t == M3ENavigationRailType.expanded),
+      onTypeChanged: (t) =>
+          widget.onExpanded(t == M3ENavigationRailType.expanded),
+      // Room for the FAB's label (« Ajouter une source ») when expanded.
+      expandedWidth: VSize.railExpanded,
       // Collapsed: icons and artworks only (spec UI §4.2), the labels are spoken.
       labelBehavior: expanded
           ? M3ENavigationRailLabelBehavior.alwaysShow
           : M3ENavigationRailLabelBehavior.alwaysHide,
       expandTooltip: l.actionExpandMenu,
       collapseTooltip: l.actionCollapseMenu,
-      selectedIndex: selected,
-      onDestinationSelected: onSelected,
+      selectedIndex: widget.selected,
+      onDestinationSelected: widget.onSelected,
+      fab: switch (fab) {
+        final a? => M3ENavigationRailFabSlot(
+          icon: VSymbol(a.icon, filled: true),
+          label: a.label,
+          semanticLabel: a.label,
+          tooltip: a.label,
+          onPressed: a.onSelected,
+        ),
+        null => null,
+      },
       sections: [
         M3ENavigationRailSection(
           destinations: [
