@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
@@ -19,6 +21,7 @@ double angle(WidgetTester tester) {
 }
 
 void main() {
+  ringGeometryTests();
   testWidgets(
     'artwork shape follows meaning: idle rounded, playing cookie, artist circle, selected check',
     (tester) async {
@@ -333,14 +336,21 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('a fast play, pause, play still ends as a turning cookie', (tester) async {
+  testWidgets('a fast play, pause, play still ends as a turning cookie', (
+    tester,
+  ) async {
     final playing = ValueNotifier(true);
-    await tester.pumpWidget(harness(Center(
-      child: ValueListenableBuilder(
-        valueListenable: playing,
-        builder: (context, p, _) => VArtwork(itemId: 'a', size: 200, playing: p),
+    await tester.pumpWidget(
+      harness(
+        Center(
+          child: ValueListenableBuilder(
+            valueListenable: playing,
+            builder: (context, p, _) =>
+                VArtwork(itemId: 'a', size: 200, playing: p),
+          ),
+        ),
       ),
-    )));
+    );
     await tester.pump(const Duration(milliseconds: 500));
     // Toggle twice within the spring (60 ms apart), like a double tap on ⏯.
     playing.value = false;
@@ -360,53 +370,212 @@ void main() {
     playing.value = false;
     await tester.pump();
     await tester.pump(const Duration(seconds: 2));
-    expect(find.byKey(VArtwork.shapeKey(ArtShape.roundedSquare)), findsOneWidget);
+    expect(
+      find.byKey(VArtwork.shapeKey(ArtShape.roundedSquare)),
+      findsOneWidget,
+    );
     expect(angle(tester), closeTo(0, 1e-6));
     expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
-  testWidgets('after a drag the ring keeps the new place until the player catches up', (tester) async {
-    final progress = ValueNotifier(0.2);
-    final seeks = <double>[];
-    await tester.pumpWidget(harness(Center(
-      child: ValueListenableBuilder(
-        valueListenable: progress,
-        builder: (context, p, _) => VArtwork(itemId: 'a', size: 200, playing: false, progress: p, onSeek: seeks.add),
-      ),
-    ), reduce: true));
-    final c = tester.getCenter(find.byType(VArtwork));
-    String shown() => tester.getSemantics(find.bySemanticsLabel('Position de lecture').first).value;
-    await tester.dragFrom(c + const Offset(0, 97), const Offset(-1, -1)); // about 50 %
-    await tester.pump();
-    expect(seeks, hasLength(1));
-    expect(shown(), isNot(pct(0.2)), reason: 'no snap back to the old position');
-    expect(shown(), pct(seeks.single));
-    // The player catches up: the real position shows again.
-    progress.value = seeks.single;
-    await tester.pump();
-    expect(shown(), pct(seeks.single));
-    // A seek the player never applies gives way after a moment.
-    await tester.dragFrom(c + const Offset(97, 0), const Offset(0, -1)); // about 25 %
-    await tester.pump();
-    expect(shown(), isNot(pct(seeks.first)));
-    await tester.pump(VDurations.long * 3);
-    expect(shown(), pct(seeks.first));
+  testWidgets(
+    'after a drag the ring keeps the new place until the player catches up',
+    (tester) async {
+      final progress = ValueNotifier(0.2);
+      final seeks = <double>[];
+      await tester.pumpWidget(
+        harness(
+          Center(
+            child: ValueListenableBuilder(
+              valueListenable: progress,
+              builder: (context, p, _) => VArtwork(
+                itemId: 'a',
+                size: 200,
+                playing: false,
+                progress: p,
+                onSeek: seeks.add,
+              ),
+            ),
+          ),
+          reduce: true,
+        ),
+      );
+      final c = tester.getCenter(find.byType(VArtwork));
+      String shown() => tester
+          .getSemantics(find.bySemanticsLabel('Position de lecture').first)
+          .value;
+      await tester.dragFrom(
+        c + const Offset(0, 97),
+        const Offset(-1, -1),
+      ); // about 50 %
+      await tester.pump();
+      expect(seeks, hasLength(1));
+      expect(
+        shown(),
+        isNot(pct(0.2)),
+        reason: 'no snap back to the old position',
+      );
+      expect(shown(), pct(seeks.single));
+      // The player catches up: the real position shows again.
+      progress.value = seeks.single;
+      await tester.pump();
+      expect(shown(), pct(seeks.single));
+      // A seek the player never applies gives way after a moment.
+      await tester.dragFrom(
+        c + const Offset(97, 0),
+        const Offset(0, -1),
+      ); // about 25 %
+      await tester.pump();
+      expect(shown(), isNot(pct(seeks.first)));
+      await tester.pump(VDurations.long * 3);
+      expect(shown(), pct(seeks.first));
+    },
+  );
+
+  testWidgets(
+    'a second arrow during a held seek goes on from where the ring shows',
+    (tester) async {
+      final seeks = <double>[];
+      await tester.pumpWidget(
+        harness(
+          Center(
+            child: VArtwork(
+              itemId: 'a',
+              size: 200,
+              playing: false,
+              progress: 0.2,
+              onSeek: seeks.add,
+              seekStep: 0.1,
+            ),
+          ),
+          reduce: true,
+        ),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      // The player hasn't caught up yet (progress still 0.2): the next press starts at 0.3.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(seeks, [closeTo(0.3, 1e-9), closeTo(0.4, 1e-9)]);
+      expect(
+        tester
+            .getSemantics(find.bySemanticsLabel('Position de lecture').first)
+            .value,
+        pct(0.4),
+      );
+      await tester.pump(VDurations.long * 3);
+    },
+  );
+}
+
+double _clockwise(Offset p, Offset c) {
+  final a = math.atan2(p.dx - c.dx, -(p.dy - c.dy));
+  return a < 0 ? a + 2 * math.pi : a;
+}
+
+void ringGeometryTests() {
+  const box = Rect.fromLTWH(0, 0, 200, 200);
+  final c = box.center;
+  double radius(Offset p) => (p - c).distance;
+
+  test("the ring is the artwork's outline, from 12 o'clock clockwise", () {
+    for (final shape in ArtShape.values) {
+      final g = VRingGeometry(vRingOutline(shape, box), c);
+      for (final turn in [0.0, 0.4, 2.0]) {
+        final why = '$shape turned $turn';
+        final played = g.played(0.25, turn: turn);
+        expect(
+          played.first.dx,
+          closeTo(c.dx, 3),
+          reason: '$why: starts at the top',
+        );
+        expect(played.first.dy, lessThan(c.dy), reason: why);
+        expect(
+          played.last.dx,
+          greaterThan(c.dx),
+          reason: '$why: ends at 3 o\'clock',
+        );
+        expect(played.last.dy, closeTo(c.dy, 3), reason: why);
+        var last = -1.0;
+        for (final p in played) {
+          final a = _clockwise(p, c);
+          expect(
+            a,
+            greaterThanOrEqualTo(last - 1e-6),
+            reason: '$why: clockwise',
+          );
+          last = a;
+        }
+        // The rest runs from after the played part back to just before the top.
+        final rest = g.rest(0.25, turn: turn, gap: 4);
+        for (final p in rest) {
+          final a = _clockwise(p, c);
+          expect(a, inExclusiveRange(math.pi / 2, 2 * math.pi), reason: why);
+        }
+      }
+      expect(g.played(0, turn: 0), isEmpty);
+      expect(g.rest(1, turn: 0, gap: 4), isEmpty);
+    }
+    final cookie = VRingGeometry(vRingOutline(ArtShape.cookie, box), c);
+    final radii = cookie.played(1, turn: 0).map(radius);
+    expect(
+      radii.reduce(math.max) / radii.reduce(math.min),
+      greaterThan(1.05),
+      reason: 'the cookie\'s lobes make the line wavy',
+    );
+    final circle = VRingGeometry(vRingOutline(ArtShape.circle, box), c);
+    final round = circle.played(1, turn: 0).map(radius);
+    expect(round.reduce(math.max) - round.reduce(math.min), lessThan(1));
+    final square = VRingGeometry(vRingOutline(ArtShape.roundedSquare, box), c);
+    final corners = square.played(1, turn: 0).map(radius);
+    expect(
+      corners.reduce(math.max),
+      greaterThan(corners.reduce(math.min) * 1.2),
+      reason: 'a rounded square, corners farther than edges',
+    );
   });
 
-  testWidgets('a second arrow during a held seek goes on from where the ring shows', (tester) async {
-    final seeks = <double>[];
-    await tester.pumpWidget(harness(Center(
-      child: VArtwork(itemId: 'a', size: 200, playing: false, progress: 0.2, onSeek: seeks.add, seekStep: 0.1),
-    ), reduce: true));
-    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-    await tester.pump();
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump();
-    // The player hasn't caught up yet (progress still 0.2): the next press starts at 0.3.
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump();
-    expect(seeks, [closeTo(0.3, 1e-9), closeTo(0.4, 1e-9)]);
-    expect(tester.getSemantics(find.bySemanticsLabel('Position de lecture').first).value, pct(0.4));
-    await tester.pump(VDurations.long * 3);
+  testWidgets('the ring takes the shape of the artwork it surrounds', (
+    tester,
+  ) async {
+    Future<ArtShape> ringOf(VArtwork a) async {
+      await tester.pumpWidget(harness(Center(child: a), reduce: true));
+      await tester.pump();
+      final paints = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((p) => p.painter)
+          .whereType<VRingPainter>();
+      expect(paints, hasLength(1));
+      return paints.single.shape;
+    }
+
+    expect(
+      await ringOf(
+        const VArtwork(itemId: 'a', size: 200, playing: true, progress: 0.3),
+      ),
+      ArtShape.cookie,
+    );
+    expect(
+      await ringOf(
+        const VArtwork(itemId: 'b', size: 200, playing: false, progress: 0.3),
+      ),
+      ArtShape.roundedSquare,
+    );
+    expect(
+      await ringOf(
+        const VArtwork(
+          itemId: 'c',
+          size: 200,
+          kind: ArtKind.artist,
+          playing: true,
+          progress: 0.3,
+        ),
+      ),
+      ArtShape.circle,
+    );
+    // The ring is the playing sign: no equalizer on an artwork that carries one.
+    expect(find.byType(VEqualizer), findsNothing);
   });
 }

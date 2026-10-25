@@ -13,6 +13,7 @@ export 'components/header.dart';
 export 'components/loading.dart';
 export 'components/menu.dart';
 export 'components/now_playing.dart';
+export 'components/ring.dart';
 export 'components/shelf.dart';
 export 'components/side_sheet.dart';
 export 'components/snack.dart';

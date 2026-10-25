@@ -12,6 +12,7 @@ import '../../l10n/app_localizations.dart';
 import '../motion.dart';
 import '../symbols.dart';
 import '../tokens.dart';
+import 'ring.dart';
 import 'wave_progress.dart';
 
 /// Turns an item id into a picture at [px] physical pixels. One seam: the app uses the
@@ -136,23 +137,8 @@ ShapeBorder vArtBorder(ArtShape shape, double size) => switch (shape) {
   ),
 };
 
-// The morph only depends on the corner's share of the size: a hundred steps at most.
-final _morphs = <int, Morph>{};
-
 /// Cookie (0) → rounded square (1), with the square's corner at this size.
-Morph _morphFor(double size) {
-  final share = (_cornerFor(size) / size * 100).round().clamp(1, 50);
-  return _morphs[share] ??= Morph(
-    _cookie,
-    RoundedPolygon.rectangle(
-      width: 1,
-      height: 1,
-      centerX: 0.5,
-      centerY: 0.5,
-      rounding: CornerRounding(radius: share / 100),
-    ),
-  );
-}
+Morph _morphFor(double size) => vCookieMorph(_cornerFor(size) / size);
 
 const _buckets = [64, 128, 256, 512, 1024, 2048];
 
@@ -341,6 +327,27 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     if (!spin && (reduced || widget.selected)) _spin.value = 0;
   }
 
+  VRingGeometry? _ring;
+  (double, double, bool)? _ringFor;
+
+  /// The ring's outline for the current morph, cached while the shape holds still.
+  VRingGeometry _ringGeometry(double art, bool circle) {
+    final key = (circle ? 1.0 : _morph.value, widget.size, circle);
+    if (_ringFor != key || _ring == null) {
+      final s = VSize.ringStroke;
+      final box = Rect.fromLTWH(s / 2, s / 2, widget.size - s, widget.size - s);
+      final share = (_cornerFor(art) + VSize.ringGap + s / 2) / box.width;
+      _ringFor = key;
+      _ring = VRingGeometry(
+        circle
+            ? vRingOutline(ArtShape.circle, box)
+            : vUnitPath(vCookieMorph(share).toPath(progress: key.$1), box),
+        box.center,
+      );
+    }
+    return _ring!;
+  }
+
   Widget _picture(double art) {
     final ids = widget.mosaic?.toSet().take(4).toList();
     if (ids == null) {
@@ -366,14 +373,16 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final reduced = reduceMotion(context);
     final playing = _playing;
     final shape = _shape;
     final ring = widget.progress != null;
     final inset = ring ? VSize.ringStroke + VSize.ringGap : 0.0;
     final art = widget.size - 2 * inset;
+    // A ring (and the turning cookie) is the playing sign on its own (spec UI §5.3).
     final equalizer =
-        playing && (widget.kind == ArtKind.artist || art <= VSize.compactArt);
+        playing &&
+        !ring &&
+        (widget.kind == ArtKind.artist || art <= VSize.compactArt);
 
     // The picture, the equalizer's scrim and bars, all inside the shape.
     final inside = Stack(
@@ -419,7 +428,7 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     );
 
     if (ring) {
-      final wave = playing && !reduced;
+      final scheme = Theme.of(context).colorScheme;
       picture = VSeekable(
         progress: widget.progress!,
         onSeek: widget.onSeek,
@@ -432,18 +441,28 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
         builder: (context, shown, cover) => Stack(
           alignment: Alignment.center,
           children: [
+            // The outline of the artwork's own shape, a gap further out: it morphs and
+            // turns with it (spec UI §5.5).
             RepaintBoundary(
-              child: wave
-                  ? M3EProgressIndicator.circularWavy(
-                      value: shown,
-                      size: widget.size,
-                      strokeWidth: VSize.ringStroke,
-                    )
-                  : M3EProgressIndicator.circular(
-                      value: shown,
-                      size: widget.size,
-                      strokeWidth: VSize.ringStroke,
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_spin, _morph]),
+                builder: (context, _) {
+                  final circle = shape == ArtShape.circle;
+                  return CustomPaint(
+                    size: Size.square(widget.size),
+                    painter: VRingPainter(
+                      geometry: _ringGeometry(art, circle),
+                      shape: shape,
+                      turn: circle
+                          ? 0
+                          : _spin.value * 2 * math.pi * (1 - _morph.value),
+                      progress: shown,
+                      played: scheme.primary,
+                      track: scheme.secondaryContainer,
                     ),
+                  );
+                },
+              ),
             ),
             cover!,
           ],
