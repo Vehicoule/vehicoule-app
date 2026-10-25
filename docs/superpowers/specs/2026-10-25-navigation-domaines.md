@@ -199,7 +199,16 @@ mixte sans lire. La couleur reste unique (spec UI §2.2).
 Une palette de commandes qui cherche dans **tous** les domaines (bibliothèque locale) et lance
 des actions : « Radio de ce titre », « Aller à Téléchargements », « Épisode suivant »,
 « Changer de domaine ». La recherche de la barre de titre reste celle du domaine courant.
-Ajoutée avec le deuxième domaine.
+Livrée dès la v1 musique (bibliothèque et actions de la musique) ; chaque domaine y ajoute
+ses entrées.
+
+## 9 bis. « Ton année »
+
+Un bilan local de toutes les activités, calculé sur `plays` et jamais envoyé : minutes
+d'écoute, artistes et titres en tête, puis épisodes vus et chapitres lus quand ces domaines
+existent, et les croisements (l'OP le plus écouté de l'anime le plus regardé). Page globale
+`/recap/:year`, ouverte par une carte de l'Accueil en décembre et à tout moment depuis
+l'Historique. Livré dès la v1 musique ; chaque domaine y ajoute ses chiffres.
 
 ## 10. Ce que l'addendum change dans les specs existantes
 
@@ -249,8 +258,9 @@ domaine anime.
     testWidgets('pinned are stored per domain', ...);                         // ui.pinned.music
     ```
 
-Ce qui **n'entre pas** dans la Task 5 (il n'y a qu'un domaine) : le glisser de la barre, les
-puces visibles, ⌘K, la fenêtre vidéo, l'ordre appris de Reprendre, le résumé quotidien.
+Ce qui **n'a rien à montrer avec un seul domaine** arrive avec la spec anime : le glisser de
+la barre, les puces visibles, la fenêtre vidéo, l'ordre appris de Reprendre. Tout le reste
+entre dans la v1 musique (§12).
 
 ## 12. Impact sur les autres plans
 
@@ -264,18 +274,27 @@ puces visibles, ⌘K, la fenêtre vidéo, l'ordre appris de Reprendre, le résum
 - **Plan 5, Tasks 6 et 7** : écrans sous `features/music/` inchangés ; Réglages, Sources et
   Téléchargements passent dans un dossier `features/app/` (global), parce qu'ils ne sont plus
   propres à la musique.
+- **Ajouts à la v1 musique** (utiles avec la musique seule, donc pas repoussés) :
+  - **⌘K** (§9) : coque desktop, plan 5 ;
+  - **résumé quotidien** (§4) : en v1, les sorties de tes artistes (`browse.releases` du
+    plan 7), en une notification par jour ;
+  - **« Ton année »** (§9 bis) : agrégats dans le cœur (plan 7), page `/recap/:year`
+    (plan 5) ;
+  - **« Pour le trajet »** et **budget de stockage** (§7) : la découverte du jour téléchargée
+    en Wi-Fi et en charge (plan 4, service de téléchargement) ;
+  - **liens collés** (§3) : liens Deezer et YouTube Music ;
+  - **M1** paroles romanisées et traduites, **M3** son par sortie audio (§13).
 
-## 13. Idées notées pour les specs des domaines
+## 13. Idées propres à un domaine
 
-| Idée | Spec |
+| Idée | Où |
 |---|---|
-| Sauter le générique (AniSkip), avec la puce « Ajouter cet OP à ta musique » pendant le saut | anime |
-| Double sous-titres (japonais + français), toucher un mot en pause le copie | anime |
-| **M1** Paroles romanisées (rōmaji calculés en local) et traduites ligne à ligne | musique, révision |
-| **M2** « Ton mix anime » : radio dont les graines sont les OP / ED des séries regardées | musique + anime |
-| **M3** Égaliseur et normalisation retenus par sortie audio (casque, enceinte, voiture) | musique, révision |
-| **B1** Sens de lecture déduit des métadonnées puis retenu par série | livres |
-| **B2** Lecture case par case (détection des cases sur l'appareil) | livres |
-| **B3** Mode liseuse : e-ink, sans animation, touches de volume, rafraîchissement complet | livres |
-| Défilement webtoon automatique, mode « au tempo » de la musique | livres, plus tard |
-| « Ton année » : bilan local de toutes les activités, calculé sur `plays` | plus tard |
+| **M1** Paroles romanisées (rōmaji calculés en local) et traduites ligne à ligne | v1 musique (révision de la spec UI, vue Paroles) |
+| **M3** Égaliseur et normalisation retenus par sortie audio (casque, enceinte, voiture) | v1 musique (filtres libmpv, Réglages › Lecture) |
+| Sauter le générique (AniSkip), avec la puce « Ajouter cet OP à ta musique » pendant le saut | spec anime |
+| Double sous-titres (japonais + français), toucher un mot en pause le copie | spec anime |
+| **M2** « Ton mix anime » : radio dont les graines sont les OP / ED des séries regardées | spec anime (étagère « Tes mixes ») |
+| **B1** Sens de lecture déduit des métadonnées puis retenu par série | spec livres |
+| **B2** Lecture case par case (détection des cases sur l'appareil) | spec livres |
+| **B3** Mode liseuse : e-ink, sans animation, touches de volume, rafraîchissement complet | spec livres |
+| Défilement webtoon automatique, mode « au tempo » de la musique en cours | spec livres |
