@@ -1,6 +1,6 @@
 # Vehicoule — Domaine anime : design
 
-Date : 2026-10-25 · Statut : en relecture (v1)
+Date : 2026-10-25 · Statut : en relecture (v2 : types de l'hôte 1.1, cookies et vérification par l'utilisateur, `js`, focus audio)
 
 Specs parentes : `2026-10-18-socle-musique-design.md` (le « socle »),
 `2026-10-23-socle-ui-design.md` (la « spec UI », branche `socle`) et
@@ -44,7 +44,7 @@ besoin.
 |---|---|
 | `items.kind` (§5.1) | + `anime`, `episode` (les livres ajoutent `book`, `chapter`) |
 | Tables communes (§5.2) | + `library_entries`, `categories`, `progress`, `bookmarks`, `source_bindings` (§3) ; `item_relations` (addendum §6) |
-| `vehicoule:host` | + `oauth`, types de filtres, `settings-schema` (§4.5), en version mineure |
+| `vehicoule:host` | 1.1.0 : + `types`, `session` (cookies), `challenge`, `js`, `oauth`, filtres, `settings-schema` (§4.5) |
 | Manifeste (§4.3) | + `adult: bool` ; Réglages › Sources « Afficher les sources pour adultes », désactivé par défaut |
 | Crate `stream` (§3.4) | + HLS : variantes, segments avec reprise, AES-128, playlist locale réécrite, sous-titres à côté (§7) |
 | Lecteur | + seconde session : `WatchState` dans le cœur, `VideoPlayerAdapter` côté Dart (§6.1) |
@@ -120,6 +120,9 @@ interface types {
 
     enum format { tv, movie, ova, ona, special, music }
     enum airing { airing, finished, upcoming, cancelled, hiatus }
+    enum season { winter, spring, summer, fall }
+    enum segment-kind { opening, ending, recap, preview }
+    record segment { kind: segment-kind, start-ms: u32, end-ms: u32 }
     record titles { romaji: option<string>, english: option<string>, native: option<string>, synonyms: list<string> }
     record series-ref { provider: string, id: string }
     record series {
@@ -129,8 +132,11 @@ interface types {
         titles: titles,
         format: option<format>,
         airing: option<airing>,
+        season: option<season>,
         year: option<u16>,
         episodes: option<u32>,
+        /// Average score, 0 to 100.
+        score: option<u8>,
         genres: list<string>,
         studios: list<string>,
         synopsis: option<string>,
@@ -146,6 +152,8 @@ interface types {
         /// ISO 8601 date, `YYYY-MM-DD`.
         aired: option<string>,
         duration-s: option<u32>,
+        /// 16:9 still, for the episode row.
+        thumbnail: list<image>,
         filler: bool,
         group: option<string>,
         /// BCP 47 tags of the audio, then of hard subtitles.
@@ -171,23 +179,25 @@ interface catalog {
 }
 
 interface source {
-    use types.{series, episode};
-    use vehicoule:host/types.{error, header};
+    use types.{series, episode, segment};
+    use vehicoule:host/types.{error};
     use vehicoule:host/filters.{filter-schema, filter-value};
 
     enum stream-format { hls, file }
     enum sub-format { ass, srt, vtt }
-    record subtitle { url: string, lang: string, label: option<string>, format: sub-format, headers: list<header> }
+    record subtitle { url: string, lang: string, label: option<string>, format: sub-format, headers: list<tuple<string, string>> }
     record audio-track { url: string, lang: string, label: option<string> }
     record video {
         url: string,
-        headers: list<header>,
+        headers: list<tuple<string, string>>,
         format: stream-format,
         /// Vertical resolution, 1080 for 1080p.
         height: option<u32>,
         label: option<string>,
         audio: list<audio-track>,
         subtitles: list<subtitle>,
+        /// Skip timings some hosters ship with the video; preferred over `skip`.
+        segments: list<segment>,
         expires-unix: option<s64>,
     }
     record page { items: list<series>, has-next: bool }
@@ -219,16 +229,16 @@ interface themes {
 }
 
 interface skip {
-    use types.{series-ref};
+    use types.{series-ref, segment};
     use vehicoule:host/types.{error};
 
-    enum segment-kind { opening, ending, recap, preview }
-    record segment { kind: segment-kind, start-ms: u32, end-ms: u32 }
     /// `duration-ms` lets the provider pick the right timing for this release.
     segments: func(ref: series-ref, episode: f32, duration-ms: u32) -> result<list<segment>, error>;
 }
 ```
 
+- Un film est une série de format `movie` à un seul épisode : même page, même lecteur, même
+  progression.
 - `catalog` : plugin AniList (GraphQL public). `external` porte l'id MyAnimeList, dont
   AniSkip et les trackers ont besoin.
 - `source` : plugins tiers uniquement, publiés dans leurs propres feeds (socle §4.4).
@@ -272,6 +282,7 @@ interface tracker {
         progress: u32,
         /// 0 to 100; the plugin converts to its own scale.
         score: option<u8>,
+        /// ISO 8601 dates, `YYYY-MM-DD`.
         started: option<string>,
         finished: option<string>,
     }
@@ -297,8 +308,27 @@ interface tracker {
   remplit `library_entries` et `progress` (épisodes vus jusqu'à `progress`).
 - **Conflit** : la progression la plus haute gagne, sauf statut `repeating`.
 
-### 4.5 Ajouts mineurs à `vehicoule:host`
+### 4.5 Ajouts mineurs à `vehicoule:host` (1.1.0)
 
+Ajouter une interface est une version mineure (socle §4.3) ; aucun `record` de la 1.0 ne
+change. Les plugins musique 1.0 restent chargés tels quels.
+
+- **`types`** (nouvelle interface) : `error` (les variantes du socle §6) et `image`, communs à
+  l'anime, aux trackers et aux livres. `vehicoule:music` garde ses propres types, qu'on ne
+  peut pas déplacer sans version majeure.
+- **`session`** : un `send` qui passe par une **boîte à cookies par plugin**, gardée par
+  l'hôte, avec un User-Agent stable par appareil. `http.send` (1.0) reste sans cookies.
+- **`challenge`** : quand une source renvoie `provider-wall` avec une URL, l'app propose « Ouvrir
+  la page » : une WebView dans une feuille, où **l'utilisateur passe lui-même** la
+  vérification du site. Les cookies obtenus rejoignent la boîte du plugin, et le User-Agent
+  de `session` est celui de la WebView. L'app ne résout jamais une vérification à la place de
+  l'utilisateur. Aniyomi a le même besoin (sites derrière une protection anti-robots) ; sans
+  ça, une grande partie des sources est inutilisable.
+- **`js`** : beaucoup d'hébergeurs vidéo cachent l'URL derrière du JavaScript obscurci. C'est
+  l'interface prévue au socle §4.5 (QuickJS natif, sans compilation à la volée), livrée ici
+  parce que l'anime en a besoin dès la 1.0. `eval(code, budget)` renvoie une chaîne. Le
+  moteur n'a **ni réseau ni fichiers**, son temps et sa mémoire sont plafonnés, et une
+  instance neuve sert à chaque appel.
 - **`oauth`** (import) : `begin(plugin)` déclenche le flux PKCE de `auth-config` dans le
   navigateur du système, retour par `vehicoule://oauth/<plugin>`. L'hôte garde les jetons
   dans le trousseau du système (Keystore Android, Keychain macOS) et les rafraîchit.
@@ -423,7 +453,7 @@ pour la musique.
   position) pour les SRT et VTT, et pour les ASS si on le veut. Décalage ±.
 - **Double sous-titres** (`secondary-sid`) : deux pistes affichées ensemble, la seconde en
   haut. En pause, toucher une ligne la copie.
-- **Saut du générique** (AniSkip) : bouton « Passer l'OP » pendant le segment, ou saut
+- **Saut du générique** (les `segments` de la vidéo s'il y en a, sinon AniSkip) : bouton « Passer l'OP » pendant le segment, ou saut
   automatique au choix. Pendant le saut, une puce « Ajouter cet OP à ta musique » (le thème
   rattaché par `themes`) reste 5 s.
 - **Anime4K** : préréglages Désactivé · Rapide · Qualité, appliqués par `glsl-shaders` avec
@@ -487,7 +517,8 @@ pour la musique.
   refusés), import d'une liste.
 - **`plugin-host`** : `oauth` (le jeton n'atteint jamais le composant ; un composant qui lit
   ses imports ne le trouve pas), `send-authorized` refusé hors des domaines déclarés,
-  `settings-schema` et filtres.
+  `settings-schema` et filtres ; boîte à cookies isolée par plugin ; `js` sans réseau, coupé
+  par ses plafonds ; un plugin musique 1.0 chargé par l'hôte 1.1.
 - **Plugins** (feed officiel) : AniList, AnimeThemes, AniSkip, MyAnimeList sur réponses
   enregistrées.
 - **Dart** : ligne d'épisode (états), page série, gestes du lecteur, pistes retenues par
@@ -510,6 +541,8 @@ jetable, plus une sonde Rust pour le HLS.
 | Anime4K « Rapide » 1080p (`glsl-shaders`) sur l'appareil Android de référence | 60 images/s, mesurées en profil | Préréglage proposé seulement sur desktop |
 | Audio de la vidéo écran éteint, 30 min | sans coupure | Service `mediaPlayback` propre à la vidéo |
 | PiP automatique, Flutter ne dessine que la vidéo | OK sur Android 12+ | PiP manuel (bouton) |
+| Musique et vidéo jouent ensemble : le lecteur vidéo ne prend pas le focus audio exclusif, et `audio_service` ne met pas la musique en pause au démarrage d'un épisode | les deux audibles 10 min | La vidéo joue sans demander le focus audio, et la session musique ignore les pertes de focus causées par l'app elle-même |
+| QuickJS natif (`js`) sur Android arm64 : taille, plafonds de temps et de mémoire qui coupent | ≤ 2 Mio, une boucle infinie coupée | Moteur JS de la WebView système, isolé |
 | Deux `MediaSession` (musique + vidéo) | l'écran verrouillé montre la dernière démarrée, chaque bouton atteint la bonne session | Une seule session système, qui bascule sur le dernier média démarré |
 | HLS téléchargé par la sonde Rust (AES-128 compris), lu hors ligne par mpv | lecture complète, avance rapide | Remux en un seul fichier (FFmpeg de libmpv) |
 | Taille : `media_kit_libs_audio` → `media_kit_libs_video` dans toute l'app, arm64 | **+25 Mio au plus** | libmpv vidéo recompilée sans les décodeurs inutiles |
