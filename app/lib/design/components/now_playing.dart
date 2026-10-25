@@ -287,8 +287,11 @@ class _VNowPlayingState extends State<VNowPlaying>
             : Rect.lerp(big, slot, t)!;
         return Stack(
           children: [
+            // Keyed: the layers come and go, and the flying artwork must keep its state
+            // (its turn, its wave) rather than be matched to whichever layer is next.
             if (t < 1)
               Positioned.fill(
+                key: const ValueKey('np.layer.player'),
                 child: IgnorePointer(
                   ignoring: t > 0,
                   child: Opacity(opacity: 1 - t, child: _player(context, side)),
@@ -296,12 +299,14 @@ class _VNowPlayingState extends State<VNowPlaying>
               ),
             if (t > 0)
               Positioned.fill(
+                key: const ValueKey('np.layer.side'),
                 child: IgnorePointer(
                   ignoring: t < 1,
                   child: Opacity(opacity: t, child: _sideView(context)),
                 ),
               ),
             Positioned.fromRect(
+              key: const ValueKey('np.layer.art'),
               rect: rect,
               child: Opacity(
                 opacity: reduced ? (1 - 2 * t).abs() : 1,
@@ -343,13 +348,15 @@ class _VNowPlayingState extends State<VNowPlaying>
         onSeek: _seek,
         seekStep: _seekStep,
       );
-      if (f == 0) return wave;
-      if (f == 1) return disc();
+      // Always the same Stack with keyed children, so the wave's phase and the disc's
+      // turn survive the fade; a child is left out only while it is invisible.
       return Stack(
         alignment: Alignment.center,
         children: [
-          Opacity(opacity: 1 - f, child: wave),
-          Opacity(opacity: f, child: disc()),
+          if (f < 1)
+            Opacity(key: const ValueKey('wave'), opacity: 1 - f, child: wave),
+          if (f > 0)
+            Opacity(key: const ValueKey('disc'), opacity: f, child: disc()),
         ],
       );
     },

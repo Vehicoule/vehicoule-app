@@ -307,7 +307,9 @@ void main() {
     await tester.pump();
     expect(seeks.last, 1.0);
 
-    // The keyboard steps, at once.
+    // The keyboard steps, at once, from what the ring shows: here the player never
+    // applied the drag (progress stays 0.2), so wait for the held seek to give way.
+    await tester.pump(VDurations.long * 3);
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
@@ -389,5 +391,22 @@ void main() {
     expect(shown(), isNot(pct(seeks.first)));
     await tester.pump(VDurations.long * 3);
     expect(shown(), pct(seeks.first));
+  });
+
+  testWidgets('a second arrow during a held seek goes on from where the ring shows', (tester) async {
+    final seeks = <double>[];
+    await tester.pumpWidget(harness(Center(
+      child: VArtwork(itemId: 'a', size: 200, playing: false, progress: 0.2, onSeek: seeks.add, seekStep: 0.1),
+    ), reduce: true));
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    // The player hasn't caught up yet (progress still 0.2): the next press starts at 0.3.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(seeks, [closeTo(0.3, 1e-9), closeTo(0.4, 1e-9)]);
+    expect(tester.getSemantics(find.bySemanticsLabel('Position de lecture').first).value, pct(0.4));
+    await tester.pump(VDurations.long * 3);
   });
 }

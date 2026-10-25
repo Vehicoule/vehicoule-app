@@ -142,7 +142,9 @@ class _VSeekableState extends State<VSeekable> {
     final pct = NumberFormat.percentPattern(l.localeName);
     final p = _shown;
     final step = widget.step;
-    void by(double d) => _seek((widget.progress + d).clamp(0.0, 1.0));
+    // From what the slider shows (a held seek included), so it moves and announces
+    // the value it seeks to.
+    void by(double d) => _seek((_shown + d).clamp(0.0, 1.0));
     return Semantics(
       slider: true,
       label: l.seekLabel,

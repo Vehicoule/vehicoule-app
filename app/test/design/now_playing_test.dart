@@ -456,4 +456,34 @@ void main() {
     expect(find.byType(VWaveArtwork), findsNothing);
     expect(find.byType(VArtwork), findsOneWidget);
   });
+
+  testWidgets('the wave and the disc keep their state through the cross-fade', (tester) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final view = ValueNotifier(PlayerView.player);
+    await tester.pumpWidget(harness(ValueListenableBuilder(
+      valueListenable: view,
+      builder: (context, v, _) => player(view: v, style: PlayerStyle.wave, onView: (n) => view.value = n),
+    )));
+    await settle(tester);
+    // Way out: the wave keeps its state for as long as it shows.
+    final wave = tester.state(find.byType(VWaveArtwork));
+    view.value = PlayerView.lyrics;
+    await tester.pump();
+    for (var i = 0; i < 40 && find.byType(VWaveArtwork).evaluate().isNotEmpty; i++) {
+      expect(identical(tester.state(find.byType(VWaveArtwork)), wave), isTrue, reason: 'frame $i out');
+      await tester.pump(const Duration(milliseconds: 8));
+    }
+    await settle(tester);
+    // Way back: the disc that turned in the header keeps its state while it shows.
+    final disc = tester.state(find.byType(VArtwork));
+    view.value = PlayerView.player;
+    await tester.pump();
+    for (var i = 0; i < 40 && find.byType(VArtwork).evaluate().isNotEmpty; i++) {
+      expect(identical(tester.state(find.byType(VArtwork)), disc), isTrue, reason: 'frame $i back');
+      await tester.pump(const Duration(milliseconds: 8));
+    }
+    await settle(tester);
+  });
 }
