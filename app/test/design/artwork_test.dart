@@ -1,10 +1,13 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/design/components/artwork.dart' show VArtworkPicture;
 import 'package:vehicoule/design/design.dart';
 
 import 'harness.dart';
+
+String pct(double p) => NumberFormat.percentPattern('fr').format(p);
 
 double angle(WidgetTester tester) {
   final t = tester.widget<Transform>(
@@ -326,5 +329,65 @@ void main() {
     await tester.pump();
     expect(seeks.length, before + 1);
     await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('a fast play, pause, play still ends as a turning cookie', (tester) async {
+    final playing = ValueNotifier(true);
+    await tester.pumpWidget(harness(Center(
+      child: ValueListenableBuilder(
+        valueListenable: playing,
+        builder: (context, p, _) => VArtwork(itemId: 'a', size: 200, playing: p),
+      ),
+    )));
+    await tester.pump(const Duration(milliseconds: 500));
+    // Toggle twice within the spring (60 ms apart), like a double tap on ⏯.
+    playing.value = false;
+    await tester.pump(const Duration(milliseconds: 60));
+    playing.value = true;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byKey(VArtwork.shapeKey(ArtShape.cookie)), findsOneWidget);
+    expect(angle(tester).abs(), greaterThan(0.01), reason: 'turning at 2 s');
+    await tester.pump(const Duration(seconds: 3));
+    expect(angle(tester).abs(), greaterThan(0.01), reason: 'turning at 5 s');
+    // And the other way: pause, play, pause ends as a still square.
+    playing.value = false;
+    await tester.pump(const Duration(milliseconds: 60));
+    playing.value = true;
+    await tester.pump(const Duration(milliseconds: 60));
+    playing.value = false;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byKey(VArtwork.shapeKey(ArtShape.roundedSquare)), findsOneWidget);
+    expect(angle(tester), closeTo(0, 1e-6));
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+
+  testWidgets('after a drag the ring keeps the new place until the player catches up', (tester) async {
+    final progress = ValueNotifier(0.2);
+    final seeks = <double>[];
+    await tester.pumpWidget(harness(Center(
+      child: ValueListenableBuilder(
+        valueListenable: progress,
+        builder: (context, p, _) => VArtwork(itemId: 'a', size: 200, playing: false, progress: p, onSeek: seeks.add),
+      ),
+    ), reduce: true));
+    final c = tester.getCenter(find.byType(VArtwork));
+    String shown() => tester.getSemantics(find.bySemanticsLabel('Position de lecture').first).value;
+    await tester.dragFrom(c + const Offset(0, 97), const Offset(-1, -1)); // about 50 %
+    await tester.pump();
+    expect(seeks, hasLength(1));
+    expect(shown(), isNot(pct(0.2)), reason: 'no snap back to the old position');
+    expect(shown(), pct(seeks.single));
+    // The player catches up: the real position shows again.
+    progress.value = seeks.single;
+    await tester.pump();
+    expect(shown(), pct(seeks.single));
+    // A seek the player never applies gives way after a moment.
+    await tester.dragFrom(c + const Offset(97, 0), const Offset(0, -1)); // about 25 %
+    await tester.pump();
+    expect(shown(), isNot(pct(seeks.first)));
+    await tester.pump(VDurations.long * 3);
+    expect(shown(), pct(seeks.first));
   });
 }

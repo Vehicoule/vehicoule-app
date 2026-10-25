@@ -84,9 +84,16 @@ class VButton extends StatelessWidget {
 /// Toggles and actions as one connected button group (the player's like / playlist /
 /// download, the menu's quick row). [VAction.selected] fills the toggles.
 class VConnectedGroup extends StatelessWidget {
-  const VConnectedGroup({super.key, required this.actions});
+  const VConnectedGroup({
+    super.key,
+    required this.actions,
+    this.autofocusFirst = false,
+  });
 
   final List<VAction> actions;
+
+  /// The first action takes focus (a menu whose quick row is all it has).
+  final bool autofocusFirst;
 
   @override
   Widget build(BuildContext context) {
@@ -105,8 +112,9 @@ class VConnectedGroup extends StatelessWidget {
         }
       },
       actions: [
-        for (final a in actions)
+        for (final (i, a) in actions.indexed)
           M3EButtonGroupAction(
+            autofocus: autofocusFirst && i == 0,
             icon: a.leading ?? VSymbol(a.icon),
             selectedIcon: a.leading ?? VSymbol(a.icon, filled: true),
             semanticLabel: a.label,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
@@ -81,7 +82,40 @@ class VSeekable extends StatefulWidget {
 class _VSeekableState extends State<VSeekable> {
   double? _drag;
 
-  double get _shown => (_drag ?? widget.progress).clamp(0.0, 1.0);
+  /// Where the last seek went, shown until the player's progress comes near it (or for
+  /// a moment, if it never does): no snap back to the old place for one round trip.
+  double? _held;
+  Timer? _hold;
+
+  double get _shown => (_drag ?? _held ?? widget.progress).clamp(0.0, 1.0);
+
+  @override
+  void didUpdateWidget(VSeekable old) {
+    super.didUpdateWidget(old);
+    final held = _held;
+    if (held != null && (widget.progress - held).abs() <= 0.01) _release();
+  }
+
+  @override
+  void dispose() {
+    _hold?.cancel();
+    super.dispose();
+  }
+
+  void _release() {
+    _hold?.cancel();
+    _hold = null;
+    _held = null;
+  }
+
+  void _seek(double p) {
+    setState(() => _held = p);
+    _hold?.cancel();
+    _hold = Timer(VDurations.long * 2, () {
+      if (mounted) setState(_release);
+    });
+    widget.onSeek?.call(p);
+  }
 
   void _move(Offset local, Size size) {
     var next = widget.mapping(local, size);
@@ -96,7 +130,7 @@ class _VSeekableState extends State<VSeekable> {
   void _commit() {
     final d = _drag;
     setState(() => _drag = null);
-    if (d != null) widget.onSeek?.call(d);
+    if (d != null) _seek(d);
   }
 
   @override
@@ -108,7 +142,7 @@ class _VSeekableState extends State<VSeekable> {
     final pct = NumberFormat.percentPattern(l.localeName);
     final p = _shown;
     final step = widget.step;
-    void by(double d) => seek((widget.progress + d).clamp(0.0, 1.0));
+    void by(double d) => _seek((widget.progress + d).clamp(0.0, 1.0));
     return Semantics(
       slider: true,
       label: l.seekLabel,
@@ -139,7 +173,7 @@ class _VSeekableState extends State<VSeekable> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTapUp: (d) =>
-                    seek(widget.mapping(d.localPosition, box.biggest)),
+                    _seek(widget.mapping(d.localPosition, box.biggest)),
                 onPanStart: (d) => _move(d.localPosition, box.biggest),
                 onPanUpdate: (d) => _move(d.localPosition, box.biggest),
                 onPanEnd: (_) => _commit(),

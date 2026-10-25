@@ -168,12 +168,19 @@ class _VNowPlayingState extends State<VNowPlaying>
     value: widget.view == PlayerView.player ? 0 : 1,
   );
 
+  /// The lyrics or queue last shown: it stays built while it fades out on the way back
+  /// to the player.
+  late PlayerView _lastSide = widget.view == PlayerView.player
+      ? PlayerView.lyrics
+      : widget.view;
+
   NowPlayingData get data => widget.data;
   NowPlayingActions get actions => widget.actions;
 
   @override
   void didUpdateWidget(VNowPlaying old) {
     super.didUpdateWidget(old);
+    if (widget.view != PlayerView.player) _lastSide = widget.view;
     final target = widget.view == PlayerView.player ? 0.0 : 1.0;
     if (target != _side.value) {
       _side.animateTo(
@@ -300,7 +307,7 @@ class _VNowPlayingState extends State<VNowPlaying>
                 opacity: reduced ? (1 - 2 * t).abs() : 1,
                 child: KeyedSubtree(
                   key: VNowPlaying.artworkKey,
-                  child: _art(rect.width, compact: t > 0.5),
+                  child: _art(rect.width, t),
                 ),
               ),
             ),
@@ -310,22 +317,14 @@ class _VNowPlayingState extends State<VNowPlaying>
     );
   }
 
-  Widget _art(double side, {required bool compact}) => ValueListenableBuilder(
+  /// The flying artwork at [side] for the flight's progress [t] (0 = big, 1 = in the
+  /// compact header). The compact header keeps the disc in both styles (spec UI §5.5):
+  /// in the Wave style the wave fades into the disc over the middle of the flight.
+  Widget _art(double side, double t) => ValueListenableBuilder(
     valueListenable: widget.position,
     builder: (context, ms, _) {
       final p = data.progressAt(ms);
-      // The compact header keeps the disc in both styles (spec UI §5.5).
-      if (widget.style == PlayerStyle.wave && !compact) {
-        return VWaveArtwork(
-          itemId: data.track.id,
-          width: side,
-          progress: p,
-          playing: data.playing,
-          onSeek: _seek,
-          seekStep: _seekStep,
-        );
-      }
-      return VArtwork(
+      Widget disc() => VArtwork(
         itemId: data.track.id,
         size: side,
         playing: data.playing,
@@ -333,6 +332,25 @@ class _VNowPlayingState extends State<VNowPlaying>
         onSeek: _seek,
         seekStep: _seekStep,
         semanticLabel: data.track.album?.title,
+      );
+      if (widget.style == PlayerStyle.disc) return disc();
+      final f = ((t - 0.35) / 0.3).clamp(0.0, 1.0);
+      final wave = VWaveArtwork(
+        itemId: data.track.id,
+        width: side,
+        progress: p,
+        playing: data.playing,
+        onSeek: _seek,
+        seekStep: _seekStep,
+      );
+      if (f == 0) return wave;
+      if (f == 1) return disc();
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          Opacity(opacity: 1 - f, child: wave),
+          Opacity(opacity: f, child: disc()),
+        ],
       );
     },
   );
@@ -554,15 +572,13 @@ class _VNowPlayingState extends State<VNowPlaying>
       ),
       const SizedBox(height: VSpace.s8),
       Expanded(
-        child: widget.view == PlayerView.player
-            ? const SizedBox.shrink()
-            : vSharedAxis(
-                key: widget.view,
-                reverse: widget.view == PlayerView.lyrics,
-                child: (widget.view == PlayerView.lyrics
-                    ? widget.lyrics
-                    : widget.queue)(context),
-              ),
+        child: vSharedAxis(
+          key: _lastSide,
+          reverse: _lastSide == PlayerView.lyrics,
+          child: (_lastSide == PlayerView.lyrics
+              ? widget.lyrics
+              : widget.queue)(context),
+        ),
       ),
     ],
   );
@@ -596,6 +612,11 @@ class _VNowPlayingState extends State<VNowPlaying>
     final theme = Theme.of(context);
     return Row(
       key: VNowPlaying.compactKey,
+      // In the player's header the slot sits at the top, where the flying artwork
+      // lands, whatever the text size makes the row's height.
+      crossAxisAlignment: slot
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.center,
       children: [
         if (slot)
           const SizedBox.square(

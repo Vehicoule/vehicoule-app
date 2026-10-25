@@ -18,7 +18,8 @@ import 'loading.dart';
 ///   scrolls near the end (a 10,000-track playlist never loads at once).
 ///
 /// It loads again when [reloadKey] changes, not on every rebuild (screens pass new
-/// closures each build).
+/// closures each build). A screen whose query can change (a sort, a filter, another
+/// playlist) must pass it in [reloadKey]: a new `load` alone is ignored.
 class VAsyncList<T> extends StatefulWidget {
   const VAsyncList({
     super.key,
@@ -115,6 +116,12 @@ class _VAsyncListState<T> extends State<VAsyncList<T>> {
           _error = null;
         }),
         onError: (Object e) => setState(() => _error = e),
+        // Closed without a word: nothing to show, rather than loading forever.
+        onDone: () {
+          if (mounted && _items == null && _error == null) {
+            setState(() => _items = <T>[]);
+          }
+        },
       );
     } else if (widget.load case final load?) {
       _await(gen, load(), replace: true);

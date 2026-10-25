@@ -272,6 +272,9 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
   );
   bool _first = true;
 
+  /// Where the morph is heading (0 = cookie, 1 = rounded square).
+  double _morphTarget = 1;
+
   bool get _playing =>
       widget.playing ?? NowPlayingScope.isPlaying(context, widget.itemId);
 
@@ -306,14 +309,26 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     final target = cookie ? 0.0 : 1.0;
     if (reduced || _first) {
       _first = false;
-      _morph.value = target;
-    } else if (_morph.value != target && !_morph.isAnimating) {
+      _morph.stop();
+      _morph.value = _morphTarget = target;
+    } else if (target != _morphTarget) {
+      // A new target, even mid-spring (a double tap on ⏯): re-aim from where the shape
+      // is, keeping its speed. The same target again (every position tick rebuilds)
+      // leaves the running spring alone.
+      _morphTarget = target;
       _morph
           .animateWith(
-            SpringSimulation(VSprings.spatial, _morph.value, target, 0),
+            SpringSimulation(
+              VSprings.spatial,
+              _morph.value,
+              target,
+              _morph.velocity,
+            ),
           )
           // The spring stops within tolerance; land exactly on the shape.
-          .then((_) => _morph.value = target);
+          .then((_) {
+            if (_morphTarget == target) _morph.value = target;
+          });
     }
     final spin = cookie && _playing && !widget.selected && !reduced;
     if (spin && !_spin.isAnimating) {

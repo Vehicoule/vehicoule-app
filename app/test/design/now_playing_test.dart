@@ -401,4 +401,59 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets('the shrink lands on the slot at any text size, and fades the views both ways', (tester) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final view = ValueNotifier(PlayerView.player);
+    await tester.pumpWidget(harness(ValueListenableBuilder(
+      valueListenable: view,
+      builder: (context, v, _) => player(view: v, onView: (n) => view.value = n),
+    )));
+    await settle(tester);
+    view.value = PlayerView.lyrics;
+    await tester.pump();
+    await settle(tester);
+    final art = tester.getRect(find.byKey(VNowPlaying.artworkKey));
+    final slot = tester.getRect(find.byKey(VNowPlaying.compactArtKey));
+    expect(art.center.dy, closeTo(slot.center.dy, 0.5), reason: 'measured, not assumed 48 tall');
+    expect(art.center.dx, closeTo(slot.center.dx, 0.5));
+    // Back to the player: the lyrics fade out with the header, they don't vanish.
+    view.value = PlayerView.player;
+    await tester.pump();
+    await tester.pump(VDurations.medium * 0.4);
+    expect(find.text('lyrics body'), findsOneWidget);
+    await settle(tester);
+    expect(find.text('lyrics body'), findsNothing);
+  });
+
+  testWidgets('wave to disc cross-fades in the middle of the flight', (tester) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final view = ValueNotifier(PlayerView.player);
+    await tester.pumpWidget(harness(ValueListenableBuilder(
+      valueListenable: view,
+      builder: (context, v, _) => player(view: v, style: PlayerStyle.wave, onView: (n) => view.value = n),
+    )));
+    await settle(tester);
+    expect(find.byType(VWaveArtwork), findsOneWidget);
+    view.value = PlayerView.lyrics;
+    await tester.pump();
+    var both = false;
+    for (var i = 0; i < 40 && !both; i++) {
+      await tester.pump(const Duration(milliseconds: 8));
+      final fading = tester
+          .widgetList<Opacity>(find.ancestor(of: find.byType(VWaveArtwork), matching: find.byType(Opacity)))
+          .any((o) => o.opacity > 0 && o.opacity < 1);
+      both = fading && find.byType(VArtwork).evaluate().length == 1;
+    }
+    expect(both, isTrue, reason: 'a frame where the wave fades out over the disc');
+    await settle(tester);
+    expect(find.byType(VWaveArtwork), findsNothing);
+    expect(find.byType(VArtwork), findsOneWidget);
+  });
 }

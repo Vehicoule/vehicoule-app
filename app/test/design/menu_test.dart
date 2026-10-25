@@ -147,4 +147,24 @@ void main() {
     await tester.pump();
     expect(FocusManager.instance.primaryFocus?.context, isNot(focused));
   });
+
+  testWidgets('a menu with only its quick row still takes the keyboard', (tester) async {
+    await tester.pumpWidget(harness(Builder(
+      builder: (context) => GestureDetector(
+        onTap: () => showVMenu(
+          context,
+          anchor: const Rect.fromLTWH(20, 20, 200, 56),
+          quick: [VAction('Lire ensuite', VIcons.playNext, () {})],
+          groups: const [],
+        ),
+        child: const Text('open'),
+      ),
+    ), reduce: true));
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump();
+    final focused = FocusManager.instance.primaryFocus?.context;
+    expect(focused, isNotNull);
+    expect(find.ancestor(of: find.byWidget(focused!.widget), matching: find.byKey(VMenu.panelKey)), findsOneWidget);
+  });
 }

@@ -131,6 +131,8 @@ class _MenuRoute extends PopupRoute<void> {
               Center(
                 key: VMenu.quickKey,
                 child: VConnectedGroup(
+                  // With no groups below, the quick row takes the keyboard.
+                  autofocusFirst: groups.isEmpty,
                   actions: [
                     for (final q in quick)
                       VAction(
