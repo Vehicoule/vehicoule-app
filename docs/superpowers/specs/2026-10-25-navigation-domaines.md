@@ -1,6 +1,6 @@
 # Vehicoule — Navigation entre domaines : addendum
 
-Date : 2026-10-25 · Statut : en relecture (v1)
+Date : 2026-10-25 · Statut : approuvé par l'utilisateur le 2026-10-25
 
 Specs parentes : `2026-10-18-socle-musique-design.md` (le « socle ») et
 `2026-10-23-socle-ui-design.md` (la « spec UI », branche `socle`). Cet addendum fixe comment

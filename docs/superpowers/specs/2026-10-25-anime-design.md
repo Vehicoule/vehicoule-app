@@ -1,6 +1,6 @@
 # Vehicoule — Domaine anime : design
 
-Date : 2026-10-25 · Statut : en relecture (v2 : types de l'hôte 1.1, cookies et vérification par l'utilisateur, JS dans le plugin, focus audio)
+Date : 2026-10-25 · Statut : approuvé par l'utilisateur le 2026-10-25
 
 Specs parentes : `2026-10-18-socle-musique-design.md` (le « socle »),
 `2026-10-23-socle-ui-design.md` (la « spec UI », branche `socle`) et

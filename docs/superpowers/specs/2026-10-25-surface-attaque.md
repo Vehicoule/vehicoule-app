@@ -1,6 +1,6 @@
 # Vehicoule — Surface d'attaque : décisions
 
-Date : 2026-10-25 · Statut : approuvé dans la conversation (v1)
+Date : 2026-10-25 · Statut : approuvé par l'utilisateur le 2026-10-25
 
 Specs parentes : le socle (`2026-10-18-socle-musique-design.md`), l'addendum navigation et la
 spec anime du 2026-10-25. Vehicoule exécute des plugins tiers et lit des flux venus de sources
