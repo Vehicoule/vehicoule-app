@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../bridge/catalog.dart';
 import '../../bridge/downloads.dart';
 import '../../bridge/queue.dart';
+import '../color.dart';
 import '../../l10n/app_localizations.dart';
 import '../haptics.dart';
 import '../motion.dart';
@@ -55,6 +56,7 @@ class NowPlayingData {
     required this.repeat,
     this.sleepLeft,
     this.sleepEndOfTrack = false,
+    this.coverTop,
   });
 
   final TrackView track;
@@ -72,6 +74,10 @@ class NowPlayingData {
   /// A sleep timer is running: the moon and the time left show in the header.
   final Duration? sleepLeft;
   final bool sleepEndOfTrack;
+
+  /// The artwork's top band (`coverTopFromArtwork`, with the seed): the Vague's header
+  /// picks its content colour from it. Null: unknown, the header gets a scrim.
+  final VCoverTop? coverTop;
 
   double progressAt(int positionMs) =>
       durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
@@ -261,32 +267,21 @@ class _VNowPlayingState extends State<VNowPlaying>
   double _scrimHeight(BuildContext context) =>
       MediaQuery.paddingOf(context).top + VSize.headerScrimHeight;
 
-  /// Short and dark, from the scheme's scrim role (spec UI §6.6, ruling): even under
-  /// the status bar and the header, then an ease-out fade to nothing, with no edge.
+  /// Dark, from the scheme's scrim role, for a busy cover top (spec UI §6.6): darkest at
+  /// the very top, then a cosine ease to nothing, with no flat band and no edge.
   LinearGradient _scrim(BuildContext context) {
     final scrim = Theme.of(context).colorScheme.scrim;
-    final height = _scrimHeight(context);
-    // Even down to the header's content (its text and glyphs), then a long fall.
-    final hold =
-        ((MediaQuery.paddingOf(context).top + _headerHeight - VSpace.s8) /
-                height)
-            .clamp(0.0, 1.0);
-    const steps = 8;
-    final fall = [
-      for (var i = 0; i <= steps; i++)
-        (
-          hold + (1 - hold) * i / steps,
-          VSize.headerScrim * (1 - Curves.easeOut.transform(i / steps)),
-        ),
-    ];
+    const steps = 10;
     return LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        scrim.withValues(alpha: VSize.headerScrim),
-        for (final (_, a) in fall) scrim.withValues(alpha: a),
+        for (var i = 0; i <= steps; i++)
+          scrim.withValues(
+            alpha: VSize.headerScrim * (1 + math.cos(math.pi * i / steps)) / 2,
+          ),
       ],
-      stops: [0, for (final (t, _) in fall) t],
+      stops: [for (var i = 0; i <= steps; i++) i / steps],
     );
   }
 
@@ -319,75 +314,88 @@ class _VNowPlayingState extends State<VNowPlaying>
     );
   }
 
-  Widget _column(BuildContext context) => Column(
-    children: [
-      // The Vague runs full bleed under the header (lecteur-v3, style C).
-      if (_bleed)
-        Expanded(
-          child: Stack(
-            children: [
-              Positioned.fill(child: _body(context)),
-              // Under the header, a short dark scrim: its light content reads on any
-              // cover (text 4.5:1, icons 3:1).
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: _scrimHeight(context),
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    key: VNowPlaying.scrimKey,
-                    decoration: BoxDecoration(gradient: _scrim(context)),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: KeyedSubtree(
-                  key: _headerKey,
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.paddingOf(context).top,
-                    ),
-                    // Light content on the dark scrim, light status-bar icons.
-                    child: AnnotatedRegion<SystemUiOverlayStyle>(
-                      value: SystemUiOverlayStyle.light,
-                      child: vOnScrim(context, Builder(builder: _header)),
+  Widget _column(BuildContext context) {
+    final onCover = vOnCoverFor(data.coverTop);
+    return Column(
+      children: [
+        // The Vague runs full bleed under the header (lecteur-v3, style C).
+        if (_bleed)
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(child: _body(context)),
+                // Under the header, a scrim only when the cover's top is too busy for
+                // plain content (text 4.5:1, icons 3:1).
+                if (onCover == VOnCover.scrim)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: _scrimHeight(context),
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        key: VNowPlaying.scrimKey,
+                        decoration: BoxDecoration(gradient: _scrim(context)),
+                      ),
                     ),
                   ),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: KeyedSubtree(
+                    key: _headerKey,
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        top: MediaQuery.paddingOf(context).top,
+                      ),
+                      // Content straight on the cover: dark on a light top, light on
+                      // a dark or scrimmed one; the status-bar icons follow.
+                      child: AnnotatedRegion<SystemUiOverlayStyle>(
+                        value: onCover == VOnCover.dark
+                            ? SystemUiOverlayStyle.dark
+                            : SystemUiOverlayStyle.light,
+                        child: vOnCover(
+                          context,
+                          onCover == VOnCover.dark
+                              ? vOnCoverDark
+                              : vOnCoverLight,
+                          Builder(builder: _header),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+          )
+        else ...[
+          _header(context),
+          Expanded(child: _body(context)),
+        ],
+        if (widget.volume case final volume?)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: VSpace.s16),
+            child: Row(
+              children: [
+                if (actions.onOutput case final output?)
+                  VIconButton(
+                    icon: VIcons.speaker,
+                    label: AppLocalizations.of(context).actionOutput,
+                    onPressed: output,
+                  ),
+                const SizedBox(width: VSpace.s8),
+                Expanded(child: volume),
+              ],
+            ),
           ),
-        )
-      else ...[
-        _header(context),
-        Expanded(child: _body(context)),
-      ],
-      if (widget.volume case final volume?)
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: VSpace.s16),
-          child: Row(
-            children: [
-              if (actions.onOutput case final output?)
-                VIconButton(
-                  icon: VIcons.speaker,
-                  label: AppLocalizations.of(context).actionOutput,
-                  onPressed: output,
-                ),
-              const SizedBox(width: VSpace.s8),
-              Expanded(child: volume),
-            ],
-          ),
+          padding: const EdgeInsets.only(top: VSpace.s8, bottom: VSpace.s16),
+          child: _selector(VViewSelector.order, widget.view),
         ),
-      Padding(
-        padding: const EdgeInsets.only(top: VSpace.s8, bottom: VSpace.s16),
-        child: _selector(VViewSelector.order, widget.view),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 
   Widget _selector(List<PlayerView> views, PlayerView value) => Center(
     child: VViewSelector(

@@ -154,6 +154,7 @@ class _GalleryAppState extends State<GalleryApp> {
   /// The sample track that plays: the gallery's players show it, and with « Ce qui
   /// joue » the theme takes its seed from its cover.
   int _playing = 1;
+  VCoverTop? _top;
   Color _seed = VPresets.seeds.first;
   bool _reduce = false;
   Locale _locale = const Locale('fr');
@@ -162,6 +163,7 @@ class _GalleryAppState extends State<GalleryApp> {
   void initState() {
     super.initState();
     _apply(_source);
+    _measureTop();
   }
 
   Future<void> _apply(_Source s) async {
@@ -189,11 +191,21 @@ class _GalleryAppState extends State<GalleryApp> {
   void _next() {
     setState(() => _playing = (_playing + 1) % sampleTracks.length);
     if (_source is _NowPlaying) _apply(_source);
+    _measureTop();
+  }
+
+  /// The playing cover's top band, from the same decode as its seed.
+  Future<void> _measureTop() async {
+    final playing = _playing;
+    final path = await _artPath(sampleTracks[playing].id);
+    final top = path == null ? null : await coverTopFromArtwork(path);
+    if (mounted && _playing == playing) setState(() => _top = top);
   }
 
   @override
   Widget build(BuildContext context) {
     _playingIndex = _playing;
+    _playingTop = _top;
     final dark = _brightness != _Brightness.light;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -421,6 +433,9 @@ class _GalleryPageState extends State<_GalleryPage> {
 
 /// The playing sample track (Get Lucky first); « Titre suivant » moves it on.
 int _playingIndex = 1;
+
+/// The playing cover's top band (the Vague's header reads it), measured with its seed.
+VCoverTop? _playingTop;
 TrackView get _track => sampleTracks[_playingIndex];
 
 NowPlayingData _data({
@@ -439,6 +454,7 @@ NowPlayingData _data({
   shuffle: false,
   repeat: Repeat.all,
   sleepLeft: const Duration(minutes: 24),
+  coverTop: _playingTop,
 );
 
 void _noop() {}
@@ -1207,7 +1223,12 @@ class _FabSectionState extends State<_FabSection> {
   static const _header = VSpace.s16 * 3 + VSize.shelfCard + VSize.menuTarget;
 
   /// A demo screen: its frame, named for the test of the one-main-action rule.
-  Widget _demo(String key, String title, Widget body) => Column(
+  Widget _demo(
+    String key,
+    String title,
+    Widget body, {
+    double height = VSize.sideSheet * 1.2,
+  }) => Column(
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -1215,7 +1236,7 @@ class _FabSectionState extends State<_FabSection> {
       const SizedBox(height: VSpace.s8),
       KeyedSubtree(
         key: ValueKey('fab.demo.$key'),
-        child: _screen(VSize.sideSheet, VSize.sideSheet * 1.2, body),
+        child: _screen(VSize.sideSheet, height, body),
       ),
     ],
   );
@@ -1453,6 +1474,8 @@ class _FabSectionState extends State<_FabSection> {
                 ),
               ],
             ),
+            // A phone's height: the list, the mini player and the bar all read.
+            height: VSize.phoneDemo,
           ),
         ]),
       ],

@@ -29,7 +29,7 @@ double contrast(Color a, Color b) {
   return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05);
 }
 
-NowPlayingData data({bool liked = true}) => NowPlayingData(
+NowPlayingData data({bool liked = true, VCoverTop? coverTop}) => NowPlayingData(
   track: sampleTracks[1],
   sourceTitle: 'Random Access Memories',
   playing: true,
@@ -40,6 +40,7 @@ NowPlayingData data({bool liked = true}) => NowPlayingData(
   shuffle: false,
   repeat: Repeat.off,
   sleepLeft: const Duration(minutes: 24),
+  coverTop: coverTop,
 );
 
 void noop() {}
@@ -96,6 +97,28 @@ Future<String> swatch(Color c, String name) async {
   final rec = ui.PictureRecorder();
   ui.Canvas(rec)
       .drawRect(const Rect.fromLTWH(0, 0, 112, 112), Paint()..color = c);
+  final img = await rec.endRecording().toImage(112, 112);
+  final png = await img.toByteData(format: ui.ImageByteFormat.png);
+  final f = File(
+    '${Directory.systemTemp.createTempSync('vswatch').path}/$name.png',
+  )..writeAsBytesSync(png!.buffer.asUint8List());
+  return f.path;
+}
+
+/// A busy cover: black and white stripes, 8 px wide (no cover art in the repo).
+Future<String> stripes(String name) async {
+  final rec = ui.PictureRecorder();
+  final c = ui.Canvas(rec)
+    ..drawRect(
+      const Rect.fromLTWH(0, 0, 112, 112),
+      Paint()..color = const Color(0xFFFFFFFF),
+    );
+  for (var x = 0.0; x < 112; x += 16) {
+    c.drawRect(
+      Rect.fromLTWH(x, 0, 8, 112),
+      Paint()..color = const Color(0xFF000000),
+    );
+  }
   final img = await rec.endRecording().toImage(112, 112);
   final png = await img.toByteData(format: ui.ImageByteFormat.png);
   final f = File(
@@ -553,86 +576,138 @@ void main() {
 
   // Fix pass 2.
 
-  testWidgets('N-1: the Vague header is light on a short eased dark scrim', (
+  testWidgets('V-1: the cover\'s top band is measured with the seed, once', (
     tester,
   ) async {
-    for (final b in Brightness.values) {
-      await tester.pumpWidget(
-        harness(player(style: PlayerStyle.wave), reduce: true, brightness: b),
-      );
-      await tester.pump();
-      final cs = Theme.of(tester.element(find.byType(VNowPlaying))).colorScheme;
-      final scrim = find.byKey(VNowPlaying.scrimKey);
-      final g =
-          (tester.widget<DecoratedBox>(scrim).decoration as BoxDecoration)
-                  .gradient!
-              as LinearGradient;
-      final box = tester.getRect(scrim);
-      // Short, from the scrim role, eased: many stops, a soft end at 0.
-      expect(box.height, lessThanOrEqualTo(96), reason: '$b');
-      for (final c in g.colors) {
-        expect(c.withValues(alpha: 1), cs.scrim.withValues(alpha: 1));
-      }
-      expect(g.colors.length, greaterThanOrEqualTo(6));
-      expect(g.colors.last.a, 0);
-      expect(g.colors[g.colors.length - 2].a, lessThanOrEqualTo(0.06));
-      double alphaAt(double y) {
-        final t = ((y - box.top) / box.height).clamp(0.0, 1.0);
-        final st = g.stops!;
-        for (var i = 1; i < st.length; i++) {
-          if (t <= st[i]) {
-            final f = (t - st[i - 1]) / (st[i] - st[i - 1]);
-            return g.colors[i - 1].a + (g.colors[i].a - g.colors[i - 1].a) * f;
-          }
-        }
-        return 0;
-      }
+    late String white, black, busy;
+    VCoverTop? w, k, z;
+    var quantized = 0;
+    await tester.runAsync(() async {
+      white = await swatch(const Color(0xFFFFFFFF), 'v1white');
+      black = await swatch(const Color(0xFF000000), 'v1black');
+      busy = await stripes('v1busy');
+      w = await coverTopFromArtwork(white);
+      k = await coverTopFromArtwork(black);
+      await seedFromArtwork(busy);
+      quantized = debugQuantizations;
+      z = await coverTopFromArtwork(busy);
+    });
+    expect(debugQuantizations, quantized, reason: 'cached with the seed');
+    expect(w!.low, greaterThan(0.9));
+    expect(k!.high, lessThan(0.05));
+    expect(z!.low, lessThan(0.05));
+    expect(z!.high, greaterThan(0.9));
+    expect(vOnCoverFor(w), VOnCover.dark);
+    expect(vOnCoverFor(k), VOnCover.light);
+    expect(vOnCoverFor(z), VOnCover.scrim);
+    expect(vOnCoverFor(null), VOnCover.scrim, reason: 'unknown: safe');
+  });
 
-      Color under(Element e, double y, Color cover) {
-        var bg = Color.alphaBlend(
-          cs.scrim.withValues(alpha: alphaAt(y)),
-          cover,
+  testWidgets('V-2: the Vague header adapts to its cover (4.5:1, 3:1)', (
+    tester,
+  ) async {
+    final covers = <String, (VCoverTop, List<Color>)>{};
+    await tester.runAsync(() async {
+      for (final (name, c) in [
+        ('white', const Color(0xFFFFFFFF)),
+        ('black', const Color(0xFF000000)),
+        ('grey', const Color(0xFF808080)),
+      ]) {
+        covers[name] = (
+          (await coverTopFromArtwork(await swatch(c, 'v2$name')))!,
+          [c],
         );
-        // A chip's own fill, when the content sits in one.
-        e.visitAncestorElements((a) {
-          final w = a.widget;
-          if (w is DecoratedBox && w.decoration is ShapeDecoration) {
-            final fill = (w.decoration as ShapeDecoration).color;
-            if (fill != null) bg = Color.alphaBlend(fill, bg);
-            return false;
-          }
-          return a.widget.key != VNowPlaying.headerKey;
-        });
-        return bg;
       }
-
-      final header = find.byKey(VNowPlaying.headerKey);
-      for (final cover in [const Color(0xFF000000), const Color(0xFFFFFFFF)]) {
-        for (final e
-            in find
-                .descendant(of: header, matching: find.byType(RichText))
-                .evaluate()) {
-          final t = e.widget as RichText;
-          final r = tester.getRect(find.byElementPredicate((x) => x == e));
-          final color = t.text.style!.color!;
-          expect(
-            contrast(color, under(e, r.bottom, cover)),
-            greaterThanOrEqualTo(4.5),
-            reason: '$b « ${t.text.toPlainText()} » over $cover',
-          );
+      covers['busy'] = (
+        (await coverTopFromArtwork(await stripes('v2busy')))!,
+        const [Color(0xFF000000), Color(0xFFFFFFFF)],
+      );
+    });
+    for (final b in Brightness.values) {
+      for (final MapEntry(key: name, value: (top, under)) in covers.entries) {
+        await tester.pumpWidget(
+          harness(
+            player(
+              style: PlayerStyle.wave,
+              d: data(coverTop: top),
+            ),
+            reduce: true,
+            brightness: b,
+          ),
+        );
+        await tester.pump();
+        final scrim = find.byKey(VNowPlaying.scrimKey);
+        if (name != 'busy') {
+          expect(scrim, findsNothing, reason: '$b $name: no scrim needed');
+        } else {
+          expect(scrim, findsOneWidget, reason: '$b busy: a scrim');
         }
-        for (final e
-            in find
-                .descendant(of: header, matching: find.byType(Icon))
-                .evaluate()) {
-          final icon = e.widget as Icon;
-          final r = tester.getRect(find.byElementPredicate((x) => x == e));
-          final color = icon.color ?? IconTheme.of(e).color!;
-          expect(
-            contrast(color, under(e, r.bottom, cover)),
-            greaterThanOrEqualTo(3),
-            reason: '$b icon over $cover',
+        double alphaAt(double y) {
+          if (scrim.evaluate().isEmpty) return 0;
+          final g =
+              (tester.widget<DecoratedBox>(scrim).decoration as BoxDecoration)
+                      .gradient!
+                  as LinearGradient;
+          final box = tester.getRect(scrim);
+          // Eased: no flat hold, a soft end.
+          expect(g.colors.length, greaterThanOrEqualTo(6));
+          expect(g.colors[1].a, lessThan(g.colors[0].a));
+          expect(g.colors.last.a, 0);
+          final t = ((y - box.top) / box.height).clamp(0.0, 1.0);
+          final st = g.stops!;
+          for (var i = 1; i < st.length; i++) {
+            if (t <= st[i]) {
+              final f = (t - st[i - 1]) / (st[i] - st[i - 1]);
+              return g.colors[i - 1].a +
+                  (g.colors[i].a - g.colors[i - 1].a) * f;
+            }
+          }
+          return 0;
+        }
+
+        Color bg(Element e, double y, Color cover) {
+          var c = Color.alphaBlend(
+            const Color(0xFF000000).withValues(alpha: alphaAt(y)),
+            cover,
           );
+          e.visitAncestorElements((a) {
+            final w = a.widget;
+            if (w is DecoratedBox && w.decoration is ShapeDecoration) {
+              final fill = (w.decoration as ShapeDecoration).color;
+              if (fill != null) c = Color.alphaBlend(fill, c);
+              return false;
+            }
+            return a.widget.key != VNowPlaying.headerKey;
+          });
+          return c;
+        }
+
+        final header = find.byKey(VNowPlaying.headerKey);
+        for (final cover in under) {
+          for (final e
+              in find
+                  .descendant(of: header, matching: find.byType(RichText))
+                  .evaluate()) {
+            final t = e.widget as RichText;
+            final r = tester.getRect(find.byElementPredicate((x) => x == e));
+            expect(
+              contrast(t.text.style!.color!, bg(e, r.bottom, cover)),
+              greaterThanOrEqualTo(4.5),
+              reason: '$b $name « ${t.text.toPlainText()} » over $cover',
+            );
+          }
+          for (final e
+              in find
+                  .descendant(of: header, matching: find.byType(Icon))
+                  .evaluate()) {
+            final r = tester.getRect(find.byElementPredicate((x) => x == e));
+            final color = (e.widget as Icon).color ?? IconTheme.of(e).color!;
+            expect(
+              contrast(color, bg(e, r.bottom, cover)),
+              greaterThanOrEqualTo(3),
+              reason: '$b $name icon over $cover',
+            );
+          }
         }
       }
     }
@@ -683,6 +758,48 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, 100));
     await tester.pumpAndSettle();
     expect(find.text('Lire'), findsOneWidget);
+  });
+
+  testWidgets('V-4: a hiding FAB leaves hit testing and semantics at once', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    var pressed = 0;
+    await show(
+      tester,
+      VFabDock(
+        body: ListView(
+          children: [for (var i = 0; i < 40; i++) ListTile(title: Text('$i'))],
+        ),
+        fab: VAction('Lire', VIcons.play, () => pressed++),
+        player: player(size: PlayerSize.compact),
+      ),
+      size: const Size(412, 800),
+      reduce: false,
+    );
+    await tester.pump(const Duration(seconds: 1));
+    final was = tester.getRect(find.byType(M3EExtendedFab));
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    // Mid-way through hiding: still painted, but out of reach.
+    expect(find.byType(M3EExtendedFab), findsOneWidget);
+    expect(find.semantics.byLabel('Lire'), findsNothing);
+    await tester.tapAt(was.center);
+    await tester.pump(const Duration(seconds: 1));
+    expect(pressed, 0);
+    expect(find.byType(M3EExtendedFab), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('V-3: list rows don\'t show around the mini player', (
+    tester,
+  ) async {
+    await show(tester, dock([], fab: false), size: const Size(412, 800));
+    final mini = tester.getRect(find.byKey(VNowPlaying.compactKey));
+    final guard = tester.getRect(find.byKey(VFabDock.protectionKey));
+    expect(guard.top, lessThanOrEqualTo(mini.top));
+    expect(guard.bottom, greaterThanOrEqualTo(mini.bottom));
   });
 
   testWidgets('N-3: the last row scrolls clear of the dock', (tester) async {

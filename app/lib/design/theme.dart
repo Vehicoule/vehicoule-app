@@ -71,20 +71,20 @@ ThemeData vTheme({
 Color vScreenSurface(ColorScheme cs) =>
     cs.surface == _black ? _black : cs.surfaceContainer;
 
-final _onScrim = Expando<ThemeData>();
+final _onCover = <Color, Expando<ThemeData>>{};
 
-/// Light content on a dark scrim over artwork (the Vague's header): white foregrounds
-/// and outlines instead of tonal fills, for Material and M3E components alike.
-Widget vOnScrim(BuildContext context, Widget child) {
+/// Content straight on artwork (the Vague's header): [foreground] for text and icons,
+/// outlines instead of tonal fills, for Material and M3E components alike.
+Widget vOnCover(BuildContext context, Color foreground, Widget child) {
   final theme = Theme.of(context);
-  const white = Color(0xFFFFFFFF);
-  final t = _onScrim[theme] ??= theme.copyWith(
+  final cache = _onCover[foreground] ??= Expando<ThemeData>();
+  final t = cache[theme] ??= theme.copyWith(
     colorScheme: theme.colorScheme.copyWith(
-      onSurface: white,
-      onSurfaceVariant: white,
-      secondaryContainer: white.withValues(alpha: 0),
-      onSecondaryContainer: white,
-      outlineVariant: white.withValues(alpha: 0.6),
+      onSurface: foreground,
+      onSurfaceVariant: foreground,
+      secondaryContainer: foreground.withValues(alpha: 0),
+      onSecondaryContainer: foreground,
+      outlineVariant: foreground.withValues(alpha: 0.6),
     ),
   );
   return Theme(

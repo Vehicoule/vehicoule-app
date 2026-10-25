@@ -36,6 +36,9 @@ abstract final class VSize {
   /// The rail's width from which its FAB shows its label (while it grows, a plain FAB).
   static const railFabExtended = 200.0;
 
+  /// The gallery's phone frame: tall enough for a list, the mini player and the bar.
+  static const phoneDemo = 720.0;
+
   /// The standard side sheet that holds the desktop "now playing" pane.
   static const sideSheet = 360.0;
 
@@ -99,9 +102,9 @@ abstract final class VSize {
   /// narrowest item that carries text (M3E shows the title from 200).
   static const carouselScrim = 0.6, carouselBand = 0.5, carouselText = 200.0;
 
-  /// The dark scrim under the Vague's header (below the status bar): how dark under the
-  /// header (its text reads at 4.5:1 on a white cover), and how far it reaches.
-  static const headerScrim = 0.58, headerScrimHeight = 96.0;
+  /// The Vague's scrim, when its cover's top is too busy for plain content: how dark at
+  /// the very top, and how far its eased fade reaches below the status bar.
+  static const headerScrim = 0.85, headerScrimHeight = 160.0;
 
   /// The thin stroke of small progress icons (download).
   static const iconStroke = 3.0;

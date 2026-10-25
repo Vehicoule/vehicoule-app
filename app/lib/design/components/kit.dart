@@ -1,6 +1,8 @@
 // The rest of the M3 set the app uses (spec UI §4, §5.4, §5.8, §6), each in its Vehicoule
 // configuration: our icons, our labels, our tokens. Built on material_3_expressive;
 // screens use these, never the package (guarded in test/design).
+import 'dart:math' as math;
+
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
@@ -163,6 +165,9 @@ class VFabDock extends StatefulWidget {
     this.player,
   });
 
+  /// The fade behind the mini player.
+  static const protectionKey = ValueKey('vfabdock.protection');
+
   final Widget body;
 
   /// The screen's main action; [fabItems] make it a FAB menu.
@@ -177,9 +182,9 @@ class VFabDock extends StatefulWidget {
 }
 
 class _VFabDockState extends State<VFabDock> {
-  final _dock = GlobalKey();
+  final _dock = GlobalKey(), _player = GlobalKey();
   bool _shown = true;
-  double _height = 0;
+  double _height = 0, _playerHeight = 0;
 
   bool _onScroll(UserScrollNotification n) {
     final shown = switch (n.direction) {
@@ -196,13 +201,21 @@ class _VFabDockState extends State<VFabDock> {
     final box = _dock.currentContext?.findRenderObject() as RenderBox?;
     if (!mounted || box == null || !box.hasSize) return;
     final h = box.size.height + VSpace.s16;
-    if (h != _height) setState(() => _height = h);
+    final p = (_player.currentContext?.findRenderObject() as RenderBox?)?.size;
+    final ph = p == null ? 0.0 : p.height + VSpace.s16;
+    if (h != _height || ph != _playerHeight) {
+      setState(() {
+        _height = h;
+        _playerHeight = ph;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
     final fab = _shown ? widget.fab : null;
+    final current = ValueKey(fab == null ? 'none' : 'fab');
     final mq = MediaQuery.of(context);
     return Stack(
       children: [
@@ -217,6 +230,33 @@ class _VFabDockState extends State<VFabDock> {
             ),
           ),
         ),
+        // Behind the mini player, the surface rises in an eased fade: rows dim behind
+        // it instead of showing through its gaps.
+        if (widget.player != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: mq.padding.bottom + _playerHeight,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                key: VFabDock.protectionKey,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      for (var i = 0; i <= 8; i++)
+                        Theme.of(context).colorScheme.surface.withValues(
+                          alpha: (1 + math.cos(math.pi * i / 8)) / 2,
+                        ),
+                    ],
+                    stops: [for (var i = 0; i <= 8; i++) i / 8],
+                  ),
+                ),
+              ),
+            ),
+          ),
         PositionedDirectional(
           start: VSpace.s16,
           end: VSpace.s16,
@@ -228,15 +268,26 @@ class _VFabDockState extends State<VFabDock> {
             children: [
               AnimatedSwitcher(
                 duration: vMotion(context, VDurations.short),
-                transitionBuilder: (child, a) => ScaleTransition(
-                  scale: a,
-                  alignment: AlignmentDirectional.bottomEnd.resolve(
-                    Directionality.of(context),
-                  ),
-                  child: FadeTransition(opacity: a, child: child),
-                ),
+                // Scaled and faded to nothing; a leaving FAB is out of hit testing
+                // and semantics at once.
+                transitionBuilder: (child, a) {
+                  final leaving = child.key != current;
+                  return IgnorePointer(
+                    ignoring: leaving,
+                    child: ExcludeSemantics(
+                      excluding: leaving,
+                      child: ScaleTransition(
+                        scale: a,
+                        alignment: AlignmentDirectional.bottomEnd.resolve(
+                          Directionality.of(context),
+                        ),
+                        child: FadeTransition(opacity: a, child: child),
+                      ),
+                    ),
+                  );
+                },
                 child: fab == null
-                    ? const SizedBox.shrink()
+                    ? const SizedBox.shrink(key: ValueKey('none'))
                     : Padding(
                         key: const ValueKey('fab'),
                         // 16 dp to the ⏯ itself, which sits centred beside the
@@ -253,7 +304,8 @@ class _VFabDockState extends State<VFabDock> {
                         ),
                       ),
               ),
-              ?widget.player,
+              if (widget.player case final player?)
+                KeyedSubtree(key: _player, child: player),
             ],
           ),
         ),
