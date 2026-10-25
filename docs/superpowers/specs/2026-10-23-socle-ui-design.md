@@ -178,7 +178,7 @@ listes vides) est dans `docs/voice.md`.
   - la pochette à forme M3E (cookie 12 lobes) qui tourne et morphe en carré arrondi, avec
     son anneau ondulé ;
   - la pochette à bord en vague (style « Vague » du lecteur) ;
-  - le widget `NowPlaying` (section 5.5) et le sélecteur Lecteur · Paroles · File ;
+  - le widget `NowPlaying` (section 5.5) et le sélecteur Paroles · Lecteur · File ;
   - la ligne de titre (section 5.1) ;
   - le menu expressif avec élément soulevé, s'il manque au paquet ;
   - les transitions partagées mini-lecteur → lecteur et carte → page.
@@ -363,10 +363,10 @@ file, like), puis des groupes séparés par des espaces. Même menu sur mobile e
 | FAB étendu → FAB | Album / playlist : « Lire », qui se réduit au défilement |
 | FAB menu | Bibliothèque : nouvelle playlist, importer un lien |
 | Split button | Album / playlist : « Lire » \| ▾ (aléatoire, lire ensuite, ajouter à la file) |
-| Groupe de boutons connectés | Lecteur (like / playlist / télécharger), rangée rapide des menus |
+| Groupe de boutons connectés | Lecteur (like / playlist / télécharger), sélecteur Paroles · Lecteur · File, rangée rapide des menus, choix des Réglages |
 | Loading indicator M3E | Résultats de recherche, chargement de page, premier lancement |
 | Progress ondulé | Anneau du disque (lecteur, mini-lecteur, bande desktop), bord en vague, téléchargements |
-| Toolbar flottante | Mini-lecteur (+ FAB ⏯), sélecteur Lecteur · Paroles · File, sélection multiple |
+| Toolbar flottante | Mini-lecteur (+ FAB ⏯), sélection multiple |
 | FAB | ⏯ du mini-lecteur (devient le loading indicator pendant un chargement) |
 | Chips | Filtres de recherche et de bibliothèque |
 | Listes en groupes arrondis | Réglages |
@@ -396,8 +396,10 @@ Le même widget sert partout. Seules la taille et la mise en page changent :
 6. Le groupe de contrôles : aléatoire · ⏮ · ⏯ · ⏭ · répétition.
    - C'est un button group M3E : les largeurs morphent à l'appui.
    - ⏯ morphe et devient le loading indicator pendant un chargement.
-7. Le **sélecteur Lecteur · Paroles · File**, une toolbar flottante en bas.
-   - L'onglet actif s'élargit et affiche son libellé.
+7. Le **sélecteur Paroles · Lecteur · File**, centré en bas : un groupe de boutons connectés M3E
+   (Lecteur au milieu).
+   - Le bouton actif est plein, avec son icône et son libellé ; les autres n'ont que l'icône.
+     Les largeurs morphent au changement.
    - Sur desktop, le volume se place juste au-dessus.
 
 **Les trois vues** du sélecteur partagent le même cadre :
@@ -438,7 +440,7 @@ choisit jamais d'autre.
 | Transition | Où |
 |---|---|
 | **Container transform** | carte ou ligne → sa page (album, artiste, playlist, catégorie) ; la carte s'agrandit en page |
-| **Shared axis horizontal** | vues du sélecteur Lecteur · Paroles · File ; étapes du premier lancement |
+| **Shared axis horizontal** | vues du sélecteur Paroles · Lecteur · File ; étapes du premier lancement |
 | **Fade through** | changement de destination (barre du bas, rail) |
 | **Élément partagé** | pochette du mini-lecteur → lecteur ; en-tête compact ↔ grande pochette |
 
@@ -621,7 +623,8 @@ carte). Viennent ensuite les titres populaires, puis les albums en carousel mult
 
 ### 6.6 Lecteur plein écran (mobile)
 
-`NowPlaying` en grande taille (5.5), sur le fond teinté du thème.
+`NowPlaying` en grande taille (5.5), sur le fond teinté du thème : une surface unie
+(`surfaceContainer`), sans dégradé.
 
 - On l'ouvre depuis le mini-lecteur (↑ ou toucher).
 - On le ferme avec ⌄ ou en glissant vers le bas.
