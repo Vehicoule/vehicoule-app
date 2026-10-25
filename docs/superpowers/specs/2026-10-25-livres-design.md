@@ -59,8 +59,12 @@ indépendantes des fournisseurs, aucun HTML rendu par une WebView.
 
 - `book_series` (clé = item) : titres (romaji, anglais, natif, synonymes), format, statut de
   publication, année, pays d'origine, nombre de chapitres et de tomes prévus, auteurs,
-  dessinateurs, genres, synopsis, couverture, ISBN, langue, sens de lecture retenu (§6.2),
-  groupe de scan préféré (§3.4).
+  dessinateurs, genres, synopsis, couverture, ISBN, langue. C'est du **cache du catalogue** :
+  il peut être vidé à tout moment (socle §5.3), il ne porte donc aucun choix de l'utilisateur.
+- `book_prefs` (clé = item) : les choix de l'utilisateur pour un livre — sens de lecture retenu
+  (§6.2), groupe de scan préféré et langues des chapitres (§3.4), comportement du chapitre
+  absent, réglages du texte « pour ce livre seulement » (§6.6), couverture choisie (§6.2),
+  décalage de double page. Colonnes de synchro du socle §5.3.
 - `book_chapters` (clé = item) : livre, **numéro réel** (10.5 existe), tome, titre, date,
   groupe, langue, nombre de pages.
 - `chapter_sources` : chapitre → plugin + id du chapitre chez la source, groupe, langue.
@@ -195,6 +199,25 @@ sur les autres sources installées, puis une liste à valider (série, source tr
 chapitres). Valider réordonne `source_bindings` ; progression, catégories, signets et tracker
 ne bougent pas, parce qu'ils pointent vers les items. Même entrée pour une sélection dans la
 Bibliothèque.
+
+### 3.8 Ce que les livres attendent de la synchro
+
+La synchro entre appareils fait l'objet de **sa propre spec, au niveau du socle** (demandée par
+l'utilisateur le 2026-10-25) : elle sert les trois domaines. Ce que les livres lui demandent :
+
+- **Données** : `library_entries`, `categories`, `progress` (avec `locator`), `bookmarks`,
+  `book_highlights`, `book_prefs`, `source_bindings`, `plays`, la liste des sources et des
+  serveurs ajoutés (sans les identifiants, qui restent dans le trousseau de chaque appareil).
+- **Délai** : lire sur le téléphone puis ouvrir le Mac reprend à la page ou à la phrase, en
+  moins de 10 s quand les deux appareils sont en ligne.
+- **Conflits** : progression la plus avancée gagne, sauf après « Recommencer » (une relecture
+  explicite) ; surlignages et signets s'additionnent, une suppression passe par `deleted_at` ;
+  `book_prefs` : la dernière écriture (HLC) gagne, champ par champ.
+- **Fichiers** : ni les fichiers de l'appareil ni les téléchargements ne voyagent. Un livre
+  local absent de l'autre appareil y apparaît « Fichier sur un autre appareil », avec sa
+  progression ; un livre d'une source ou d'un serveur s'y relit depuis la source.
+- **Rattachement** : un même livre ajouté sur deux appareils se rejoint par ses références de
+  catalogue (`external_refs`, `merged_into`), comme les doublons du §3.4.
 
 ## 4. Contrat
 
@@ -392,6 +415,14 @@ Un `file` au format non pris en charge → `not-found` côté cœur, avec la rai
   seul plugin OPDS** ; l'hôte la garde, l'affiche dans Sources › Détails, et elle se retire à
   tout moment. Toute autre adresse privée reste refusée, pour lui comme pour les autres ; un
   plugin ne peut pas demander d'accord lui-même.
+  - **Plusieurs serveurs** (un Calibre et un Komga, par exemple) : chaque adresse est accordée
+    une à une, à l'ajout de son serveur, et n'appartient qu'à ce plugin ; **8 adresses au plus
+    par plugin**.
+  - **Découverte** : l'écran d'ajout liste les serveurs qui s'annoncent sur le réseau local
+    (Bonjour / mDNS : Calibre, Komga, Kavita). Toucher l'un d'eux préremplit l'adresse ; l'accord
+    reste celui de l'utilisateur. Le système demande une fois l'accès au réseau local (Android :
+    NSD ; macOS : autorisation « Réseau local »). La découverte est faite par l'hôte, jamais par
+    un plugin.
 - Le désembrouillage (`scramble`), le transcodage et la découpe des images se font en Rust
   dans `stream`, sur des images dont la taille est plafonnée avant décodage (surface d'attaque
   §6).
@@ -500,9 +531,28 @@ Accueil (commun) · **Bibliothèque** · **Nouveautés** · **Historique** · **
   Où reprend le manga ? » quand une adaptation est connue sans `continues-at`.
 - **Tracker** : la ligne du tracker lié, statut et note modifiables.
 - ⋮ : changer de source, « Ce n'est pas le bon livre », sens de lecture, groupe préféré,
-  partager (`vehicoule.com/b/…`, `/c/…`, addendum §3.1), attacher une bande-son, migrer,
+  partager (`vehicoule.com/b/…`, `/c/…`, §5.2 bis), attacher une bande-son, migrer,
   **« Exporter mes notes »** (un fichier Markdown : citations surlignées, notes, chapitres,
   passé à la feuille de partage du système).
+
+### 5.2 bis Liens de partage
+
+Les références de l'addendum §3.1 (`b` livre, `c` chapitre), avec ces lettres de fournisseur
+pour les livres :
+
+| Lettre | Catalogue | Exemple |
+|---|---|---|
+| `a` | AniList | `vehicoule.com/b/a30013`, `vehicoule.com/c/a30013-1100` |
+| `k` | MyAnimeList | `vehicoule.com/b/k2` |
+| `u` | MangaUpdates (manhwa et webtoons absents d'AniList) | `vehicoule.com/b/u15180124327` |
+| `o` | Open Library, **id d'œuvre** (toutes éditions confondues) | `vehicoule.com/b/oOL45883W` |
+
+- L'ordre de choix est celui de la liste : le premier catalogue qui connaît le livre donne la
+  référence. Deux personnes qui ont deux éditions d'un même roman obtiennent le même lien.
+- Un livre sans aucun catalogue (fichier local non reconnu) n'a pas de lien : « Partager » est
+  grisé, avec la raison. Jamais d'id interne ni de source (addendum §3.1).
+- La page web (app absente) demande l'aperçu à l'API publique du catalogue, depuis le
+  navigateur, sans clé.
 
 ### 5.3 Ligne de chapitre (une seule, partout)
 
@@ -527,6 +577,9 @@ et séries finies.
   vérification, plus une vérification complète par semaine. Les séries finies et lues ne sont
   jamais interrogées.
 - Téléchargement automatique des nouveaux chapitres en option, par catégorie.
+- **Erreurs de mise à jour** : une page (depuis Nouveautés) liste les livres dont la dernière
+  mise à jour a échoué, avec l'erreur en mots (source bloquée, livre introuvable…) et les
+  actions « Réessayer », « Changer de source », « Migrer ».
 
 ### 5.6 Premier passage dans le domaine
 
@@ -535,10 +588,21 @@ sauté si AniList est déjà lié par la vidéo) avec « Importer ma liste », �
 ou Aniyomi », « Choisir un dossier de livres », ou « Passer ». Sans source qui lit, le bouton «
 Lire » explique pourquoi et renvoie vers « Ajoute une source » (spec UI §6.7).
 
-### 5.7 Réglages › Lecteur de livres
+### 5.7 Réglages › Livres
 
-Sens par défaut, mode par défaut, zones de toucher, ajustement, touches de volume, netteté,
-mode liseuse, flash, police et mise en page du texte, voix.
+Une section de Réglages par domaine, qui porte **le nom du domaine** (« Musique », « Vidéos »,
+« Livres ») : on la trouve sans réfléchir, c'est le mot du rail.
+
+- **Réglages › Livres** : langues des chapitres et chapitre absent (§3.4), titres (§5.1),
+  mise à jour et téléchargement automatique (§5.5), cache des pages (§7), anti-spoiler.
+- **Réglages › Livres › Lecteur** : sens par défaut, mode par défaut, zones de toucher,
+  ajustement, touches de volume, netteté, mode liseuse, flash, police et mise en page du
+  texte, voix.
+- Le ⋮ du lecteur ouvre directement Réglages › Livres › Lecteur ; les choix « Pour ce livre
+  seulement » (§6.6) s'y font aussi.
+- **Recherche dans les Réglages** : un champ en tête de Réglages (et ⌘K sur desktop) trouve un
+  réglage par son nom ou un synonyme, dans tous les domaines, et ouvre sa page en le
+  surlignant.
 
 ## 6. Lecteur
 
@@ -565,6 +629,11 @@ mode liseuse, flash, police et mise en page du texte, voix.
 - **Lecture privée** : un interrupteur dans le ⋮ du lecteur et sur la Bibliothèque. Rien dans
   l'historique ni dans `plays`, aucune mise à jour du tracker, « Reprendre » inchangé. La
   progression du livre est gardée (on reprend où on en était), pas son historique.
+- **Reprendre où tu en es ailleurs** : à l'ouverture d'un livre, si le tracker lié (AniList,
+  MyAnimeList) ou le serveur (`remote-progress`) connaît une progression plus avancée que
+  l'appareil, une puce propose « Tu en es au chapitre 92 sur un autre appareil. Y aller ? ».
+  Elle sert entre Vehicoule et les autres apps ; entre deux appareils Vehicoule, c'est la
+  synchro (§3.8).
 - Puce « Reprendre la bande-son » à l'ouverture (addendum §6). La musique continue pendant la
   lecture.
 
@@ -575,7 +644,7 @@ mode liseuse, flash, police et mise en page du texte, voix.
 - **B1, sens de lecture** : `direction` du livre si la source le donne ; sinon déduit : pays
   JP → droite à gauche, KR → webtoon, CN → webtoon pour un manhua en couleur, sinon gauche à
   droite ; format `comic` → gauche à droite. Changer de sens dans le lecteur le **retient pour
-  la série** (`book_series`).
+  la série** (`book_prefs`).
   Le sens de lecture est **indépendant de la langue de l'interface** et de son sens d'écriture :
   une interface de droite à gauche (arabe, hébreu) ne retourne pas un manga, et un manga
   traduit en français garde son sens d'origine. Seuls la série et le choix de l'utilisateur le
@@ -586,7 +655,10 @@ mode liseuse, flash, police et mise en page du texte, voix.
 - **Double page** sur grand écran (paysage, desktop) : une page panoramique (plus large que
   haute) s'affiche seule ; décalage d'une page au choix, retenu par livre.
 - **Zones de toucher** au choix (L, bords, Kindle, désactivées) ; touches de volume en option.
-- **Filtres** : luminosité, mode nuit, niveaux de gris.
+- **Filtres** : luminosité, mode nuit, niveaux de gris, **inversion des couleurs**.
+- **Appui long sur une page** : enregistrer l'image (dans le dossier choisi par le sélecteur
+  système), la partager, en faire la couverture du livre (gardée en local).
+- **Numéro de page** en surimpression discrète (« 12 / 40 »), en option.
 - **Netteté** : les shaders Anime4K (MIT, déjà embarqués pour la vidéo) réécrits en
   `FragmentShader` Flutter, préréglages Désactivé · Rapide · Qualité. Calculée **une fois par
   page** puis gardée en image : le défilement n'en paie pas le coût. « Rapide » sur Android
@@ -757,7 +829,9 @@ L'écran et les règles de l'addendum §6 bis ; le domaine fournit :
   versions », doublons et `merged_into`, `progress` et `locator` (position retrouvée après un
   changement de taille), chapitre lu, file du tracker, mise à jour maline, désembrouillage
   (tuiles, XOR), découpe des images hautes, arbre de blocs (EPUB, MOBI, AZW3, FB2), césure,
-  recherche, B2 (XY-cut), langues des chapitres (les trois comportements du chapitre absent,
+  recherche, B2 (XY-cut), `book_prefs` intact après un vidage du cache, liens de partage (ordre
+  `a`, `k`, `u`, `o`, aucun lien sans catalogue), plusieurs adresses accordées (8 au plus),
+  langues des chapitres (les trois comportements du chapitre absent,
   hors non-lus et pastilles en grisé), `lang`, `dir` et `page-progression-direction`, éviction du cache, `remote-progress` (la plus
   avancée gagne, file hors ligne), export des notes, imports Mihon, SY, Aniyomi, Calibre, `replaces-mihon`, migration en
   masse, CBZ et EPUB écrits relus par nos propres lecteurs.
@@ -802,6 +876,7 @@ fréquence, mémoire sous les mêmes plafonds. macOS : un Mac à 120 Hz (ProMoti
 |---|---|---|
 | Texte vertical (`vert`, ruby, tate-chū-yoko) sur 5 light novels | identique à Apple Books ; tourner la page à 120 | Paragraphes verticaux mis en page en Rust (`parley`), peints par Flutter |
 | Webtoon : 60 images jusqu'à 800×30 000 px, défilement manuel puis automatique | 120 ; PSS ≤ 200 Mio | Bandes de 2048 px, préchargement réduit, images hors écran libérées plus tôt |
+| Comparaison point par point avec Mihon et une liseuse de référence (Moon+ Reader ou KOReader) : tout ce qu'un habitué utilise chaque jour | aucun manque, ou chaque manque ajouté à la spec avant le code | — |
 | Les 20 sources Mihon les plus installées, en WASM avec le SDK seul (désembrouillage compris) | ≥ 18 sur 20 | Option `js` du SDK (Boa), mesurée comme dans la spec vidéo §10.1 |
 | EPUB natif sur 60 fichiers (Standard Ebooks, Gutenberg, commerciaux sans DRM, EPUB 2 mal formés, les 5 verticaux) | ≥ 57 sur 60 sans perte de texte, mise en forme juste (titres, italiques, images, notes) | Sous-ensemble CSS élargi d'après les échecs ; sinon mise en page entière en Rust (`parley` + `taffy`), Flutter ne fait que peindre |
 | Repagination d'un chapitre de 50 000 caractères après un changement de taille | ≤ 100 ms | Pagination progressive : pages autour de la position d'abord, le reste en arrière-plan |
@@ -832,6 +907,18 @@ Le rapport va dans `docs/superpowers/reports/`, comme ceux de la musique et de l
 
 ### 11.2 Ensuite
 
+L'ordre suit trois **jalons utilisables** : chacun livre quelque chose qu'on lit pour de vrai
+tous les jours, pour que les problèmes apparaissent tôt. Rien n'y est repoussé : le domaine
+n'est fini qu'au troisième.
+
+- **Jalon 1, fichiers locaux** : CBZ, CB7 et EPUB de l'appareil, lecteur d'images et lecteur de
+  texte de base, progression et reprise.
+- **Jalon 2, sources** : contrat, feed officiel, sources tierces, import Mihon et Aniyomi,
+  Nouveautés.
+- **Jalon 3, tout le reste** : chaque fonction de la spec.
+
+Dans le détail :
+
 1. Ajouts au socle (§2) : `locator` (`progress`, `bookmarks`), `book_highlights`, `credentials`, `locale`, adresses accordées (surface d'attaque §2),
    `replaces-mihon`, pages dans le proxy de `stream`, `music.tempo`.
 2. Contrat `vehicoule:books`, plugins du feed officiel (AniList livres, Open Library,
@@ -843,13 +930,32 @@ Le rapport va dans `docs/superpowers/reports/`, comme ceux de la musique et de l
 5. Écrans, puis téléchargements.
 6. Validation : les critères du §1.
 
-## 12. Ce que cette spec change dans les autres specs
+## 12. Licences et conditions des données
+
+Le spike relit les conditions à jour de chaque fournisseur ; limites et attributions vont dans
+les manifestes (limite de débit appliquée par l'hôte, socle §4.3) et sur la page « À propos ».
+
+| Fournisseur | Ce qui s'applique |
+|---|---|
+| AniList | API publique, usage non commercial, limite de débit (90 requêtes par minute, parfois moins) |
+| Open Library | données sous CC0 ; couvertures : accès par id direct (OLID, ISBN) sans limite stricte, les autres accès limités (environ 100 requêtes par IP toutes les 5 minutes) ; User-Agent descriptif |
+| MangaUpdates | API publique ; conditions d'usage relues au spike, attribution si demandée |
+| SauceNAO | quota anonyme, usage personnel ; aucune image envoyée sans geste de l'utilisateur |
+| Project Gutenberg | le site interdit l'aspiration automatisée : accès seulement à la demande de l'utilisateur (une recherche, un livre), jamais de préchargement du catalogue ; limite de débit stricte ; l'en-tête de licence des textes est conservé dans le fichier |
+| Standard Ebooks | livres sous CC0 ; mêmes règles d'accès à la demande |
+| MyAnimeList | API officielle, client OAuth du projet, usage non commercial |
+
+## 13. Ce que cette spec change dans les autres specs
 
 | Spec | Devient |
 |---|---|
 | Addendum §5.1 : « Lire un livre ne joue rien : la musique continue » | Sauf la lecture à voix haute, qui atténue la musique pendant qu'elle parle (§6.8) |
 | Addendum §6 : `continues-at` | Fournie par `books.catalog.relations` (plugin tiers) ou saisie par l'utilisateur ; champs `after-episode` et `at-chapter` (§4.1) |
 | Addendum §13 : B1, B2, B3, défilement au tempo | §6.2 à §6.5 |
+| Addendum §2.3 : sections de Réglages « Lecture musique », « Lecteur vidéo », « Lecteur de livres » | Une section par domaine, au nom du domaine (« Musique », « Vidéos », « Livres »), le lecteur en sous-page ; recherche dans les Réglages (§5.7) |
+| Addendum §3.1 : lettres de fournisseur des livres (`a`, `k`) | + `u` MangaUpdates, `o` Open Library (id d'œuvre) ; ordre `a`, `k`, `u`, `o` (§5.2 bis) |
+| Surface d'attaque §2 : une adresse accordée à un plugin | Plusieurs adresses par plugin, accordées une à une, 8 au plus ; découverte Bonjour par l'hôte (§4.3) |
+| Socle §5.3 : synchro « prête, non livrée » | Spec de synchro à écrire (socle), qui reprend les attentes du §3.8 |
 | Spec vidéo §3.2 : `progress`, `bookmarks` | + colonne `locator` (nullable) |
 | Spec vidéo §4.1 : plugin AniList | Un seul plugin AniList exporte `vehicoule:video`, `vehicoule:books` et le tracker |
 | Spec vidéo §4.5 : `vehicoule:host` 1.1.0 | + interfaces `credentials` et `locale` (§4.5) ; `Accept-Language` ajouté par l'hôte. Même définition que la spec vidéo §4.7 : une seule interface pour les trois domaines |
@@ -857,7 +963,7 @@ Le rapport va dans `docs/superpowers/reports/`, comme ceux de la musique et de l
 | Contrat `vehicoule:music` | + capacité `tempo: func(track: track-ref) -> result<option<f32>, error>` (mineure), plugin Deezer |
 | Surface d'attaque §7.1 : dépendances prévues | + `html5ever`, `cssparser`, `hyphenation`, `read-fonts`, `zip`, `sevenz-rust`, `hayro`, `resvg`, `mobi`, `rxing`, `jxl-oxide`, `rav1d` (tous Rust), décodeur RAR Rust si le spike le valide ; `cargo-fuzz` en CI |
 
-## 13. Ce que cette spec ne couvre pas
+## 14. Ce que cette spec ne couvre pas
 
 - Les sources de scans et de romans web : plugins tiers, hors des dépôts Vehicoule, comme
   `vehicoule-ytmusic` et les sources vidéo.
