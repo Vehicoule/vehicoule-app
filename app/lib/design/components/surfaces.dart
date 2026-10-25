@@ -302,7 +302,8 @@ class VStandardSheet extends StatelessWidget {
   }
 }
 
-/// A settings group (spec UI §6.7): a label, then rows in one rounded group.
+/// A settings group (spec UI §6.7): rows in one rounded group, its label inside the first
+/// (the Réglages mockup).
 class VListGroup extends StatelessWidget {
   const VListGroup({super.key, required this.title, required this.children});
 
@@ -312,28 +313,33 @@ class VListGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            VSpace.s16,
-            0,
-            VSpace.s16,
-            VSpace.s8,
-          ),
-          child: Text(
-            title,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.primary,
+    return M3EList(
+      itemCount: children.length,
+      itemBuilder: (context, i) => i > 0
+          ? children[i]
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    VSpace.s16,
+                    VSpace.s12,
+                    VSpace.s16,
+                    0,
+                  ),
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      title,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+                children[0],
+              ],
             ),
-          ),
-        ),
-        M3EList(
-          itemCount: children.length,
-          itemBuilder: (context, i) => children[i],
-        ),
-      ],
     );
   }
 }
