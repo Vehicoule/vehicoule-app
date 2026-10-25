@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:media_kit/media_kit.dart' show PlayerLog;
 import 'package:vehicoule/bridge/frb_generated.dart';
 import 'package:vehicoule/bridge/player.dart';
 import 'package:vehicoule/bridge/telemetry.dart';
 import 'package:vehicoule/debug/fake_api.dart';
 import 'package:vehicoule/platform/player.dart';
+import 'package:vehicoule/platform/player_errors.dart';
 
 class FakeBackend implements MediaBackend {
   final calls = <String>[];
@@ -27,8 +29,14 @@ class FakeBackend implements MediaBackend {
   ];
 
   @override
-  Future<void> open(List<Source> items, {required bool play}) async =>
-      calls.add('open ${items.map((s) => s.uri).join(',')} play=$play');
+  Future<void> open(
+    List<Source> items, {
+    required bool play,
+    Duration start = Duration.zero,
+  }) async => calls.add(
+    'open ${items.map((s) => s.uri).join(',')} play=$play'
+    '${start > Duration.zero ? ' start=${start.inMilliseconds}' : ''}',
+  );
   @override
   Future<void> add(Source s) async => calls.add('add ${s.uri}');
   @override
@@ -104,7 +112,8 @@ void main() {
     final r = Rig();
     r.commands.add(playCmd('e1', 'a', positionMs: 30000));
     await settle();
-    expect(r.backend.calls, ['open a play=true', 'seek 30000']);
+    // The start goes with the media: a seek right after open is lost before it loads.
+    expect(r.backend.calls, ['open a play=true start=30000']);
     expect(r.adapter.position.value, 30000);
     r.backend.indexes.add(0);
     r.backend.playings.add(true);
@@ -398,4 +407,104 @@ void main() {
     await r.adapter.seekBy(const Duration(minutes: -5));
     expect(r.backend.calls.last, 'seek 0');
   });
+
+  test(
+    'the same entry played twice in a row reports two TrackStarted',
+    () async {
+      // Repeat one: Rust holds the same entry as the next one.
+      final r = Rig();
+      r.commands
+        ..add(playCmd('e1', 'a'))
+        ..add(
+          PlayerCommand.enqueueNext(entry: 'e1', source: src('a'), gainDb: 0),
+        );
+      await settle();
+      r.backend.indexes
+        ..add(0)
+        ..add(0) // the add reports its index again: no new track
+        ..add(1);
+      // Played again from the start (a 403 resume, a jump back to it).
+      r.commands.add(playCmd('e1', 'a'));
+      await settle();
+      r.backend.indexes.add(0);
+      expect(r.events, [
+        for (var i = 0; i < 3; i++) const PlayerEvent.trackStarted(entry: 'e1'),
+      ]);
+    },
+  );
+
+  test('a mid-play error followed by completed reports only Error', () async {
+    final r = Rig();
+    r.commands.add(playCmd('e1', 'a'));
+    await settle();
+    r.backend.indexes.add(0);
+    r.backend.playings.add(true);
+    r.backend.positions.add(const Duration(seconds: 75));
+    r.events.clear();
+    // The stream dies: mpv logs it, then reaches the end of what it had.
+    r.backend.errorLines.add('https: HTTP error 403 Forbidden');
+    r.backend.playings.add(false);
+    r.backend.completes.add(true);
+    expect(r.events, [
+      PlayerEvent.error(
+        entry: 'e1',
+        kind: PlayerErrorKind.forbidden,
+        message: 'https: HTTP error 403 Forbidden',
+        positionMs: ms(75000),
+      ),
+    ]);
+  });
+
+  test(
+    'media_kit errors come from the log, the HTTP warnings included',
+    () async {
+      final lines = await MediaKitBackend.errorsFrom(
+        Stream.fromIterable(const [
+          PlayerLog(
+            prefix: 'cplayer',
+            level: 'info',
+            text: 'Playing: https://x',
+          ),
+          PlayerLog(
+            prefix: 'ffmpeg',
+            level: 'warn',
+            text: 'https: HTTP error 403 Forbidden',
+          ),
+          PlayerLog(
+            prefix: 'ffmpeg',
+            level: 'warn',
+            text: 'mov: stream 0, timescale not set',
+          ),
+          PlayerLog(
+            prefix: 'stream',
+            level: 'error',
+            text: 'Failed to open https://x.',
+          ),
+          PlayerLog(
+            prefix: 'ffmpeg',
+            level: 'error',
+            text: 'tcp: Connection refused',
+          ),
+          PlayerLog(
+            prefix: 'ffmpeg',
+            level: 'error',
+            text: 'mov: moov atom not found',
+          ),
+          PlayerLog(
+            prefix: 'ad',
+            level: 'error',
+            text: 'Error decoding audio.',
+          ),
+          PlayerLog(prefix: 'ao', level: 'warn', text: 'buffer underrun'),
+        ]),
+      ).toList();
+      expect(lines, [
+        'https: HTTP error 403 Forbidden',
+        'Failed to open https://x.',
+        'tcp: Connection refused',
+        'Error decoding audio.',
+      ]);
+      expect(classifyPlayerError(lines.first), PlayerErrorKind.forbidden);
+    },
+  );
 }

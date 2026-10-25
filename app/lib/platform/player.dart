@@ -21,7 +21,12 @@ double gainToVolume(double gainDb) =>
 /// What plays the sound: media_kit for real, a fake in the tests. Its playlist holds the
 /// current track and at most one next; `index` is the one playing.
 abstract interface class MediaBackend {
-  Future<void> open(List<Source> items, {required bool play});
+  /// [start]: where the first item starts, applied as it loads.
+  Future<void> open(
+    List<Source> items, {
+    required bool play,
+    Duration start = Duration.zero,
+  });
   Future<void> add(Source s);
   Future<void> removeAt(int index);
   Future<void> seek(Duration d);
@@ -42,19 +47,31 @@ class MediaKitBackend implements MediaBackend {
     MediaKit.ensureInitialized();
   }
 
-  // Late: created after ensureInitialized.
-  late final _player = Player();
+  // Late: created after ensureInitialized. Warnings logged: ffmpeg's HTTP errors are.
+  late final _player = Player(
+    configuration: const PlayerConfiguration(logLevel: MPVLogLevel.warn),
+  );
 
-  static Media _media(Source s) => Media(
+  static Media _media(Source s, {Duration? start}) => Media(
     s.uri,
     httpHeaders: Map.fromEntries([
       for (final (k, v) in s.headers) MapEntry(k, v),
     ]),
+    start: start,
   );
 
   @override
-  Future<void> open(List<Source> items, {required bool play}) =>
-      _player.open(Playlist([for (final s in items) _media(s)]), play: play);
+  Future<void> open(
+    List<Source> items, {
+    required bool play,
+    Duration start = Duration.zero,
+  }) => _player.open(
+    Playlist([
+      for (final (i, s) in items.indexed)
+        _media(s, start: i == 0 && start > Duration.zero ? start : null),
+    ]),
+    play: play,
+  );
   @override
   Future<void> add(Source s) => _player.add(_media(s));
   @override
@@ -81,7 +98,22 @@ class MediaKitBackend implements MediaBackend {
   @override
   Stream<bool> get completed => _player.stream.completed;
   @override
-  Stream<String> get errors => _player.stream.error;
+  Stream<String> get errors => errorsFrom(_player.stream.log);
+
+  /// media_kit's own `error` filter (real.dart, MPV_EVENT_LOG_MESSAGE), plus the HTTP
+  /// errors ffmpeg logs as warnings (`https: HTTP error 403 Forbidden`), in log order.
+  static Stream<String> errorsFrom(Stream<PlayerLog> log) => log
+      .where(
+        (l) =>
+            (l.level == 'error' &&
+                (_errorPrefixes.contains(l.prefix) ||
+                    l.prefix == 'ffmpeg' && l.text.startsWith('tcp:'))) ||
+            (l.level == 'error' || l.level == 'warn') &&
+                l.text.contains('HTTP error'),
+      )
+      .map((l) => l.text);
+
+  static const _errorPrefixes = {'file', 'vd', 'ad', 'cplayer', 'stream'};
 }
 
 /// Runs Rust's player commands on a [MediaBackend] and reports what happens, in order.
@@ -105,9 +137,10 @@ class PlayerAdapter {
   final _gains = <double>[];
   var _index = 0;
 
-  /// The entry `TrackStarted` went out for: the playlist reports its index again when
-  /// it changes, which is no new track.
-  String? _started;
+  /// The index `TrackStarted` went out for: the playlist reports its index again when
+  /// it changes (add, remove), which is no new track. By index, not entry: repeat one
+  /// holds the same entry next.
+  int? _startedIndex;
 
   /// The entry an `Error` went out for: mpv logs one failure on several lines.
   String? _failed;
@@ -155,7 +188,8 @@ class PlayerAdapter {
     _backend.completed.listen((done) {
       final e = _entry;
       // With a next one held, it starts by itself.
-      if (!done || e == null || _hasNext) return;
+      // After an Error, its end is no end: Rust already decides what follows.
+      if (!done || e == null || e == _failed || _hasNext) return;
       _report(PlayerEvent.ended(entry: e));
     });
     _backend.errors.listen(_onError);
@@ -210,19 +244,23 @@ class PlayerAdapter {
           ..clear()
           ..add(gainDb);
         _index = 0;
-        _started = null;
+        _startedIndex = null;
         _failed = null;
         _setLoading(true);
         final at = positionMs.toInt();
         _position.value = at;
         _seeks++;
         try {
-          await _backend.open([source], play: autoplay);
+          // The start goes with the media: a seek right after open is lost (not loaded).
+          await _backend.open(
+            [source],
+            play: autoplay,
+            start: Duration(milliseconds: at),
+          );
         } finally {
           _seeks--;
         }
         _awaitingSound = true;
-        if (at > 0) await _seekTo(Duration(milliseconds: at));
       case PlayerCommand_EnqueueNext(
             :final entry,
             :final source,
@@ -250,7 +288,7 @@ class PlayerAdapter {
         _entries.clear();
         _gains.clear();
         _index = 0;
-        _started = null;
+        _startedIndex = null;
         _tap = null;
         _setLoading(false);
         _position.value = 0;
@@ -291,8 +329,8 @@ class PlayerAdapter {
   void _onIndex(int i) {
     _index = i;
     final e = _entry;
-    if (e == null || e == _started) return;
-    _started = e;
+    if (e == null || i == _startedIndex) return;
+    _startedIndex = i;
     _failed = null;
     _report(PlayerEvent.trackStarted(entry: e));
     unawaited(_applyVolume());
