@@ -224,6 +224,20 @@ la carte Reprendre de la file musique.
 Les raccourcis desktop (spec UI §4.2) visent **la vidéo** quand elle est en plein écran ou que
 sa fenêtre a le focus, **la musique** sinon. Une seule fonction choisit la session visée.
 
+### 5.4 Lire sur la TV
+
+- **DLNA / UPnP** (protocole ouvert, la plupart des TV connectées sont des « renderers »),
+  implémenté en Rust dans le cœur ; **AirPlay** sur macOS par le sélecteur de sortie du
+  système. Pas de Chromecast : son SDK est fermé et passe par les services Google.
+- Entrée : la sortie du lecteur (spec UI §5.5, bloc 1) liste « Sur cet appareil », puis les
+  TV trouvées sur le réseau local ; même entrée dans l'en-tête du lecteur vidéo.
+- Musique et vidéo : la session garde sa file, son historique et sa progression ; le
+  téléphone devient la télécommande (⏯, ±10 s, suivant, volume de la TV). Les sous-titres
+  externes sont envoyés quand la TV les accepte (SRT), sinon incrustés est hors de portée :
+  l'épisode joue sans, et l'écran le dit.
+- Sécurité : surface d'attaque §2 (exception du proxy pour le seul appareil choisi).
+- Livré dès la v1 musique.
+
 ## 6. Relations entre domaines
 
 Ce qui justifie le 3-en-1 : les domaines se parlent.
@@ -320,6 +334,11 @@ et les états vides, qui ont déjà leurs grandes formes de décor.
 
 ## 7. Hors ligne et hors de l'app
 
+- **Mode économie** : un seul interrupteur (Réglages › Données et batterie : automatique,
+  toujours, jamais). Automatique = sur données mobiles ou quand le système est en économie
+  de batterie. Il met la musique en qualité `low` et la vidéo en 480p, coupe le préchargement
+  de l'épisode suivant, « Pour le trajet » et Anime4K. Une puce discrète sous l'app bar le
+  signale, comme le mode hors ligne (spec UI §6.9).
 - **Budget de stockage unique** pour tous les domaines (Réglages › Téléchargements). Au-delà,
   les plus anciens éléments déjà vus ou lus partent en premier.
 - **« Pour le trajet »** : en Wi-Fi et en charge, l'app télécharge les N prochains épisodes et
@@ -463,6 +482,7 @@ entre dans la v1 musique (§12).
     universels (plan 5, Task 4 : le concentrateur de liens), page statique sur `vehicoule.com` ;
   - **sauvegarde** (§7 bis) : export chiffré, restauration par fusion HLC, sauvegarde
     automatique hebdomadaire (cœur, plan 3 ; écran Réglages › Sauvegarde, plan 5) ;
+  - **mode économie** (§7) et **lire sur la TV** (§5.4) ;
   - **M1** paroles romanisées et traduites, **M3** son par sortie audio (§13) ;
   - **« C'est quoi ? »** (§6 bis), mode Écouter : capacité `music.identify` (contrat musique
     1.2, mineure), AcoustID dans le feed officiel, l'écran à grande forme (`VShapeStage` dans

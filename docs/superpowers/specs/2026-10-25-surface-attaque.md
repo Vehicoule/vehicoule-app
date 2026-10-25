@@ -52,6 +52,12 @@ refus des IP privées du socle §4.3.
 typée ; une redirection hors des domaines du plugin → refusée ; un jeton faux → 404 ; mpv
 configuré ne peut pas ouvrir `file://`, `tcp://` ni un autre hôte.
 
+**Exception : lire sur la TV** (addendum §5.4). Une TV DLNA va chercher le flux elle-même :
+le proxy ouvre alors une seconde écoute sur l'adresse du réseau local, **pour la seule IP de
+la TV choisie**, avec un jeton propre à cette lecture, et seulement le temps de la lecture.
+Toute autre IP reçoit un refus ; la découverte (SSDP) ne répond qu'aux renderers, et l'app
+n'annonce aucun service. Arrêter la lecture sur la TV ferme l'écoute.
+
 ## 3. libmpv et FFmpeg réduits
 
 - Les failles de FFmpeg se concentrent dans les démultiplexeurs et décodeurs rares. On

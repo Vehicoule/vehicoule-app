@@ -417,6 +417,12 @@ Accueil (commun, addendum §4) · **Bibliothèque** · **Nouveautés** · **Hist
   dans les sources »), les sources installées ; une source ouvre Populaires · Récents et ses
   filtres. Un résultat d'une source ouvre la page série après correspondance (§3.3).
 
+### 5.1 bis Langue des titres
+
+Réglages › Anime › « Titres en » : romaji, anglais, natif, ou **français quand il existe**
+(cherché dans les synonymes AniList, puis l'anglais). Le choix s'applique partout : grilles,
+pages, notifications, Reprendre, partage. La recherche cherche toujours dans tous les titres.
+
 ### 5.2 Page série
 
 - Affiche fondue dans la surface (spec UI §2.2, pas d'extraction), titre, format, année,
@@ -521,6 +527,9 @@ pour la musique.
   les shaders embarqués (licence MIT). « Rapide » seulement sur Android si le spike tient
   60 images/s en 1080p sur l'appareil de référence ; sinon le choix n'est pas proposé sur cet
   appareil.
+- **Sous-titres pour sourds et malentendants** : un filtre retire, ou garde seuls, les
+  annotations sonores (`[musique]`, `(rires)`, noms de locuteurs) des pistes SDH ; une
+  police haute lisibilité est proposée dans le style des sous-titres.
 - **Commande Musique** dans l'en-tête (addendum §5.1) : titre et ⏯ de la session musique.
 - Pas de `mpv.conf` ni de scripts Lua (sécurité du modèle de plugins).
 
