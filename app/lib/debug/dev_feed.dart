@@ -16,9 +16,10 @@ import '../bridge/api/playback.dart' show play;
 import '../bridge/api/plugins.dart' show addFeed, refreshFeeds;
 import '../platform/player.dart';
 
+const _url = String.fromEnvironment('VEHICOULE_DEV_FEED');
+
 /// True when a feed was given (and added, or already there).
-Future<bool> addDevFeed() async {
-  const url = String.fromEnvironment('VEHICOULE_DEV_FEED');
+Future<bool> addDevFeed({String url = _url}) async {
   if (url.isEmpty) return false;
   try {
     await addFeed(
@@ -31,16 +32,22 @@ Future<bool> addDevFeed() async {
   return true;
 }
 
-/// Adds the feed and skips the first launch (Task 7 builds it); then, in the
-/// background, refreshes the feed and plays `VEHICOULE_DEV_PLAY`'s tracks if given.
-Future<void> startDevFeed(PlayerAdapter player) async {
-  if (!await addDevFeed()) return;
+/// Skips the first launch (Task 7 builds it); then, in the background, adds the feed,
+/// refreshes it and plays `VEHICOULE_DEV_PLAY`'s tracks if given.
+///
+/// The feed's first install takes seconds (the plugins are fetched and compiled): the
+/// app must not wait for it. Android freezes a cached process (Android 14's freezer),
+/// so an app sent to the background during that install would show nothing until it
+/// came back to the foreground.
+Future<void> startDevFeed(PlayerAdapter player, {String url = _url}) async {
+  if (url.isEmpty) return;
   await finishOnboarding(telemetry: false);
-  unawaited(_play(player));
+  unawaited(_play(player, url));
 }
 
-Future<void> _play(PlayerAdapter player) async {
+Future<void> _play(PlayerAdapter player, String url) async {
   try {
+    await addDevFeed(url: url);
     await refreshFeeds();
     const query = String.fromEnvironment('VEHICOULE_DEV_PLAY');
     if (query.isEmpty) return;
