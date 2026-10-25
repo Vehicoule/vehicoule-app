@@ -507,4 +507,61 @@ void main() {
       expect(classifyPlayerError(lines.first), PlayerErrorKind.forbidden);
     },
   );
+
+  test('a resume after an error reports the end again', () async {
+    final r = Rig();
+    r.commands.add(playCmd('e1', 'a'));
+    await settle();
+    r.backend.indexes.add(0);
+    r.backend.playings.add(true);
+    r.backend.positions.add(const Duration(seconds: 75));
+    r.backend.errorLines.add('tcp: Connection refused');
+    r.backend.playings.add(false);
+    // A network error leaves it stopped; the user resumes in place.
+    r.backend.playings.add(true);
+    r.backend.completes.add(true);
+    expect(r.events.last, const PlayerEvent.ended(entry: 'e1'));
+  });
+
+  test(
+    'after a play with a start, position holds the start until sound',
+    () async {
+      final r = Rig();
+      r.commands.add(playCmd('e1', 'a', positionMs: 30000, autoplay: false));
+      await settle();
+      r.backend.indexes.add(0);
+      r.backend.positions.add(Duration.zero);
+      expect(r.adapter.position.value, 30000);
+      await r.adapter.pause();
+      expect(r.events.last, PlayerEvent.paused(entry: 'e1', ms: ms(30000)));
+      r.backend.positions.add(const Duration(milliseconds: 30200));
+      expect(r.adapter.position.value, 30200);
+      // Once it played, 0 is a real position (a seek back to the start).
+      r.backend.positions.add(Duration.zero);
+      expect(r.adapter.position.value, 0);
+    },
+  );
+
+  test('other HTTP warnings are no errors', () async {
+    final lines = await MediaKitBackend.errorsFrom(
+      Stream.fromIterable(const [
+        PlayerLog(
+          prefix: 'ffmpeg',
+          level: 'warn',
+          text: 'https: HTTP error 404 Not Found',
+        ),
+        PlayerLog(
+          prefix: 'ffmpeg',
+          level: 'warn',
+          text: 'https: HTTP error 503 Service Unavailable',
+        ),
+        PlayerLog(
+          prefix: 'ffmpeg',
+          level: 'warn',
+          text: 'https: HTTP error 4030',
+        ),
+      ]),
+    ).toList();
+    expect(lines, isEmpty);
+  });
 }

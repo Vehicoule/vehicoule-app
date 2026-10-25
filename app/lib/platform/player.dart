@@ -100,8 +100,9 @@ class MediaKitBackend implements MediaBackend {
   @override
   Stream<String> get errors => errorsFrom(_player.stream.log);
 
-  /// media_kit's own `error` filter (real.dart, MPV_EVENT_LOG_MESSAGE), plus the HTTP
-  /// errors ffmpeg logs as warnings (`https: HTTP error 403 Forbidden`), in log order.
+  /// media_kit's own `error` filter (real.dart, MPV_EVENT_LOG_MESSAGE), plus the 403
+  /// ffmpeg logs as a warning (`https: HTTP error 403 Forbidden`), in log order. Other
+  /// HTTP warnings are left out: mpv may get past them.
   static Stream<String> errorsFrom(Stream<PlayerLog> log) => log
       .where(
         (l) =>
@@ -109,11 +110,12 @@ class MediaKitBackend implements MediaBackend {
                 (_errorPrefixes.contains(l.prefix) ||
                     l.prefix == 'ffmpeg' && l.text.startsWith('tcp:'))) ||
             (l.level == 'error' || l.level == 'warn') &&
-                l.text.contains('HTTP error'),
+                _http403.hasMatch(l.text),
       )
       .map((l) => l.text);
 
   static const _errorPrefixes = {'file', 'vd', 'ad', 'cplayer', 'stream'};
+  static final _http403 = RegExp(r'HTTP error 403\b');
 }
 
 /// Runs Rust's player commands on a [MediaBackend] and reports what happens, in order.
@@ -337,7 +339,8 @@ class PlayerAdapter {
   }
 
   void _onPosition(Duration d) {
-    if (_seeks > 0) return;
+    // Until the first sound of a Play, a 0 is no position: the start is held.
+    if (_seeks > 0 || (_awaitingSound && d <= Duration.zero)) return;
     _position.value = d.inMilliseconds;
     if (d <= Duration.zero || !_awaitingSound) return;
     _awaitingSound = false;
@@ -355,6 +358,8 @@ class PlayerAdapter {
   void _onPlaying(bool p) {
     if (p == _playing) return;
     _playing = p;
+    // A resume (after a network error, say) is a new run: its end is reported again.
+    if (p) _failed = null;
     _ticker?.cancel();
     _ticker = null;
     final e = _entry;
