@@ -46,7 +46,7 @@ indépendantes des fournisseurs, aucun HTML rendu par une WebView.
 |---|---|
 | `items.kind` (§5.1) | + `book`, `chapter` (posés par la spec anime §2) |
 | Tables communes (spec anime §3.2) | réutilisées telles quelles ; `progress` gagne `locator` (§3.2) |
-| `vehicoule:host` 1.1.0 (spec anime §4.5) | + interface `credentials` (§4.5), dans la même version 1.1.0 tant qu'elle n'est pas publiée |
+| `vehicoule:host` 1.1.0 (spec anime §4.5) | + interfaces `credentials` et `locale` (§4.5), dans la même version 1.1.0 tant qu'elle n'est pas publiée ; `locale` sert à tous les domaines |
 | Manifeste (socle §4.3) | + `replaces-mihon` (§3.6), + domaines ajoutés par l'utilisateur (§4.3) |
 | `vehicoule:music` | + capacité `tempo` (mineure, comme `identify`) pour le défilement au tempo (§6.5) |
 | Crate `stream` | + pages servies par le proxy local (surface d'attaque §2), désembrouillage, transcodage d'images, découpe des images hautes (§6.2) |
@@ -115,8 +115,20 @@ renommés en anglais) vit avec le premier plugin de source tiers et sert de test
   liste montre un seul chapitre, celui du groupe préféré (sinon le plus récent) ; les autres
   vont sous « Autres versions » dans le menu de la ligne.
 - **Langues des chapitres** : Réglages › Livres › « Langues des chapitres », une liste ordonnée
-  (FR puis EN, par exemple), modifiable par livre. Un seul chapitre par numéro, dans la première
-  langue disponible ; les autres langues vont sous « Autres versions », avec les autres groupes.
+  de langues de traduction acceptées (BCP 47 ; FR puis EN, par exemple), préremplie depuis les
+  langues préférées de l'app (§4.5) et modifiable par livre. Un seul chapitre par numéro, dans
+  la première langue disponible de la liste ; les autres langues vont sous « Autres versions »,
+  avec les autres groupes.
+- **Chapitre absent dans tes langues** (réglage, modifiable par livre) :
+  - **Montrer en grisé** (défaut) : la ligne apparaît à 38 %, avec sa langue (« 88 · JA ») ;
+    elle s'ouvre si on la touche, mais ne compte ni dans les non-lus, ni dans les pastilles,
+    ni dans Nouveautés, et ne se télécharge pas automatiquement ;
+  - **Masquer** : la ligne n'apparaît pas ; la page livre dit « 3 chapitres dans d'autres
+    langues » ;
+  - **Montrer dans sa langue** : la ligne est un chapitre ordinaire, dans la langue de la
+    version originale si elle existe, sinon la première trouvée.
+  Un livre dont aucun chapitre n'existe dans tes langues le dit sur sa page, avec le choix de
+  la langue à lire.
 - **Doublons à l'ajout** : ajouter un livre déjà présent par une autre source affiche « Déjà
   dans ta bibliothèque » ; les deux items se rejoignent par `merged_into` (socle §5.3).
 
@@ -398,7 +410,7 @@ Le contrat `vehicoule:tracker@1.0.0` de la spec anime §4.4, avec `media: book` 
 - Ebooks hors AniList : pas de tracker. Goodreads n'a plus d'API, et Hardcover demande de
   coller une clé, ce qui est exclu.
 
-### 4.5 Ajout à `vehicoule:host` 1.1.0 : `credentials`
+### 4.5 Ajouts à `vehicoule:host` 1.1.0 : `credentials`, `locale`
 
 Pour les serveurs OPDS privés. Nouvelle interface, posée dans la 1.1.0 avec celles de la spec
 anime §4.5 (aucune n'est encore publiée).
@@ -412,6 +424,28 @@ anime §4.5 (aucune n'est encore publiée).
   jamais le mot de passe**. Refusé vers tout autre domaine, y compris ceux du plugin.
 - « Oublier ce serveur » efface les identifiants. La sauvegarde (addendum §7 bis) ne les
   contient pas.
+
+**`locale`** : les langues préférées de l'utilisateur, **commune à tous les domaines**
+(musique, anime, livres), dans la même 1.1.0.
+
+```wit
+interface locale {
+    /// BCP 47 tags, most preferred first (`fr-FR`, `fr`, `en`).
+    preferred-languages: func() -> list<string>;
+}
+```
+
+- La liste vient de Réglages › Langue : la langue de l'interface d'abord (français ou anglais),
+  puis les langues ajoutées par l'utilisateur, ordonnées. Elle est distincte des langues des
+  chapitres (§3.4), qui en partent par défaut.
+- Les plugins s'en servent pour demander les **métadonnées dans la langue de l'utilisateur**
+  (titres, synopsis, genres, noms de rayons) quand le fournisseur le permet, et pour filtrer
+  ce qu'ils renvoient (langue des chapitres chez MangaDex, par exemple).
+- L'hôte ajoute aussi `Accept-Language` (construit depuis cette liste) aux requêtes `http` et
+  `session` d'un plugin qui n'en fixe pas : les fournisseurs qui localisent par en-tête
+  répondent dans la bonne langue sans code dans le plugin.
+- Aucun `record` ne change : c'est une fonction, pas un champ (socle §4.3). Un plugin 1.0
+  ne l'importe simplement pas.
 
 ## 5. Écrans
 
@@ -439,7 +473,12 @@ Accueil (commun) · **Bibliothèque** · **Nouveautés** · **Historique** · **
   recommandations et les résultats de « C'est quoi ? ».
 - **Anti-spoiler** : le réglage de la spec anime §5.1 s'applique aux titres de chapitres non
   lus.
-- **Titres en** : le réglage de la spec anime §5.1 bis (Réglages › Livres).
+- **Titres en** : le réglage de la spec anime §5.1 bis (Réglages › Livres) : romaji, anglais,
+  natif, ou **dans ta langue quand il existe** (titre localisé : synonymes AniList, titre de
+  l'édition Open Library dans ta langue, `titles` de la source dans la langue demandée), sinon
+  l'anglais. Pour un ebook, « original » ou « de l'édition ». Le choix s'applique partout
+  (grilles, pages, Reprendre, notifications, partage) ; la recherche cherche toujours dans tous
+  les titres.
 
 ### 5.2 Page livre
 
@@ -534,6 +573,10 @@ mode liseuse, flash, police et mise en page du texte, voix.
   JP → droite à gauche, KR → webtoon, CN → webtoon pour un manhua en couleur, sinon gauche à
   droite ; format `comic` → gauche à droite. Changer de sens dans le lecteur le **retient pour
   la série** (`book_series`).
+  Le sens de lecture est **indépendant de la langue de l'interface** et de son sens d'écriture :
+  une interface de droite à gauche (arabe, hébreu) ne retourne pas un manga, et un manga
+  traduit en français garde son sens d'origine. Seuls la série et le choix de l'utilisateur le
+  fixent.
 - **Ajustement** : largeur, hauteur, écran, taille réelle, ou automatique (selon le rapport de
   la page). Zoom par double-toucher et pincement. Recadrage automatique des marges blanches,
   calculé en Rust.
@@ -607,6 +650,11 @@ mode liseuse, flash, police et mise en page du texte, voix.
   - **recherche dans le livre**, sur le texte de l'arbre ;
   - **SVG** (couvertures, illustrations) : rendu en image par `resvg` (Rust pur) dans
     `stream`, taille plafonnée, sans ressource externe ;
+  - **langue et sens par bloc** : `lang` et `dir` du XHTML gardés sur chaque bloc ; le
+    `page-progression-direction` de l'OPF fixe le sens des pages (un livre arabe ou hébreu
+    tourne ses pages vers la gauche) ; Flutter met chaque paragraphe dans son sens
+    (`TextDirection`), avec l'algorithme bidirectionnel d'Unicode. La langue du bloc choisit
+    la césure, la police de repli et la voix de la lecture à voix haute ;
   - **polices embarquées** : vérifiées par `read-fonts` (Rust) avant d'être données à
     Flutter ; une police refusée → la police par défaut.
 - **Flutter** :
@@ -706,7 +754,8 @@ L'écran et les règles de l'addendum §6 bis ; le domaine fournit :
   versions », doublons et `merged_into`, `progress` et `locator` (position retrouvée après un
   changement de taille), chapitre lu, file du tracker, mise à jour maline, désembrouillage
   (tuiles, XOR), découpe des images hautes, arbre de blocs (EPUB, MOBI, AZW3, FB2), césure,
-  recherche, B2 (XY-cut), langues des chapitres, éviction du cache, `remote-progress` (la plus
+  recherche, B2 (XY-cut), langues des chapitres (les trois comportements du chapitre absent,
+  hors non-lus et pastilles en grisé), `lang`, `dir` et `page-progression-direction`, éviction du cache, `remote-progress` (la plus
   avancée gagne, file hors ligne), export des notes, imports Mihon, SY, Aniyomi, Calibre, `replaces-mihon`, migration en
   masse, CBZ et EPUB écrits relus par nos propres lecteurs.
 - **Fuzzing** (`cargo-fuzz`) de chaque parseur de contenu non fiable : EPUB / XHTML / CSS,
@@ -715,13 +764,15 @@ L'écran et les règles de l'addendum §6 bis ; le domaine fournit :
   bloque la release.
 - **Corpus en tests dorés** : les EPUB du spike (ou leurs extraits libres de droits) et les
   300 pages de cases deviennent des tests de non-régression (mise en page, découpe).
-- **`plugin-host`** : `credentials` (le mot de passe n'atteint jamais le composant ; refusé
+- **`plugin-host`** : `locale` (liste dans l'ordre des réglages, `Accept-Language` ajouté
+  seulement quand le plugin n'en fixe pas), `credentials` (le mot de passe n'atteint jamais le composant ; refusé
   hors du domaine saisi), `user-domains` (adresse locale permise seulement si saisie, refusée
   par redirection), images d'un `text` hors des domaines refusées.
 - **Plugins** (feed officiel) : AniList (livres), Open Library, MangaUpdates, OPDS (Gutenberg,
   Standard Ebooks, un Calibre de test), SauceNAO, MyAnimeList, sur réponses enregistrées.
 - **Dart** : ligne de chapitre (états), page livre, modes du lecteur, B1 retenu par série,
-  case par case, mode liseuse (aucune animation), défilement au tempo, pagination et
+  case par case, mode liseuse (aucune animation), sens de lecture inchangé sous une interface de
+  droite à gauche, paragraphes bidirectionnels, défilement au tempo, pagination et
   `locator`, écriture verticale (tests dorés), surlignages, tests dorés de la matrice de la
   spec UI §2.8 ; performance : temps d'image au 99ᵉ centile sur les scénarios du spike
   (`integration_test`), en CI sur l'appareil de Firebase Test Lab.
@@ -778,7 +829,7 @@ Le rapport va dans `docs/superpowers/reports/`, comme ceux de la musique et de l
 
 ### 11.2 Ensuite
 
-1. Ajouts au socle (§2) : `locator` (`progress`, `bookmarks`), `book_highlights`, `credentials`, `user-domains`,
+1. Ajouts au socle (§2) : `locator` (`progress`, `bookmarks`), `book_highlights`, `credentials`, `locale`, `user-domains`,
    `replaces-mihon`, pages dans le proxy de `stream`, `music.tempo`.
 2. Contrat `vehicoule:books`, plugins du feed officiel (AniList livres, Open Library,
    MangaUpdates, OPDS, SauceNAO ; MyAnimeList livres).
@@ -798,7 +849,7 @@ Le rapport va dans `docs/superpowers/reports/`, comme ceux de la musique et de l
 | Addendum §13 : B1, B2, B3, défilement au tempo | §6.2 à §6.5 |
 | Spec anime §3.2 : `progress`, `bookmarks` | + colonne `locator` (nullable) |
 | Spec anime §4.1 : plugin AniList | Un seul plugin AniList exporte `vehicoule:anime`, `vehicoule:books` et le tracker |
-| Spec anime §4.5 : `vehicoule:host` 1.1.0 | + interface `credentials` (§4.5) |
+| Spec anime §4.5 : `vehicoule:host` 1.1.0 | + interfaces `credentials` et `locale` (§4.5) ; `Accept-Language` ajouté par l'hôte. Les plugins musique et anime s'en servent aussi (métadonnées localisées) |
 | Socle §4.3 : manifeste | + `replaces-mihon` (liste d'ids de sources Mihon), + `user-domains` (§4.3) |
 | Contrat `vehicoule:music` | + capacité `tempo(track) -> option<f32>` (mineure), plugin Deezer |
 | Surface d'attaque §7.1 : dépendances prévues | + `html5ever`, `cssparser`, `hyphenation`, `read-fonts`, `zip`, `sevenz-rust`, `hayro`, `resvg`, `mobi`, `rxing`, `jxl-oxide`, `rav1d` (tous Rust), décodeur RAR Rust si le spike le valide ; `cargo-fuzz` en CI |
