@@ -5,7 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_3_expressive/material_3_expressive.dart'
-    show M3EFabMenu, M3ESlider;
+    show M3EFabMenu, M3ESlider, M3ESliderThumb;
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/bridge/downloads.dart';
 import 'package:vehicoule/bridge/queue.dart';
@@ -320,7 +320,7 @@ void main() {
     expect(_views, [PlayerView.queue]);
   });
 
-  testWidgets('V10: the volume is a thin slider with its handle inside', (
+  testWidgets('V10: the volume keeps its thick track, its handle inside', (
     tester,
   ) async {
     for (final vertical in [false, true]) {
@@ -336,19 +336,15 @@ void main() {
         const Size(400, 400),
       );
       final slider = tester.widget<M3ESlider>(find.byType(M3ESlider));
-      expect(slider.size.trackHeight, lessThanOrEqualTo(VSize.sliderTrack));
+      expect(slider.size.trackHeight, VSize.volumeTrack, reason: 'thick');
       final box = _rect(tester, find.byType(VVolume));
-      final speaker = _rect(
-        tester,
-        find.byWidgetPredicate((w) => w is VSymbol && w.icon == VIcons.volume),
+      final handle = _rect(tester, find.byType(M3ESliderThumb));
+      expect(box.inflate(0.5).contains(handle.topLeft), isTrue);
+      expect(box.inflate(0.5).contains(handle.bottomRight), isTrue);
+      expect(
+        vertical ? box.height : box.width,
+        lessThanOrEqualTo(vertical ? VSize.stripVolume : VSize.volumeMax),
       );
-      expect(box.contains(speaker.center), isTrue);
-      if (vertical) {
-        expect(
-          speaker.top,
-          greaterThan(_rect(tester, find.byType(M3ESlider)).top),
-        );
-      }
     }
   });
 

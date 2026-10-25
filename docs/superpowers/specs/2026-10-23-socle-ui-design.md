@@ -248,8 +248,8 @@ listes vides) est dans `docs/voice.md`.
     trois groupes répartis sur la hauteur, espacements en jetons :
     - en haut, le bouton qui rouvre le panneau, puis la pochette du disque avec son anneau ;
     - au milieu, ⏯ rempli (le plus gros, même style que dans le lecteur), ⏭ tonal, like ;
-    - en bas, le volume en slider **vertical** de 120 dp au plus, piste fine, poignée
-      visible, icône haut-parleur dessous.
+    - en bas, le volume en slider **vertical** de 120 dp au plus, à piste épaisse (M3E
+      « m », le haut-parleur dans la piste, en bas), poignée visible et dans son cadre.
 
     Cette bande est le mini-lecteur du desktop. Il n'y a ni barre en bas ni mini-lecteur
     flottant.
@@ -446,8 +446,9 @@ plein écran mobile) :
      tenu droit) : aléatoire et répétition en bascules aux extrémités, ⏮ et ⏭ tonals, ⏯
      rempli et le plus large. Les largeurs morphent à l'appui.
    - ⏯ morphe et devient le loading indicator pendant un chargement.
-6. La **rangée du bas** : à gauche, le volume (desktop), un slider M3E à piste fine et
-   poignée visible qui prend la place restante, 240 dp au plus ; sur mobile, à sa place, le
+6. La **rangée du bas** : à gauche, le volume (desktop), un slider M3E à piste épaisse
+   (« m », le haut-parleur dans la piste), poignée visible et dans son cadre, qui prend la
+   place restante, 240 dp au plus ; sur mobile, à sa place, le
    bouton de sortie audio. À droite, un **FAB menu M3E** qui remplace le sélecteur : son icône
    est celle de la vue courante, il s'ouvre vers le haut sur Paroles · Lecteur · File
    (l'entrée courante cochée).

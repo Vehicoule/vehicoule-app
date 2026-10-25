@@ -406,9 +406,9 @@ class VPlayPauseFab extends StatelessWidget {
   }
 }
 
-/// The volume (spec UI §4.2, §5.5): the speaker, then a thin M3E slider whose handle
-/// stays inside the component; upright in the desktop strip ([vertical]), the speaker
-/// under it.
+/// The volume (spec UI §4.2, §5.5): an M3E slider with its thick track and the speaker
+/// inside it, its handle inside the component; upright in the desktop strip
+/// ([vertical]). The player gives it 240 dp at most, the strip 120.
 class VVolume extends StatelessWidget {
   const VVolume({
     super.key,
@@ -423,53 +423,27 @@ class VVolume extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = AppLocalizations.of(context).volumeLabel;
-    final size = vSliderSize(VSize.volumeTrack);
-    final slider = vertical
-        ? M3ESlider.vertical(
-            value: value,
-            onChanged: onChanged,
-            size: size,
-            semanticLabel: label,
-          )
-        : M3ESlider(
-            value: value,
-            onChanged: onChanged,
-            size: size,
-            semanticLabel: label,
-          );
-    // M3E centres the handle on the track's end: at 0 or 100 % half of it would stick
-    // out past the component. Inset by that half.
-    final half = M3ETheme.of(context).sliderTheme.handleWidth / 2;
-    final speaker = VSymbol(
-      VIcons.volume,
-      filled: true,
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    final slider = M3ESlider(
+      value: value,
+      onChanged: onChanged,
+      size: vSliderSize(VSize.volumeTrack),
+      semanticLabel: AppLocalizations.of(context).volumeLabel,
+      // Upright whichever way the slider runs.
+      icon: RotatedBox(
+        quarterTurns: vertical ? 1 : 0,
+        child: const VSymbol(VIcons.volume, filled: true),
+      ),
+      iconPosition: M3ESliderIconPosition.start,
     );
-    return vertical
-        ? Column(
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: half),
-                  child: slider,
-                ),
-              ),
-              const SizedBox(height: VSpace.s4),
-              speaker,
-            ],
-          )
-        : Row(
-            children: [
-              speaker,
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: half),
-                  child: slider,
-                ),
-              ),
-            ],
-          );
+    // M3E centres the handle on the track's end: at 0 or 100 % half of it would stick
+    // out past the component (and into the pane's margin). Inset by that half.
+    final half = M3ETheme.of(context).sliderTheme.handleWidth / 2;
+    final inset = Padding(
+      padding: EdgeInsetsDirectional.symmetric(horizontal: half),
+      child: slider,
+    );
+    // Upright: it grows from the bottom, the speaker at the bottom.
+    return vertical ? RotatedBox(quarterTurns: 3, child: inset) : inset;
   }
 }
 

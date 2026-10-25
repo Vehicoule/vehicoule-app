@@ -56,16 +56,16 @@ abstract final class VSize {
   /// A pinned collection's cover in the rail (desktop-2: 32, not a 24 glyph).
   static const pinnedArt = 32.0;
 
-  /// The upright volume in the desktop strip (its speaker included), and the height
+  /// The upright volume in the desktop strip, and the height
   /// under which the strip's three groups scroll instead of spreading out.
   static const stripVolume = 120.0, stripMin = 440.0;
 
   /// Icon sizes: inline badge, list and button icon, empty-state icon.
   static const iconSmall = 16.0, icon = 24.0, iconLarge = 48.0;
 
-  /// Slider tracks (M3E sizes): « s » (24) for a plain slider; « xs » (16) for the
-  /// volume, a thin track with its speaker beside it.
-  static const sliderTrack = 24.0, volumeTrack = 16.0;
+  /// Slider tracks (M3E sizes): « s » (24) for a plain slider; « m » (40) for the
+  /// volume, whose speaker sits inside the track (M3E inset icons start at « m »).
+  static const sliderTrack = 24.0, volumeTrack = 40.0;
 
   /// The widest the player's volume gets, beside the view menu (spec UI §5.5).
   static const volumeMax = 240.0;
