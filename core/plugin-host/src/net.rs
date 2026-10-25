@@ -287,6 +287,11 @@ impl reqwest::dns::Resolve for Resolver {
         Box::pin(async move {
             let addrs: Vec<std::net::SocketAddr> = match lookup {
                 Lookup::System => tokio::net::lookup_host((host.as_str(), 0)).await?.collect(),
+                // A wasm fiber's stack would pass on a desktop and abort on Android (`send`).
+                #[cfg(any(test, feature = "test-util"))]
+                Lookup::Test if !on_thread_stack() => {
+                    return Err("test resolver: polled on a wasm fiber's stack".into());
+                }
                 #[cfg(any(test, feature = "test-util"))]
                 Lookup::Test if host == "rebind.test" => vec![([10, 0, 0, 1], 0).into()],
                 #[cfg(any(test, feature = "test-util"))]
@@ -308,6 +313,37 @@ impl reqwest::dns::Resolve for Resolver {
             Ok(Box::new(kept.into_iter()) as reqwest::dns::Addrs)
         })
     }
+}
+
+/// Whether the caller runs on its thread's own stack (pthread's bounds), as ART checks when a
+/// thread attaches to the JVM. Other platforms: assumed.
+#[cfg(any(test, feature = "test-util"))]
+fn on_thread_stack() -> bool {
+    let marker = 0u8;
+    let here = std::hint::black_box(&marker) as *const u8 as usize;
+    #[cfg(target_vendor = "apple")]
+    // SAFETY: queries on the calling thread, which is alive.
+    let (low, size) = unsafe {
+        let me = libc::pthread_self();
+        let size = libc::pthread_get_stacksize_np(me);
+        (libc::pthread_get_stackaddr_np(me) as usize - size, size)
+    };
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    // SAFETY: `attr` is initialised by `pthread_getattr_np` before it is read, then destroyed.
+    let (low, size) = unsafe {
+        let mut attr = std::mem::MaybeUninit::<libc::pthread_attr_t>::uninit();
+        let (mut low, mut size) = (std::ptr::null_mut(), 0);
+        assert_eq!(
+            libc::pthread_getattr_np(libc::pthread_self(), attr.as_mut_ptr()),
+            0
+        );
+        libc::pthread_attr_getstack(attr.as_ptr(), &mut low, &mut size);
+        libc::pthread_attr_destroy(attr.as_mut_ptr());
+        (low as usize, size)
+    };
+    #[cfg(not(any(target_vendor = "apple", target_os = "linux", target_os = "android")))]
+    let (low, size) = (here, 1);
+    (low..low + size).contains(&here)
 }
 
 /// A response whose body is still to be read.
@@ -578,12 +614,30 @@ async fn send(
     if let Some(body) = body {
         builder = builder.body(body);
     }
-    let resp = builder.send().await.map_err(net_error)?;
+    // On a task of its own: a plugin's call runs on a wasm fiber, and the connection (the TLS
+    // handshake, which on Android checks certificates through the JVM) must not. ART aborts a
+    // thread attaching off its own stack. hyper's connection task reads the body.
+    let task = tokio::spawn(builder.send());
+    let _abort = AbortOnDrop(task.abort_handle());
+    let resp = match task.await {
+        Ok(resp) => resp.map_err(net_error)?,
+        Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+        Err(_) => return Err(HttpError::Network("cancelled".into())),
+    };
     Ok(Hop {
         status: resp.status().as_u16(),
         headers: pairs(resp.headers()),
         body: Body::Live(resp),
     })
+}
+
+/// Dropping the call (its deadline) still cancels the request.
+struct AbortOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 fn pairs(headers: &HeaderMap) -> Vec<(String, String)> {

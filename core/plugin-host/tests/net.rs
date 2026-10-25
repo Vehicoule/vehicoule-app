@@ -19,6 +19,26 @@ async fn plugin_requests_go_through_the_allowlist() {
     assert_eq!(t.reports()[0].http_calls, 0);
 }
 
+/// A plugin's request connects (DNS, TLS handshake) on the runtime's own stacks, never on the
+/// wasm fiber of its call: on Android the handshake attaches the thread to the JVM, and ART
+/// aborts the app when that happens off the thread's stack. The test resolver refuses a lookup
+/// polled off it.
+#[tokio::test(flavor = "multi_thread")]
+async fn plugin_requests_connect_off_the_wasm_fiber() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let t = TestHost::new(Limits::default());
+    let p = t.load("probe");
+    let r = t
+        .host
+        .search(&p, query(&format!("get {}/", api(&server))))
+        .await;
+    assert_eq!(r.unwrap().tracks[0].title, "200");
+}
+
 /// reqwest's `Display` names the URL: none of it may reach the call's error or its report.
 #[tokio::test]
 async fn network_errors_carry_no_url() {
