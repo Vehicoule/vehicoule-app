@@ -1078,7 +1078,7 @@ class _VNowPlayingState extends State<VNowPlaying>
             valueListenable: widget.position,
             builder: (context, ms, _) => VArtwork(
               itemId: data.track.id,
-              size: VSize.strip - VSpace.s8,
+              size: VSize.strip - VSpace.s16,
               playing: data.playing,
               progress: data.progressAt(ms),
               onSeek: _seek,

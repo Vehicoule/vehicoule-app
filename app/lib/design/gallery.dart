@@ -12,6 +12,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../bridge/api/app.dart' as core;
 import '../bridge/api/catalog.dart' as core;
@@ -29,6 +30,11 @@ import 'design.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // macOS opens the window hidden until the app places it (MainFlutterWindow).
+  if (Platform.isMacOS) {
+    await windowManager.ensureInitialized();
+    await windowManager.show();
+  }
   vRegisterFontLicenses();
   runApp(GalleryApp(covers: await GalleryCovers.start()));
 }
