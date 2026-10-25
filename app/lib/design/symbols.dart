@@ -11,7 +11,7 @@ abstract final class VIcons {
   static const _f = 'MaterialSymbolsRounded';
 
   static const add = IconData(0xe145, fontFamily: _f);
-  static const addToQueue = IconData(0xe05c, fontFamily: _f);
+  static const addToQueue = IconData(0xe03d, fontFamily: _f); // queue_music
   static const album = IconData(0xe019, fontFamily: _f);
   static const arrowBack = IconData(0xe5c4, fontFamily: _f);
   static const bedtime = IconData(0xf159, fontFamily: _f);
@@ -44,7 +44,7 @@ abstract final class VIcons {
   static const pause = IconData(0xe034, fontFamily: _f);
   static const person = IconData(0xf0d3, fontFamily: _f);
   static const play = IconData(0xe037, fontFamily: _f); // play_arrow
-  static const playNext = IconData(0xe066, fontFamily: _f); // queue_play_next
+  static const playNext = IconData(0xe05f, fontFamily: _f); // playlist_play
   static const playlistAdd = IconData(0xe03b, fontFamily: _f);
   static const queue = IconData(0xe03d, fontFamily: _f); // queue_music
   static const refresh = IconData(0xe5d5, fontFamily: _f);
