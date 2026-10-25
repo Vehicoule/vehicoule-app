@@ -41,7 +41,8 @@ final _arts = <String, Future<_Art?>>{};
 int debugQuantizations = 0;
 
 /// The top band of a cover, under the Vague's header: the relative luminance of its
-/// darker and lighter pixels (5th and 95th percentiles, so a few specks don't count).
+/// darker and lighter pixels (1st and 99th percentiles: specks of JPEG noise don't
+/// count, a logo or a line of lettering under the header does).
 class VCoverTop {
   const VCoverTop(this.low, this.high);
 
@@ -149,7 +150,7 @@ Future<_Art?> _extract(String path) async {
               0.0722 * linear(bytes[i + 2]),
       ]..sort();
       double at(double p) => lum[((lum.length - 1) * p).round()];
-      return (seed, at(0.05), at(0.95));
+      return (seed, at(0.01), at(0.99));
     });
     return (
       seed: argb == 0 ? null : pastelSeed(ui.Color(argb)),
