@@ -637,6 +637,336 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Lecture depuis'**
   String get playingFromLabel;
+
+  /// No description provided for @actionNewPlaylist.
+  ///
+  /// In fr, this message translates to:
+  /// **'Nouvelle playlist'**
+  String get actionNewPlaylist;
+
+  /// No description provided for @actionImportLink.
+  ///
+  /// In fr, this message translates to:
+  /// **'Importer un lien'**
+  String get actionImportLink;
+
+  /// No description provided for @actionCreate.
+  ///
+  /// In fr, this message translates to:
+  /// **'Créer'**
+  String get actionCreate;
+
+  /// No description provided for @actionCancel.
+  ///
+  /// In fr, this message translates to:
+  /// **'Annuler'**
+  String get actionCancel;
+
+  /// No description provided for @actionOk.
+  ///
+  /// In fr, this message translates to:
+  /// **'OK'**
+  String get actionOk;
+
+  /// No description provided for @actionAdd.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter'**
+  String get actionAdd;
+
+  /// No description provided for @actionLater.
+  ///
+  /// In fr, this message translates to:
+  /// **'Plus tard'**
+  String get actionLater;
+
+  /// No description provided for @actionInstall.
+  ///
+  /// In fr, this message translates to:
+  /// **'Installer'**
+  String get actionInstall;
+
+  /// No description provided for @actionSelectAll.
+  ///
+  /// In fr, this message translates to:
+  /// **'Tout sélectionner'**
+  String get actionSelectAll;
+
+  /// No description provided for @actionExpandMenu.
+  ///
+  /// In fr, this message translates to:
+  /// **'Déplier le menu'**
+  String get actionExpandMenu;
+
+  /// No description provided for @actionCollapseMenu.
+  ///
+  /// In fr, this message translates to:
+  /// **'Replier le menu'**
+  String get actionCollapseMenu;
+
+  /// No description provided for @navHome.
+  ///
+  /// In fr, this message translates to:
+  /// **'Accueil'**
+  String get navHome;
+
+  /// No description provided for @navExplore.
+  ///
+  /// In fr, this message translates to:
+  /// **'Explorer'**
+  String get navExplore;
+
+  /// No description provided for @navLibrary.
+  ///
+  /// In fr, this message translates to:
+  /// **'Bibliothèque'**
+  String get navLibrary;
+
+  /// No description provided for @navSettings.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réglages'**
+  String get navSettings;
+
+  /// No description provided for @railPinned.
+  ///
+  /// In fr, this message translates to:
+  /// **'Épinglés'**
+  String get railPinned;
+
+  /// No description provided for @likedTracks.
+  ///
+  /// In fr, this message translates to:
+  /// **'Titres likés'**
+  String get likedTracks;
+
+  /// No description provided for @downloadsTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléchargements'**
+  String get downloadsTitle;
+
+  /// No description provided for @sourcesTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Sources'**
+  String get sourcesTitle;
+
+  /// No description provided for @searchHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Titres, albums, artistes…'**
+  String get searchHint;
+
+  /// No description provided for @selectionCount.
+  ///
+  /// In fr, this message translates to:
+  /// **'{count, plural, =1{1 sélectionné} other{{count} sélectionnés}}'**
+  String selectionCount(int count);
+
+  /// No description provided for @settingsAppearance.
+  ///
+  /// In fr, this message translates to:
+  /// **'Apparence'**
+  String get settingsAppearance;
+
+  /// No description provided for @settingsColor.
+  ///
+  /// In fr, this message translates to:
+  /// **'Couleur'**
+  String get settingsColor;
+
+  /// No description provided for @settingsPlayerStyle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Style du lecteur'**
+  String get settingsPlayerStyle;
+
+  /// No description provided for @settingsTheme.
+  ///
+  /// In fr, this message translates to:
+  /// **'Thème'**
+  String get settingsTheme;
+
+  /// No description provided for @settingsPlayback.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lecture'**
+  String get settingsPlayback;
+
+  /// No description provided for @settingsNormalize.
+  ///
+  /// In fr, this message translates to:
+  /// **'Volume égal d\'un titre à l\'autre'**
+  String get settingsNormalize;
+
+  /// No description provided for @settingsEndRadio.
+  ///
+  /// In fr, this message translates to:
+  /// **'Radio quand la file se termine'**
+  String get settingsEndRadio;
+
+  /// No description provided for @themeSystem.
+  ///
+  /// In fr, this message translates to:
+  /// **'Système'**
+  String get themeSystem;
+
+  /// No description provided for @colorSourceNowPlaying.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ce qui joue'**
+  String get colorSourceNowPlaying;
+
+  /// No description provided for @colorSourcePresets.
+  ///
+  /// In fr, this message translates to:
+  /// **'Préréglage'**
+  String get colorSourcePresets;
+
+  /// No description provided for @gestureHintTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Le mini-lecteur'**
+  String get gestureHintTitle;
+
+  /// No description provided for @gestureHint.
+  ///
+  /// In fr, this message translates to:
+  /// **'Glisse ← → pour changer de titre, ↓ pour arrêter.'**
+  String get gestureHint;
+
+  /// No description provided for @updateTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mise à jour disponible'**
+  String get updateTitle;
+
+  /// No description provided for @updateBody.
+  ///
+  /// In fr, this message translates to:
+  /// **'Version {version}, {size}. La lecture reprend plus vite après un appel.'**
+  String updateBody(String version, String size);
+
+  /// No description provided for @addSourceWarning.
+  ///
+  /// In fr, this message translates to:
+  /// **'Cette source ne vient pas de Vehicoule. Ajoute-la seulement si tu lui fais confiance.'**
+  String get addSourceWarning;
+
+  /// No description provided for @greeting.
+  ///
+  /// In fr, this message translates to:
+  /// **'Bonsoir'**
+  String get greeting;
+
+  /// No description provided for @discoveryTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ta découverte du jour'**
+  String get discoveryTitle;
+
+  /// No description provided for @galleryJump.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aller à'**
+  String get galleryJump;
+
+  /// No description provided for @galleryMiniPlayer.
+  ///
+  /// In fr, this message translates to:
+  /// **'Mini-lecteur et bande'**
+  String get galleryMiniPlayer;
+
+  /// No description provided for @galleryFabs.
+  ///
+  /// In fr, this message translates to:
+  /// **'Boutons flottants'**
+  String get galleryFabs;
+
+  /// No description provided for @galleryButtonGroups.
+  ///
+  /// In fr, this message translates to:
+  /// **'Groupes de boutons'**
+  String get galleryButtonGroups;
+
+  /// No description provided for @galleryToolbars.
+  ///
+  /// In fr, this message translates to:
+  /// **'Barres d\'outils'**
+  String get galleryToolbars;
+
+  /// No description provided for @galleryMenus.
+  ///
+  /// In fr, this message translates to:
+  /// **'Menus'**
+  String get galleryMenus;
+
+  /// No description provided for @gallerySheets.
+  ///
+  /// In fr, this message translates to:
+  /// **'Feuilles et dialogues'**
+  String get gallerySheets;
+
+  /// No description provided for @galleryNavigation.
+  ///
+  /// In fr, this message translates to:
+  /// **'Navigation'**
+  String get galleryNavigation;
+
+  /// No description provided for @gallerySearch.
+  ///
+  /// In fr, this message translates to:
+  /// **'Recherche et filtres'**
+  String get gallerySearch;
+
+  /// No description provided for @galleryCarousels.
+  ///
+  /// In fr, this message translates to:
+  /// **'Carrousels et étagères'**
+  String get galleryCarousels;
+
+  /// No description provided for @gallerySettings.
+  ///
+  /// In fr, this message translates to:
+  /// **'Réglages'**
+  String get gallerySettings;
+
+  /// No description provided for @galleryStates.
+  ///
+  /// In fr, this message translates to:
+  /// **'Chargement et états'**
+  String get galleryStates;
+
+  /// No description provided for @galleryShowDialog.
+  ///
+  /// In fr, this message translates to:
+  /// **'Afficher un dialogue'**
+  String get galleryShowDialog;
+
+  /// No description provided for @galleryShowSheet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ouvrir une feuille'**
+  String get galleryShowSheet;
+
+  /// No description provided for @galleryShowSourceSheet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ajouter une source'**
+  String get galleryShowSourceSheet;
+
+  /// No description provided for @galleryShowSideSheet.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ouvrir une feuille latérale'**
+  String get galleryShowSideSheet;
+
+  /// No description provided for @galleryOpenMenuEdge.
+  ///
+  /// In fr, this message translates to:
+  /// **'Menu au bord'**
+  String get galleryOpenMenuEdge;
 }
 
 class _AppLocalizationsDelegate

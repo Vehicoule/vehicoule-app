@@ -297,4 +297,180 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get playingFromLabel => 'Lecture depuis';
+
+  @override
+  String get actionNewPlaylist => 'Nouvelle playlist';
+
+  @override
+  String get actionImportLink => 'Importer un lien';
+
+  @override
+  String get actionCreate => 'Créer';
+
+  @override
+  String get actionCancel => 'Annuler';
+
+  @override
+  String get actionOk => 'OK';
+
+  @override
+  String get actionAdd => 'Ajouter';
+
+  @override
+  String get actionLater => 'Plus tard';
+
+  @override
+  String get actionInstall => 'Installer';
+
+  @override
+  String get actionSelectAll => 'Tout sélectionner';
+
+  @override
+  String get actionExpandMenu => 'Déplier le menu';
+
+  @override
+  String get actionCollapseMenu => 'Replier le menu';
+
+  @override
+  String get navHome => 'Accueil';
+
+  @override
+  String get navExplore => 'Explorer';
+
+  @override
+  String get navLibrary => 'Bibliothèque';
+
+  @override
+  String get navSettings => 'Réglages';
+
+  @override
+  String get railPinned => 'Épinglés';
+
+  @override
+  String get likedTracks => 'Titres likés';
+
+  @override
+  String get downloadsTitle => 'Téléchargements';
+
+  @override
+  String get sourcesTitle => 'Sources';
+
+  @override
+  String get searchHint => 'Titres, albums, artistes…';
+
+  @override
+  String selectionCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sélectionnés',
+      one: '1 sélectionné',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get settingsAppearance => 'Apparence';
+
+  @override
+  String get settingsColor => 'Couleur';
+
+  @override
+  String get settingsPlayerStyle => 'Style du lecteur';
+
+  @override
+  String get settingsTheme => 'Thème';
+
+  @override
+  String get settingsPlayback => 'Lecture';
+
+  @override
+  String get settingsNormalize => 'Volume égal d\'un titre à l\'autre';
+
+  @override
+  String get settingsEndRadio => 'Radio quand la file se termine';
+
+  @override
+  String get themeSystem => 'Système';
+
+  @override
+  String get colorSourceNowPlaying => 'Ce qui joue';
+
+  @override
+  String get colorSourcePresets => 'Préréglage';
+
+  @override
+  String get gestureHintTitle => 'Le mini-lecteur';
+
+  @override
+  String get gestureHint => 'Glisse ← → pour changer de titre, ↓ pour arrêter.';
+
+  @override
+  String get updateTitle => 'Mise à jour disponible';
+
+  @override
+  String updateBody(String version, String size) {
+    return 'Version $version, $size. La lecture reprend plus vite après un appel.';
+  }
+
+  @override
+  String get addSourceWarning =>
+      'Cette source ne vient pas de Vehicoule. Ajoute-la seulement si tu lui fais confiance.';
+
+  @override
+  String get greeting => 'Bonsoir';
+
+  @override
+  String get discoveryTitle => 'Ta découverte du jour';
+
+  @override
+  String get galleryJump => 'Aller à';
+
+  @override
+  String get galleryMiniPlayer => 'Mini-lecteur et bande';
+
+  @override
+  String get galleryFabs => 'Boutons flottants';
+
+  @override
+  String get galleryButtonGroups => 'Groupes de boutons';
+
+  @override
+  String get galleryToolbars => 'Barres d\'outils';
+
+  @override
+  String get galleryMenus => 'Menus';
+
+  @override
+  String get gallerySheets => 'Feuilles et dialogues';
+
+  @override
+  String get galleryNavigation => 'Navigation';
+
+  @override
+  String get gallerySearch => 'Recherche et filtres';
+
+  @override
+  String get galleryCarousels => 'Carrousels et étagères';
+
+  @override
+  String get gallerySettings => 'Réglages';
+
+  @override
+  String get galleryStates => 'Chargement et états';
+
+  @override
+  String get galleryShowDialog => 'Afficher un dialogue';
+
+  @override
+  String get galleryShowSheet => 'Ouvrir une feuille';
+
+  @override
+  String get galleryShowSourceSheet => 'Ajouter une source';
+
+  @override
+  String get galleryShowSideSheet => 'Ouvrir une feuille latérale';
+
+  @override
+  String get galleryOpenMenuEdge => 'Menu au bord';
 }

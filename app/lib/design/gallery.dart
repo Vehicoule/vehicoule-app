@@ -131,10 +131,13 @@ class _Preset extends _Source {
 }
 
 class GalleryApp extends StatefulWidget {
-  const GalleryApp({super.key, this.covers});
+  const GalleryApp({super.key, this.covers, this.resolve});
 
   /// Null in tests and without a core: missing covers everywhere.
   final GalleryCovers? covers;
+
+  /// Pictures from elsewhere (screenshots of the gallery); [covers] wins.
+  final ArtworkSource? resolve;
 
   @override
   State<GalleryApp> createState() => _GalleryAppState();
@@ -187,7 +190,7 @@ class _GalleryAppState extends State<GalleryApp> {
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(disableAnimations: _reduce),
         child: ArtworkResolver(
-          resolve: widget.covers?.resolve ?? _noCover,
+          resolve: widget.covers?.resolve ?? widget.resolve ?? _noCover,
           child: vAppBuilder(context, child),
         ),
       ),
@@ -276,10 +279,18 @@ class _Controls extends StatelessWidget {
   }
 }
 
-class _GalleryPage extends StatelessWidget {
+/// The gallery's sections, in order: a jump list at the top leads to each.
+class _GalleryPage extends StatefulWidget {
   const _GalleryPage({required this.controls});
 
   final Widget controls;
+
+  @override
+  State<_GalleryPage> createState() => _GalleryPageState();
+}
+
+class _GalleryPageState extends State<_GalleryPage> {
+  final _keys = <int, GlobalKey>{};
 
   @override
   Widget build(BuildContext context) {
@@ -288,6 +299,27 @@ class _GalleryPage extends StatelessWidget {
     final margin = VSpace.margin(
       windowClassOf(MediaQuery.sizeOf(context).width),
     );
+    final sections = [
+      (l.galleryArtwork, const _ArtworkSection()),
+      (l.galleryTrackRows, const _RowsSection()),
+      (l.galleryMiniPlayer, const _MiniSection()),
+      (l.galleryPlayer, const _PlayerSection()),
+      (l.galleryButtons, const _ButtonsSection()),
+      (l.galleryFabs, const _FabSection()),
+      (l.galleryButtonGroups, const _GroupsSection()),
+      (l.galleryToolbars, const _ToolbarSection()),
+      (l.galleryMenus, const _MenuSection()),
+      (l.gallerySheets, const _SheetSection()),
+      (l.galleryNavigation, const _NavigationSection()),
+      (l.gallerySearch, const _SearchSection()),
+      (l.galleryCarousels, const _CarouselSection()),
+      (l.gallerySettings, const _SettingsSection()),
+      (l.galleryStates, const _StatesSection()),
+      (l.galleryListStates, const _ListStatesSection()),
+      (l.galleryTransitions, const _TransitionsSection()),
+      (l.galleryTypography, const _TypeSection()),
+      (l.gallerySpacing, const _SpacingSection()),
+    ];
     return Scaffold(
       body: VScreenBackground(
         child: SafeArea(
@@ -298,21 +330,31 @@ class _GalleryPage extends StatelessWidget {
               children: [
                 Text(l.galleryTitle, style: theme.textTheme.displaySmall),
                 const SizedBox(height: VSpace.s16),
-                controls,
-                for (final (title, body) in [
-                  (l.galleryArtwork, const _ArtworkSection()),
-                  (l.galleryTrackRows, const _RowsSection()),
-                  (l.galleryPlayer, const _PlayerSection()),
-                  (l.galleryButtons, const _ButtonsSection()),
-                  (l.galleryShelf, const _ShelfSection()),
-                  (l.galleryTransitions, const _TransitionsSection()),
-                  (l.galleryFeedback, const _FeedbackSection()),
-                  (l.galleryListStates, const _ListStatesSection()),
-                  (l.galleryTypography, const _TypeSection()),
-                  (l.gallerySpacing, const _SpacingSection()),
-                ]) ...[
+                widget.controls,
+                const SizedBox(height: VSpace.s24),
+                Text(l.galleryJump, style: theme.textTheme.titleMedium),
+                const SizedBox(height: VSpace.s8),
+                Wrap(
+                  spacing: VSpace.s8,
+                  runSpacing: VSpace.s8,
+                  children: [
+                    for (final (i, (title, _)) in sections.indexed)
+                      VChip(
+                        label: title,
+                        onPressed: () {
+                          final c = _keys[i]?.currentContext;
+                          if (c != null) Scrollable.ensureVisible(c);
+                        },
+                      ),
+                  ],
+                ),
+                for (final (i, (title, body)) in sections.indexed) ...[
                   const SizedBox(height: VSpace.s32),
-                  Text(title, style: theme.textTheme.headlineSmall),
+                  Text(
+                    title,
+                    key: _keys.putIfAbsent(i, GlobalKey.new),
+                    style: theme.textTheme.headlineSmall,
+                  ),
                   const SizedBox(height: VSpace.s16),
                   body,
                 ],
@@ -367,6 +409,8 @@ final _actions = NowPlayingActions(
   onOutput: _noop,
   onMenu: (_) {},
   onCollapse: _noop,
+  onOpen: _noop,
+  onStop: _noop,
 );
 
 List<VAction> _quick(AppLocalizations l) => [
@@ -383,18 +427,66 @@ List<List<VAction>> _groups(AppLocalizations l) => [
   [VAction(l.actionRemove, VIcons.delete, _noop)],
 ];
 
-Widget _frame(double w, double h, Widget child) => Builder(
+List<VDestination> _destinations(AppLocalizations l) => [
+  VDestination(l.navHome, VIcons.home),
+  VDestination(l.navExplore, VIcons.explore),
+  VDestination(l.navLibrary, VIcons.library, badge: 2),
+  VDestination(l.navSettings, VIcons.settings),
+];
+
+Widget _lyrics(BuildContext c) => ListView(
+  padding: const EdgeInsets.all(VSpace.s24),
+  children: [
+    for (final (i, t) in sampleTracks.indexed)
+      Padding(
+        padding: const EdgeInsets.only(bottom: VSpace.s16),
+        child: Text(
+          t.title,
+          style: i == 2
+              ? Theme.of(c).textTheme.headlineMedium
+              : Theme.of(c).textTheme.titleLarge
+                    ?.copyWith(color: Theme.of(c).colorScheme.onSurfaceVariant),
+        ),
+      ),
+  ],
+);
+
+Widget _queue(BuildContext c) => ListView(
+  children: [
+    for (final (i, t) in sampleTracks.skip(2).indexed)
+      VTrackRow(
+        track: t,
+        playing: false,
+        handleIndex: i,
+        onTap: _noop,
+        onPlayNext: _noop,
+        onRemove: _noop,
+        quick: const [],
+        groups: const [],
+      ),
+  ],
+);
+
+/// A screen-shaped frame: what a component looks like in place, not on a card.
+Widget _screen(double w, double h, Widget child) => Builder(
   builder: (context) => Container(
     width: w,
     height: h,
     clipBehavior: Clip.antiAlias,
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(VRadius.medium),
+      borderRadius: BorderRadius.circular(VRadius.large),
       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
     ),
     child: child,
   ),
+);
+
+/// Filler content behind floating components: skeleton rows, cut by the frame.
+Widget _filler(int rows) => ListView(
+  physics: const NeverScrollableScrollPhysics(),
+  padding: const EdgeInsets.only(top: VSpace.s8),
+  children: [for (var i = 0; i < rows; i++) VSkeleton.row()],
 );
 
 Widget _wrap(List<Widget> children) => Wrap(
@@ -452,12 +544,30 @@ class _ArtworkSectionState extends State<_ArtworkSection> {
             kind: ArtKind.artist,
             selected: true,
           ),
+        ]),
+        const SizedBox(height: VSpace.s24),
+        // The ring is the artwork's own outline: cookie, square in pause, circle.
+        _wrap([
           VArtwork(
             itemId: ids[3],
-            size: VSize.heroCard * 0.6,
+            size: VSize.heroCard * 0.7,
             playing: _playing,
             progress: _progress,
             onSeek: (p) => setState(() => _progress = p),
+          ),
+          VArtwork(
+            itemId: 'artist:Indila',
+            kind: ArtKind.artist,
+            size: VSize.heroCard * 0.5,
+            playing: _playing,
+            progress: _progress,
+            onSeek: (p) => setState(() => _progress = p),
+          ),
+          VArtwork(
+            itemId: ids[3],
+            size: VSize.compactArt,
+            playing: _playing,
+            progress: _progress,
           ),
           VButton(
             label: _playing
@@ -501,27 +611,6 @@ class _ArtworkSectionState extends State<_ArtworkSection> {
               selected: i == 2,
             ),
         ]),
-        const SizedBox(height: VSpace.s24),
-        _wrap([
-          const VDownloadIcon(state: null),
-          const VDownloadIcon(state: DownloadStateView.queued),
-          const VDownloadIcon(state: DownloadStateView.running, progress: 0.6),
-          const VDownloadIcon(state: DownloadStateView.done),
-        ]),
-        const SizedBox(height: VSpace.s24),
-        SizedBox(
-          width: VSize.heroCard,
-          child: Column(
-            children: [
-              VWaveProgress(
-                progress: _progress,
-                playing: _playing,
-                onSeek: (p) => setState(() => _progress = p),
-              ),
-              VWaveProgress(progress: 0.7, playing: false, onSeek: null),
-            ],
-          ),
-        ),
         const SizedBox(height: VSpace.s24),
         VWaveArtwork(
           itemId: ids[5],
@@ -608,6 +697,109 @@ class _RowsSectionState extends State<_RowsSection> {
   }
 }
 
+/// The mini player where it lives: floating over the bar, playing, paused and loading;
+/// the desktop strip at the window's edge.
+class _MiniSection extends StatefulWidget {
+  const _MiniSection();
+
+  @override
+  State<_MiniSection> createState() => _MiniSectionState();
+}
+
+class _MiniSectionState extends State<_MiniSection> {
+  int _tab = 0;
+  double _volume = 0.6;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    Widget phone(NowPlayingData d, {bool hint = false}) {
+      final mini = VNowPlaying(
+        position: _fixedPosition,
+        data: d,
+        size: PlayerSize.compact,
+        style: PlayerStyle.disc,
+        view: PlayerView.player,
+        onView: (_) {},
+        actions: _actions,
+        lyrics: _lyrics,
+        queue: _queue,
+      );
+      return _screen(
+        VSize.sideSheet,
+        VSize.sideSheet,
+        Column(
+          children: [
+            Expanded(child: ClipRect(child: _filler(4))),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: VSpace.s16),
+              child: hint
+                  ? VRichTooltip(
+                      title: l.gestureHintTitle,
+                      message: l.gestureHint,
+                      child: mini,
+                    )
+                  : mini,
+            ),
+            const SizedBox(height: VSpace.s8),
+            VNavigationBar(
+              destinations: _destinations(l),
+              selected: _tab,
+              onSelected: (i) => setState(() => _tab = i),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _wrap([
+      phone(_data(), hint: true),
+      phone(_data(playing: false)),
+      phone(_data(playing: false, loading: true)),
+      _screen(
+        VSize.sideSheet,
+        VSize.sideSheet * 1.6,
+        Row(
+          children: [
+            Expanded(child: ClipRect(child: _filler(9))),
+            Builder(
+              builder: (context) => ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                child: SizedBox(
+                  width: VSize.strip,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: VSpace.s16),
+                    child: VNowPlaying(
+                      position: _fixedPosition,
+                      data: _data(),
+                      size: PlayerSize.compact,
+                      style: PlayerStyle.disc,
+                      view: PlayerView.player,
+                      onView: (_) {},
+                      actions: _actions,
+                      lyrics: _lyrics,
+                      queue: _queue,
+                      axis: Axis.vertical,
+                      volume: SizedBox(
+                        height: VSize.shelfCard * 1.5,
+                        child: VVolume(
+                          value: _volume,
+                          vertical: true,
+                          onChanged: (v) => setState(() => _volume = v),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+}
+
 class _PlayerSection extends StatefulWidget {
   const _PlayerSection();
 
@@ -620,6 +812,7 @@ class _PlayerSectionState extends State<_PlayerSection> {
   bool _playing = true, _liked = false, _shuffle = false;
   Repeat _repeat = Repeat.off;
   PlayerView _view = PlayerView.player;
+  double _volume = 0.6;
   final _position = ValueNotifier(137000);
 
   @override
@@ -661,34 +854,13 @@ class _PlayerSectionState extends State<_PlayerSection> {
         groups: _groups(AppLocalizations.of(context)),
       ),
     );
-    Widget lyrics(BuildContext c) => Padding(
-      padding: const EdgeInsets.all(VSpace.s24),
-      child: Text(
-        sampleTracks.map((t) => t.title).join('\n\n'),
-        style: Theme.of(c).textTheme.headlineSmall,
-      ),
-    );
-    Widget queue(BuildContext c) => ListView(
-      children: [
-        for (final (i, t) in sampleTracks.skip(2).indexed)
-          VTrackRow(
-            track: t,
-            playing: false,
-            handleIndex: i,
-            onTap: _noop,
-            onPlayNext: _noop,
-            onRemove: _noop,
-            quick: const [],
-            groups: const [],
-          ),
-      ],
-    );
     VNowPlaying player(
       PlayerSize size,
       PlayerStyle style,
       PlayerView view, {
       NowPlayingData? data,
-      bool wide = false,
+      bool immersive = false,
+      Widget? volume,
     }) => VNowPlaying(
       position: _position,
       data: data ?? _data(),
@@ -697,118 +869,56 @@ class _PlayerSectionState extends State<_PlayerSection> {
       view: view,
       onView: (_) {},
       actions: _actions,
-      lyrics: lyrics,
-      queue: queue,
-      wide: wide,
+      lyrics: _lyrics,
+      queue: _queue,
+      immersive: immersive,
+      onImmersive: size == PlayerSize.medium || immersive ? _noop : null,
+      volume: volume,
     );
-    const medium = Size(VSize.sideSheet, 720),
-        large = Size(412, 860),
-        compact = Size(VSize.sideSheet, 72);
+    const medium = Size(VSize.sideSheet, 760), large = Size(412, 892);
+    Widget volume() =>
+        VVolume(value: _volume, onChanged: (v) => setState(() => _volume = v));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _wrap([
-          _frame(
-            large.width,
-            large.height,
-            VNowPlaying(
-              position: _position,
-              data: live,
-              size: PlayerSize.large,
-              style: PlayerStyle.disc,
-              view: _view,
-              onView: (v) => setState(() => _view = v),
-              actions: actions,
-              lyrics: lyrics,
-              queue: queue,
+          for (final style in PlayerStyle.values)
+            _screen(
+              large.width,
+              large.height,
+              VNowPlaying(
+                position: _position,
+                data: live,
+                size: PlayerSize.large,
+                style: style,
+                view: _view,
+                onView: (v) => setState(() => _view = v),
+                actions: actions,
+                lyrics: _lyrics,
+                queue: _queue,
+              ),
             ),
-          ),
-          _frame(
-            large.width,
-            large.height,
-            VNowPlaying(
-              position: _position,
-              data: live,
-              size: PlayerSize.large,
-              style: PlayerStyle.wave,
-              view: _view,
-              onView: (v) => setState(() => _view = v),
-              actions: actions,
-              lyrics: lyrics,
-              queue: queue,
-            ),
-          ),
         ]),
         const SizedBox(height: VSpace.s24),
         for (final style in PlayerStyle.values) ...[
           _wrap([
-            for (final view in PlayerView.values) ...[
-              _frame(
-                medium.width,
-                medium.height,
-                player(PlayerSize.medium, style, view),
-              ),
-              _frame(
+            for (final view in PlayerView.values)
+              _screen(
                 large.width,
                 large.height,
                 player(PlayerSize.large, style, view),
               ),
-            ],
-          ]),
-          const SizedBox(height: VSpace.s24),
-          _wrap([
             for (final view in PlayerView.values)
-              _frame(
-                compact.width,
-                compact.height,
-                Padding(
-                  padding: const EdgeInsets.all(VSpace.s12),
-                  child: player(PlayerSize.compact, style, view),
-                ),
+              _screen(
+                medium.width,
+                medium.height,
+                player(PlayerSize.medium, style, view, volume: volume()),
               ),
           ]),
           const SizedBox(height: VSpace.s24),
         ],
-        // Playing, paused, loading; the desktop strip; wide (landscape, immersive).
         _wrap([
-          for (final d in [
-            _data(),
-            _data(playing: false),
-            _data(loading: true),
-          ])
-            _frame(
-              compact.width,
-              compact.height,
-              Padding(
-                padding: const EdgeInsets.all(VSpace.s12),
-                child: player(
-                  PlayerSize.compact,
-                  PlayerStyle.disc,
-                  PlayerView.player,
-                  data: d,
-                ),
-              ),
-            ),
-          _frame(
-            VSize.strip,
-            300,
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: VSpace.s8),
-              child: VNowPlaying(
-                position: _position,
-                data: _data(),
-                size: PlayerSize.compact,
-                style: PlayerStyle.disc,
-                view: PlayerView.player,
-                onView: (_) {},
-                actions: _actions,
-                lyrics: lyrics,
-                queue: queue,
-                axis: Axis.vertical,
-              ),
-            ),
-          ),
-          _frame(
+          _screen(
             medium.width,
             medium.height,
             player(
@@ -816,9 +926,10 @@ class _PlayerSectionState extends State<_PlayerSection> {
               PlayerStyle.disc,
               PlayerView.player,
               data: _data(playing: false),
+              volume: volume(),
             ),
           ),
-          _frame(
+          _screen(
             medium.width,
             medium.height,
             player(
@@ -826,23 +937,30 @@ class _PlayerSectionState extends State<_PlayerSection> {
               PlayerStyle.wave,
               PlayerView.player,
               data: _data(loading: true, playing: false),
+              volume: volume(),
             ),
           ),
         ]),
         const SizedBox(height: VSpace.s24),
-        _wide(
-          900,
-          _frame(
-            900,
-            520,
-            player(
-              PlayerSize.large,
-              PlayerStyle.disc,
-              PlayerView.player,
-              wide: true,
+        // The desktop immersive view (⤢ in the pane; ⤡ or Esc to leave).
+        for (final style in PlayerStyle.values) ...[
+          _wide(
+            1280,
+            _screen(
+              1280,
+              800,
+              player(
+                PlayerSize.large,
+                style,
+                style == PlayerStyle.disc
+                    ? PlayerView.lyrics
+                    : PlayerView.queue,
+                immersive: true,
+              ),
             ),
           ),
-        ),
+          const SizedBox(height: VSpace.s16),
+        ],
       ],
     );
   }
@@ -856,97 +974,666 @@ class _ButtonsSection extends StatefulWidget {
 }
 
 class _ButtonsSectionState extends State<_ButtonsSection> {
-  bool _playing = false, _liked = true;
-  PlayerView _view = PlayerView.player;
+  bool _liked = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _wrap([
+          for (final s in VButtonStyle.values)
+            VButton(label: l.actionRetry, style: s, onPressed: _noop),
+          VButton(label: l.actionPlay, icon: VIcons.play, onPressed: _noop),
+        ]),
+        const SizedBox(height: VSpace.s16),
+        _wrap([
+          for (final s in VIconStyle.values)
+            VIconButton(
+              icon: VIcons.playlistAdd,
+              label: l.actionAddToPlaylist,
+              style: s,
+              onPressed: _noop,
+            ),
+          // Toggles: the heart fills, the shape morphs.
+          for (final s in VIconStyle.values)
+            VIconButton(
+              icon: VIcons.favorite,
+              label: l.actionLike,
+              selected: _liked,
+              style: s,
+              onPressed: () => setState(() => _liked = !_liked),
+            ),
+        ]),
+        const SizedBox(height: VSpace.s16),
+        VSplitButton(
+          label: l.actionPlay,
+          icon: VIcons.play,
+          onPressed: _noop,
+          items: [
+            VAction(l.actionShuffle, VIcons.shuffle, _noop),
+            VAction(l.actionPlayNext, VIcons.playNext, _noop),
+            VAction(l.actionAddToQueue, VIcons.addToQueue, _noop),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// FABs: three sizes; the album's extended « Lire » that shrinks on scroll; the
+/// library's FAB menu.
+class _FabSection extends StatefulWidget {
+  const _FabSection();
+
+  @override
+  State<_FabSection> createState() => _FabSectionState();
+}
+
+class _FabSectionState extends State<_FabSection> {
+  bool _extended = true;
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     return _wrap([
-      VSplitButton(
-        label: l.actionPlay,
-        icon: VIcons.play,
-        onPressed: _noop,
-        items: [
-          VAction(l.actionShuffle, VIcons.shuffle, _noop),
-          VAction(l.actionPlayNext, VIcons.playNext, _noop),
-          VAction(l.actionAddToQueue, VIcons.addToQueue, _noop),
-        ],
-      ),
-      VConnectedGroup(
-        actions: [
-          VAction(
-            l.actionLike,
-            VIcons.favorite,
-            () => setState(() => _liked = !_liked),
-            selected: _liked,
-          ),
-          VAction(l.actionAddToPlaylist, VIcons.playlistAdd, _noop),
-          VAction(
-            l.actionDownload,
-            VIcons.download,
-            _noop,
-            leading: const VDownloadIcon(state: DownloadStateView.done),
-          ),
-        ],
-      ),
-      VControls(
-        playing: _playing,
-        loading: false,
-        shuffle: true,
-        repeat: Repeat.one,
-        onPlayPause: () => setState(() => _playing = !_playing),
-        onNext: _noop,
-        onPrevious: _noop,
-        onShuffle: _noop,
-        onRepeat: _noop,
-      ),
-      VPlayPauseFab(
-        playing: _playing,
-        loading: false,
-        onPressed: () => setState(() => _playing = !_playing),
-      ),
-      VPlayPauseFab(playing: false, loading: true, onPressed: _noop),
-      VViewSelector(value: _view, onChanged: (v) => setState(() => _view = v)),
-      for (final s in VButtonStyle.values)
-        VButton(label: l.actionRetry, style: s, onPressed: _noop),
-      VIconButton(
-        icon: VIcons.favorite,
-        label: l.actionLike,
-        selected: _liked,
-        onPressed: () => setState(() => _liked = !_liked),
-      ),
-      Builder(
-        builder: (b) => VButton(
-          label: l.galleryOpenMenu,
-          icon: VIcons.more,
-          style: VButtonStyle.tonal,
-          onPressed: () {
-            final box = b.findRenderObject()! as RenderBox;
-            showVMenu(
-              b,
-              anchor: box.localToGlobal(Offset.zero) & box.size,
-              quick: _quick(l),
-              groups: _groups(l),
-            );
-          },
+      for (final s in VFabSize.values)
+        VFab(icon: VIcons.play, label: l.actionPlay, size: s, onPressed: _noop),
+      _screen(
+        VSize.sideSheet,
+        VSize.sideSheet,
+        Stack(
+          children: [
+            NotificationListener<ScrollUpdateNotification>(
+              onNotification: (n) {
+                final next = n.metrics.pixels <= VSpace.s8;
+                if (next != _extended) setState(() => _extended = next);
+                return false;
+              },
+              child: ListView(
+                children: [
+                  for (final (i, t) in sampleTracks.indexed)
+                    VTrackRow(
+                      track: t,
+                      number: i + 1,
+                      playing: false,
+                      onTap: _noop,
+                      onPlayNext: _noop,
+                      quick: const [],
+                      groups: const [],
+                    ),
+                ],
+              ),
+            ),
+            PositionedDirectional(
+              end: VSpace.s16,
+              bottom: VSpace.s16,
+              child: VExtendedFab(
+                icon: VIcons.play,
+                label: l.actionPlay,
+                extended: _extended,
+                onPressed: _noop,
+              ),
+            ),
+          ],
         ),
       ),
-      const VOfflineChip(),
+      _screen(
+        VSize.sideSheet,
+        VSize.sideSheet,
+        Stack(
+          children: [
+            _filler(5),
+            PositionedDirectional(
+              end: VSpace.s16,
+              bottom: VSpace.s16,
+              child: VFabMenu(
+                items: [
+                  VAction(l.actionNewPlaylist, VIcons.playlistAdd, _noop),
+                  VAction(l.actionImportLink, VIcons.addLink, _noop),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     ]);
   }
 }
 
-class _ShelfSection extends StatelessWidget {
-  const _ShelfSection();
+/// Standard (the player's controls) and connected (like / playlist / download, the
+/// menu's quick row) button groups, and a choice.
+class _GroupsSection extends StatefulWidget {
+  const _GroupsSection();
+
+  @override
+  State<_GroupsSection> createState() => _GroupsSectionState();
+}
+
+class _GroupsSectionState extends State<_GroupsSection> {
+  bool _playing = false, _liked = true;
+  PlayerStyle _style = PlayerStyle.disc;
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: VSize.sideSheet,
+          child: VControls(
+            playing: _playing,
+            loading: false,
+            shuffle: true,
+            repeat: Repeat.one,
+            onPlayPause: () => setState(() => _playing = !_playing),
+            onNext: _noop,
+            onPrevious: _noop,
+            onShuffle: _noop,
+            onRepeat: _noop,
+          ),
+        ),
+        const SizedBox(height: VSpace.s16),
+        SizedBox(
+          width: VSize.sideSheet * 0.6,
+          child: VConnectedGroup(
+            actions: [
+              VAction(
+                l.actionLike,
+                VIcons.favorite,
+                () => setState(() => _liked = !_liked),
+                selected: _liked,
+              ),
+              VAction(l.actionAddToPlaylist, VIcons.playlistAdd, _noop),
+              VAction(
+                l.actionDownload,
+                VIcons.download,
+                _noop,
+                leading: const VDownloadIcon(state: DownloadStateView.done),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: VSpace.s16),
+        SizedBox(
+          width: VSize.sideSheet,
+          child: VChoiceGroup<PlayerStyle>(
+            choices: [
+              (PlayerStyle.disc, l.playerStyleDisc),
+              (PlayerStyle.wave, l.playerStyleWave),
+            ],
+            value: _style,
+            onChanged: (s) => setState(() => _style = s),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Floating (the mini player's, the view selector, multiple selection) and docked.
+class _ToolbarSection extends StatefulWidget {
+  const _ToolbarSection();
+
+  @override
+  State<_ToolbarSection> createState() => _ToolbarSectionState();
+}
+
+class _ToolbarSectionState extends State<_ToolbarSection> {
+  PlayerView _view = PlayerView.lyrics;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final selection = [
+      VAction(l.actionPlayNext, VIcons.playNext, _noop),
+      VAction(l.actionAddToPlaylist, VIcons.playlistAdd, _noop),
+      VAction(l.actionDownload, VIcons.download, _noop),
+    ];
+    return _wrap([
+      VViewSelector(value: _view, onChanged: (v) => setState(() => _view = v)),
+      VToolbar(
+        title: l.selectionCount(3),
+        leading: VIconButton(
+          icon: VIcons.close,
+          label: l.actionCancel,
+          onPressed: _noop,
+        ),
+        actions: selection,
+      ),
+      _screen(
+        VSize.sideSheet,
+        VSize.shelfCard * 2,
+        Column(
+          children: [
+            Expanded(child: ClipRect(child: _filler(3))),
+            VToolbar(
+              docked: true,
+              actions: [
+                VAction(l.actionSelectAll, VIcons.selectAll, _noop),
+                ...selection,
+              ],
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+}
+
+/// The expressive menu next to its trigger: ⋮ at the right edge and near the bottom.
+class _MenuSection extends StatelessWidget {
+  const _MenuSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    Widget opener(String label) => Builder(
+      builder: (b) => VIconButton(
+        icon: VIcons.more,
+        label: label,
+        style: VIconStyle.tonal,
+        onPressed: () {
+          final box = b.findRenderObject()! as RenderBox;
+          showVMenu(
+            b,
+            anchor: box.localToGlobal(Offset.zero) & box.size,
+            quick: _quick(l),
+            groups: _groups(l),
+          );
+        },
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: opener(l.galleryOpenMenuEdge),
+        ),
+        const SizedBox(height: VSpace.s8),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: VBreakpoints.medium),
+          child: VTrackRow(
+            track: sampleTracks[4],
+            playing: false,
+            onTap: _noop,
+            onPlayNext: _noop,
+            quick: _quick(l),
+            groups: _groups(l),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Side sheets (the desktop pane, standard; a modal one), bottom sheets (add to a
+/// playlist, add a source; a standard one), a dialog, a snackbar.
+class _SheetSection extends StatefulWidget {
+  const _SheetSection();
+
+  @override
+  State<_SheetSection> createState() => _SheetSectionState();
+}
+
+class _SheetSectionState extends State<_SheetSection> {
+  bool _pane = true;
+
+  Widget _addToPlaylist(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(l.actionAddToPlaylist, style: theme.textTheme.titleLarge),
+        const SizedBox(height: VSpace.s16),
+        VButton(
+          label: l.actionNewPlaylist,
+          icon: VIcons.add,
+          style: VButtonStyle.tonal,
+          onPressed: _noop,
+        ),
+        const SizedBox(height: VSpace.s8),
+        for (final (i, (id, title, sub)) in sampleCollections.take(4).indexed)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: VSpace.s4),
+            child: Row(
+              children: [
+                // Those that already hold the song: cookie + check (spec UI §5.8).
+                VArtwork(itemId: id, size: VSize.trackArt, selected: i == 1),
+                const SizedBox(width: VSpace.s16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: theme.textTheme.titleMedium),
+                      Text(sub, style: theme.textTheme.bodyMedium),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _addSource(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(l.actionAddSource, style: theme.textTheme.titleLarge),
+        const SizedBox(height: VSpace.s8),
+        Text(l.addSourceWarning, style: theme.textTheme.bodyMedium),
+        const SizedBox(height: VSpace.s24),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            VButton(
+              label: l.actionCancel,
+              style: VButtonStyle.text,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            const SizedBox(width: VSpace.s8),
+            VButton(
+              label: l.actionAdd,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _wrap([
+          VButton(
+            label: l.galleryShowSheet,
+            style: VButtonStyle.tonal,
+            onPressed: () => showVSheet<void>(context, builder: _addToPlaylist),
+          ),
+          VButton(
+            label: l.galleryShowSourceSheet,
+            style: VButtonStyle.tonal,
+            onPressed: () => showVSheet<void>(context, builder: _addSource),
+          ),
+          VButton(
+            label: l.galleryShowSideSheet,
+            style: VButtonStyle.tonal,
+            onPressed: () => showVSideSheet(
+              context,
+              title: l.viewQueue,
+              body: _queue(context),
+            ),
+          ),
+          VButton(
+            label: l.galleryShowDialog,
+            style: VButtonStyle.tonal,
+            onPressed: () => showVDialog(
+              context,
+              title: l.updateTitle,
+              message: l.updateBody('1.2', '18 Mo'),
+              action: l.actionInstall,
+              cancel: l.actionLater,
+            ),
+          ),
+          VButton(
+            label: l.galleryShowSnack,
+            style: VButtonStyle.tonal,
+            onPressed: () => showVSnack(
+              context,
+              l.playbackStopped,
+              actionLabel: l.actionUndo,
+              onAction: _noop,
+              duration: VDurations.undo,
+            ),
+          ),
+          VButton(
+            label: l.galleryToggleSheet,
+            style: VButtonStyle.tonal,
+            onPressed: () => setState(() => _pane = !_pane),
+          ),
+        ]),
+        const SizedBox(height: VSpace.s16),
+        _wide(
+          VBreakpoints.expanded,
+          _screen(
+            VBreakpoints.expanded,
+            640,
+            Row(
+              children: [
+                Expanded(
+                  child: ListView(
+                    children: [
+                      for (final t in sampleTracks)
+                        VTrackRow(
+                          track: t,
+                          playing: false,
+                          onTap: _noop,
+                          onPlayNext: _noop,
+                          quick: _quick(l),
+                          groups: _groups(l),
+                        ),
+                    ],
+                  ),
+                ),
+                VSideSheet(
+                  open: _pane,
+                  child: VNowPlaying(
+                    position: _fixedPosition,
+                    data: _data(),
+                    size: PlayerSize.medium,
+                    style: PlayerStyle.disc,
+                    view: PlayerView.player,
+                    onView: (_) {},
+                    actions: _actions,
+                    lyrics: _lyrics,
+                    queue: _queue,
+                    onImmersive: _noop,
+                    volume: VVolume(value: 0.6, onChanged: (_) {}),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: VSpace.s16),
+        _screen(
+          VSize.sideSheet,
+          VSize.sideSheet,
+          Stack(
+            children: [
+              _filler(5),
+              VStandardSheet(
+                child: Padding(
+                  padding: const EdgeInsets.all(VSpace.s16),
+                  child: Text(
+                    l.addSourceWarning,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The phone's bar, the desktop rail collapsed and expanded with its pinned items.
+class _NavigationSection extends StatefulWidget {
+  const _NavigationSection();
+
+  @override
+  State<_NavigationSection> createState() => _NavigationSectionState();
+}
+
+class _NavigationSectionState extends State<_NavigationSection> {
+  int _tab = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final pinned = [
+      VPinned('playlist:liked', l.likedTracks),
+      VPinned(sampleCollections.first.$1, sampleCollections.first.$2),
+      VPinned('artist:Stromae', 'Stromae', kind: ArtKind.artist),
+    ];
+    Widget rail(bool expanded) => _screen(
+      expanded ? VSize.sideSheet : VSize.strip + VSpace.s32,
+      VSize.sideSheet * 1.6,
+      VNavigationRail(
+        destinations: _destinations(l),
+        pinned: pinned,
+        selected: _tab,
+        onSelected: (i) => setState(() => _tab = i),
+        expanded: expanded,
+        onExpanded: (_) {},
+      ),
+    );
+    return _wrap([
+      SizedBox(
+        width: VSize.sideSheet + VSpace.s32,
+        child: VNavigationBar(
+          destinations: _destinations(l),
+          selected: _tab.clamp(0, 3),
+          onSelected: (i) => setState(() => _tab = i),
+        ),
+      ),
+      rail(false),
+      rail(true),
+    ]);
+  }
+}
+
+/// The search bar with its suggestions, and the chips that filter results.
+class _SearchSection extends StatefulWidget {
+  const _SearchSection();
+
+  @override
+  State<_SearchSection> createState() => _SearchSectionState();
+}
+
+class _SearchSectionState extends State<_SearchSection> {
+  int _filter = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: VBreakpoints.medium),
+          child: VSearchBar(
+            suggestions: (context, text) => [
+              for (final t in sampleTracks.where(
+                (t) => t.title.toLowerCase().contains(text.toLowerCase()),
+              ))
+                VTrackRow(
+                  track: t,
+                  playing: false,
+                  onTap: _noop,
+                  onPlayNext: _noop,
+                  quick: const [],
+                  groups: const [],
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: VSpace.s16),
+        Wrap(
+          spacing: VSpace.s8,
+          runSpacing: VSpace.s8,
+          children: [
+            for (final (i, label) in [
+              l.shelfTracks,
+              l.shelfAlbums,
+              l.shelfArtists,
+              l.shelfPlaylists,
+            ].indexed)
+              VChip(
+                label: label,
+                filter: true,
+                selected: _filter == i,
+                onPressed: () => setState(() => _filter = i),
+              ),
+            VChip(
+              label: l.actionShuffle,
+              icon: VIcons.shuffle,
+              onPressed: _noop,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Hero (home), multi-browse (artist), uncontained; the shelves; the flexible header.
+class _CarouselSection extends StatelessWidget {
+  const _CarouselSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final items = [
+      for (final (id, title, sub) in sampleCollections)
+        VCarouselItem(itemId: id, title: title, subtitle: sub, onTap: _noop),
+    ];
     final cardHeight = VSize.shelfCard + VSpace.s8 + VSpace.s16 * 3;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: VBreakpoints.medium),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                l.discoveryTitle,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: VSpace.s8),
+              VCarousel(
+                kind: VCarouselKind.hero,
+                items: items,
+                height: VSize.heroCard * 0.8,
+              ),
+              const SizedBox(height: VSpace.sectionGap),
+              Text(
+                l.shelfAlbums,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: VSpace.s8),
+              VCarousel(
+                kind: VCarouselKind.multiBrowse,
+                items: items,
+                height: VSize.heroCard * 0.6,
+              ),
+              const SizedBox(height: VSpace.sectionGap),
+              VCarousel(
+                kind: VCarouselKind.uncontained,
+                items: items,
+                height: VSize.shelfCard * 1.5,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: VSpace.sectionGap),
         VShelf(
           title: l.shelfAlbums,
           onMore: _noop,
@@ -981,48 +1668,281 @@ class _ShelfSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: VSpace.sectionGap),
-        _frame(
-          VBreakpoints.medium * 0.6,
-          480,
-          CustomScrollView(
-            slivers: [
-              VFlexibleHeader(
-                artwork: VArtwork(
-                  itemId: sampleCollections.first.$1,
-                  size: 220,
-                  playing: false,
-                ),
-                title: sampleCollections.first.$2,
-                subtitle: sampleCollections.first.$3,
-                actions: [
-                  VSplitButton(
-                    label: l.actionPlay,
-                    icon: VIcons.play,
+        _wrap([
+          _screen(
+            VSize.sideSheet,
+            480,
+            CustomScrollView(
+              slivers: [
+                VLargeAppBar(
+                  title: l.greeting,
+                  leading: VIconButton(
+                    icon: VIcons.menu,
+                    label: l.actionExpandMenu,
                     onPressed: _noop,
-                    items: [VAction(l.actionShuffle, VIcons.shuffle, _noop)],
                   ),
-                ],
-                fab: VPlayPauseFab(
-                  playing: false,
-                  loading: false,
-                  onPressed: _noop,
+                ),
+                SliverList.builder(
+                  itemCount: 8,
+                  itemBuilder: (_, i) => VSkeleton.row(),
+                ),
+              ],
+            ),
+          ),
+          _screen(
+            VSize.sideSheet,
+            480,
+            CustomScrollView(
+              slivers: [
+                VFlexibleHeader(
+                  artwork: VArtwork(
+                    itemId: sampleCollections.first.$1,
+                    size: VSize.headerArt,
+                    playing: true,
+                  ),
+                  title: sampleCollections.first.$2,
+                  subtitle: sampleCollections.first.$3,
+                  actions: [
+                    VSplitButton(
+                      label: l.actionPlay,
+                      icon: VIcons.play,
+                      onPressed: _noop,
+                      items: [VAction(l.actionShuffle, VIcons.shuffle, _noop)],
+                    ),
+                  ],
+                  fab: VFab(
+                    icon: VIcons.play,
+                    label: l.actionPlay,
+                    onPressed: _noop,
+                  ),
+                ),
+                SliverList.builder(
+                  itemCount: sampleTracks.length,
+                  itemBuilder: (_, i) => VTrackRow(
+                    track: sampleTracks[i],
+                    number: i + 1,
+                    playing: i == 1,
+                    onTap: _noop,
+                    onPlayNext: _noop,
+                    quick: _quick(l),
+                    groups: _groups(l),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ]),
+      ],
+    );
+  }
+}
+
+/// Réglages › Apparence: a live compact player on top, then rounded groups whose
+/// choices are connected button groups (spec UI §6.7).
+class _SettingsSection extends StatefulWidget {
+  const _SettingsSection();
+
+  @override
+  State<_SettingsSection> createState() => _SettingsSectionState();
+}
+
+enum _Theme { system, light, dark }
+
+enum _Color { nowPlaying, system, preset }
+
+class _SettingsSectionState extends State<_SettingsSection> {
+  _Color _color = _Color.nowPlaying;
+  _Theme _theme = _Theme.system;
+  PlayerStyle _style = PlayerStyle.disc;
+  bool _black = false, _normalize = true, _radio = true;
+  double _volume = 0.6;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: VBreakpoints.medium),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            l.settingsAppearance,
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: VSpace.s16),
+          VNowPlaying(
+            position: _fixedPosition,
+            data: _data(),
+            size: PlayerSize.compact,
+            style: _style,
+            view: PlayerView.player,
+            onView: (_) {},
+            actions: _actions,
+            lyrics: _lyrics,
+            queue: _queue,
+          ),
+          const SizedBox(height: VSpace.s24),
+          VListGroup(
+            title: l.settingsColor,
+            children: [
+              VListRow(
+                below: VChoiceGroup<_Color>(
+                  choices: [
+                    (_Color.nowPlaying, l.colorSourceNowPlaying),
+                    (_Color.system, l.themeSystem),
+                    (_Color.preset, l.colorSourcePresets),
+                  ],
+                  value: _color,
+                  onChanged: (c) => setState(() => _color = c),
                 ),
               ),
-              SliverList.builder(
-                itemCount: sampleTracks.length,
-                itemBuilder: (_, i) => VTrackRow(
-                  track: sampleTracks[i],
-                  number: i + 1,
-                  playing: false,
-                  onTap: _noop,
-                  onPlayNext: _noop,
-                  quick: _quick(l),
-                  groups: _groups(l),
+              VListRow(
+                title: l.themePureBlack,
+                trailing: VSwitch(
+                  value: _black,
+                  label: l.themePureBlack,
+                  onChanged: (v) => setState(() => _black = v),
+                ),
+                onTap: () => setState(() => _black = !_black),
+              ),
+            ],
+          ),
+          const SizedBox(height: VSpace.s16),
+          VListGroup(
+            title: l.settingsPlayerStyle,
+            children: [
+              VListRow(
+                below: VChoiceGroup<PlayerStyle>(
+                  choices: [
+                    (PlayerStyle.disc, l.playerStyleDisc),
+                    (PlayerStyle.wave, l.playerStyleWave),
+                  ],
+                  value: _style,
+                  onChanged: (s) => setState(() => _style = s),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: VSpace.s16),
+          VListGroup(
+            title: l.settingsTheme,
+            children: [
+              VListRow(
+                below: VChoiceGroup<_Theme>(
+                  choices: [
+                    (_Theme.system, l.themeSystem),
+                    (_Theme.light, l.themeLight),
+                    (_Theme.dark, l.themeDark),
+                  ],
+                  value: _theme,
+                  onChanged: (t) => setState(() => _theme = t),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: VSpace.s16),
+          VListGroup(
+            title: l.settingsPlayback,
+            children: [
+              VListRow(
+                title: l.settingsEndRadio,
+                trailing: VSwitch(
+                  value: _radio,
+                  label: l.settingsEndRadio,
+                  onChanged: (v) => setState(() => _radio = v),
+                ),
+              ),
+              VListRow(
+                title: l.settingsNormalize,
+                trailing: VSwitch(
+                  value: _normalize,
+                  label: l.settingsNormalize,
+                  onChanged: (v) => setState(() => _normalize = v),
+                ),
+              ),
+              VListRow(
+                title: l.volumeLabel,
+                below: VVolume(
+                  value: _volume,
+                  onChanged: (v) => setState(() => _volume = v),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Loading indicators, progress, pull to refresh, skeletons, empty and offline states,
+/// badges.
+class _StatesSection extends StatelessWidget {
+  const _StatesSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _wrap([
+          const VLoading(),
+          const VLoading(contained: true),
+          const VCircularProgress(value: 0.62),
+          const VDownloadIcon(state: null),
+          const VDownloadIcon(state: DownloadStateView.queued),
+          const VDownloadIcon(state: DownloadStateView.running, progress: 0.6),
+          const VDownloadIcon(state: DownloadStateView.done),
+          VBadge(
+            count: 2,
+            label: l.downloading,
+            child: const VSymbol(VIcons.download),
+          ),
+          VBadge(label: l.navLibrary, child: const VSymbol(VIcons.library)),
+          const VOfflineChip(),
+        ]),
+        const SizedBox(height: VSpace.s16),
+        SizedBox(
+          width: VSize.heroCard,
+          child: Column(
+            children: [
+              VWaveProgress(progress: 0.35, playing: true, onSeek: (_) {}),
+              const VWaveProgress(progress: 0.7, playing: false, onSeek: null),
+            ],
+          ),
         ),
+        const SizedBox(height: VSpace.s16),
+        _wrap([
+          _screen(
+            VSize.sideSheet,
+            VSize.sideSheet,
+            VRefresh(
+              onRefresh: () async {},
+              child: ListView(
+                children: [
+                  for (final t in sampleTracks)
+                    VTrackRow(
+                      track: t,
+                      playing: false,
+                      onTap: _noop,
+                      onPlayNext: _noop,
+                      quick: const [],
+                      groups: const [],
+                    ),
+                ],
+              ),
+            ),
+          ),
+          _screen(VSize.sideSheet, VSize.sideSheet, _filler(5)),
+          _screen(
+            VSize.sideSheet,
+            VSize.sideSheet,
+            Center(
+              child: VEmptyState(icon: VIcons.favorite, message: l.emptyLikes),
+            ),
+          ),
+        ]),
       ],
     );
   }
@@ -1087,7 +2007,7 @@ class _TransitionsSectionState extends State<_TransitionsSection> {
       ),
     );
     return _wrap([
-      _frame(
+      _screen(
         VSize.sideSheet,
         260,
         Navigator(
@@ -1134,7 +2054,7 @@ class _TransitionsSectionState extends State<_TransitionsSection> {
           ),
         ],
       ),
-      _frame(
+      _screen(
         VSize.sideSheet,
         120,
         Center(
@@ -1151,99 +2071,13 @@ class _TransitionsSectionState extends State<_TransitionsSection> {
   }
 }
 
-class _FeedbackSection extends StatefulWidget {
-  const _FeedbackSection();
-
-  @override
-  State<_FeedbackSection> createState() => _FeedbackSectionState();
-}
-
-class _FeedbackSectionState extends State<_FeedbackSection> {
-  bool _sheet = true;
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _wrap([
-          const VLoading(),
-          const VLoading(size: VSize.playIcon),
-          VButton(
-            label: l.galleryShowSnack,
-            style: VButtonStyle.tonal,
-            onPressed: () => showVSnack(
-              context,
-              l.playbackStopped,
-              actionLabel: l.actionUndo,
-              onAction: _noop,
-              duration: VDurations.undo,
-            ),
-          ),
-          VButton(
-            label: l.galleryToggleSheet,
-            style: VButtonStyle.tonal,
-            onPressed: () => setState(() => _sheet = !_sheet),
-          ),
-        ]),
-        const SizedBox(height: VSpace.s16),
-        _wide(
-          VBreakpoints.expanded,
-          _frame(
-            VBreakpoints.expanded,
-            420,
-            Row(
-              children: [
-                Expanded(
-                  child: VRefresh(
-                    onRefresh: () async {},
-                    child: ListView(
-                      children: [
-                        for (final t in sampleTracks)
-                          VTrackRow(
-                            track: t,
-                            playing: false,
-                            onTap: _noop,
-                            onPlayNext: _noop,
-                            quick: _quick(l),
-                            groups: _groups(l),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                VSideSheet(
-                  open: _sheet,
-                  child: VNowPlaying(
-                    position: _fixedPosition,
-                    data: _data(),
-                    size: PlayerSize.medium,
-                    style: PlayerStyle.disc,
-                    view: PlayerView.player,
-                    onView: (_) {},
-                    actions: _actions,
-                    lyrics: (_) => const SizedBox(),
-                    queue: (_) => const SizedBox(),
-                    onImmersive: _noop,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _ListStatesSection extends StatelessWidget {
   const _ListStatesSection();
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    Widget list(Future<List<String>> Function() load) => _frame(
+    Widget list(Future<List<String>> Function() load) => _screen(
       VSize.sideSheet * 0.75,
       400,
       CustomScrollView(

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/design/design.dart';
 import 'package:vehicoule/design/gallery.dart';
+import 'package:vehicoule/l10n/app_localizations.dart';
 
 void main() {
   for (final width in [400.0, 1280.0]) {
@@ -18,6 +19,7 @@ void main() {
 
         await tester.pumpWidget(const GalleryApp());
         await tester.pump(const Duration(milliseconds: 500));
+        FlutterError.onError = old;
         for (final type in [
           VArtwork,
           VDecor,
@@ -38,6 +40,29 @@ void main() {
           VOfflineChip,
           VSideSheet,
           VFlexibleHeader,
+          // The M3 set the app uses (spec UI §4, §5.4, §5.8, §6).
+          VFab,
+          VExtendedFab,
+          VFabMenu,
+          VChoiceGroup<PlayerStyle>,
+          VIconButton,
+          VToolbar,
+          VStandardSheet,
+          VCarousel,
+          VChip,
+          VSwitch,
+          VBadge,
+          VRichTooltip,
+          VListGroup,
+          VNavigationBar,
+          VNavigationRail,
+          VSearchBar,
+          VLargeAppBar,
+          VCircularProgress,
+          VVolume,
+          VSkeleton,
+          VRefresh,
+          VAsyncList<String>,
         ]) {
           expect(
             find.byType(type, skipOffstage: false),
@@ -45,12 +70,34 @@ void main() {
             reason: '$type',
           );
         }
-        // 3 sizes × 2 styles × 3 views, then playing, paused and loading.
+        // Large and medium × 2 styles × 3 views, the immersive view, the mini player
+        // playing, paused and loading, the strip.
         expect(
           find.byType(VNowPlaying, skipOffstage: false).evaluate().length,
           greaterThanOrEqualTo(18),
         );
-        FlutterError.onError = old;
+        // Every section, reachable from the jump list.
+        final l = lookupAppLocalizations(const Locale('fr'));
+        for (final title in [
+          l.galleryArtwork,
+          l.galleryMiniPlayer,
+          l.galleryFabs,
+          l.galleryButtonGroups,
+          l.galleryToolbars,
+          l.galleryMenus,
+          l.gallerySheets,
+          l.galleryNavigation,
+          l.gallerySearch,
+          l.galleryCarousels,
+          l.gallerySettings,
+          l.galleryStates,
+        ]) {
+          expect(
+            find.text(title, skipOffstage: false),
+            findsAtLeastNWidgets(2),
+            reason: '$title: a jump chip and a heading',
+          );
+        }
         for (final e in errors) {
           debugPrint(e.toString());
         }

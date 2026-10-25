@@ -294,4 +294,180 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get playingFromLabel => 'Playing from';
+
+  @override
+  String get actionNewPlaylist => 'New playlist';
+
+  @override
+  String get actionImportLink => 'Import a link';
+
+  @override
+  String get actionCreate => 'Create';
+
+  @override
+  String get actionCancel => 'Cancel';
+
+  @override
+  String get actionOk => 'OK';
+
+  @override
+  String get actionAdd => 'Add';
+
+  @override
+  String get actionLater => 'Later';
+
+  @override
+  String get actionInstall => 'Install';
+
+  @override
+  String get actionSelectAll => 'Select all';
+
+  @override
+  String get actionExpandMenu => 'Expand the menu';
+
+  @override
+  String get actionCollapseMenu => 'Collapse the menu';
+
+  @override
+  String get navHome => 'Home';
+
+  @override
+  String get navExplore => 'Explore';
+
+  @override
+  String get navLibrary => 'Library';
+
+  @override
+  String get navSettings => 'Settings';
+
+  @override
+  String get railPinned => 'Pinned';
+
+  @override
+  String get likedTracks => 'Liked songs';
+
+  @override
+  String get downloadsTitle => 'Downloads';
+
+  @override
+  String get sourcesTitle => 'Sources';
+
+  @override
+  String get searchHint => 'Songs, albums, artists…';
+
+  @override
+  String selectionCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count selected',
+      one: '1 selected',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get settingsAppearance => 'Appearance';
+
+  @override
+  String get settingsColor => 'Colour';
+
+  @override
+  String get settingsPlayerStyle => 'Player style';
+
+  @override
+  String get settingsTheme => 'Theme';
+
+  @override
+  String get settingsPlayback => 'Playback';
+
+  @override
+  String get settingsNormalize => 'Same volume from one song to the next';
+
+  @override
+  String get settingsEndRadio => 'Radio when the queue ends';
+
+  @override
+  String get themeSystem => 'System';
+
+  @override
+  String get colorSourceNowPlaying => 'What\'s playing';
+
+  @override
+  String get colorSourcePresets => 'Preset';
+
+  @override
+  String get gestureHintTitle => 'The mini player';
+
+  @override
+  String get gestureHint => 'Swipe ← → to change songs, ↓ to stop.';
+
+  @override
+  String get updateTitle => 'Update available';
+
+  @override
+  String updateBody(String version, String size) {
+    return 'Version $version, $size. Playback resumes faster after a call.';
+  }
+
+  @override
+  String get addSourceWarning =>
+      'This source doesn\'t come from Vehicoule. Add it only if you trust it.';
+
+  @override
+  String get greeting => 'Good evening';
+
+  @override
+  String get discoveryTitle => 'Your discovery of the day';
+
+  @override
+  String get galleryJump => 'Go to';
+
+  @override
+  String get galleryMiniPlayer => 'Mini player and strip';
+
+  @override
+  String get galleryFabs => 'Floating buttons';
+
+  @override
+  String get galleryButtonGroups => 'Button groups';
+
+  @override
+  String get galleryToolbars => 'Toolbars';
+
+  @override
+  String get galleryMenus => 'Menus';
+
+  @override
+  String get gallerySheets => 'Sheets and dialogs';
+
+  @override
+  String get galleryNavigation => 'Navigation';
+
+  @override
+  String get gallerySearch => 'Search and filters';
+
+  @override
+  String get galleryCarousels => 'Carousels and shelves';
+
+  @override
+  String get gallerySettings => 'Settings';
+
+  @override
+  String get galleryStates => 'Loading and states';
+
+  @override
+  String get galleryShowDialog => 'Show a dialog';
+
+  @override
+  String get galleryShowSheet => 'Open a sheet';
+
+  @override
+  String get galleryShowSourceSheet => 'Add a source';
+
+  @override
+  String get galleryShowSideSheet => 'Open a side sheet';
+
+  @override
+  String get galleryOpenMenuEdge => 'Menu at the edge';
 }

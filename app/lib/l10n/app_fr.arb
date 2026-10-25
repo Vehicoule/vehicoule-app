@@ -117,5 +117,77 @@
   "actionStop": "Arrêter la lecture",
   "actionExitImmersive": "Quitter le plein écran",
   "miniPlayerLabel": "Mini-lecteur",
-  "playingFromLabel": "Lecture depuis"
+  "playingFromLabel": "Lecture depuis",
+  "actionNewPlaylist": "Nouvelle playlist",
+  "actionImportLink": "Importer un lien",
+  "actionCreate": "Créer",
+  "actionCancel": "Annuler",
+  "actionOk": "OK",
+  "actionAdd": "Ajouter",
+  "actionLater": "Plus tard",
+  "actionInstall": "Installer",
+  "actionSelectAll": "Tout sélectionner",
+  "actionExpandMenu": "Déplier le menu",
+  "actionCollapseMenu": "Replier le menu",
+  "navHome": "Accueil",
+  "navExplore": "Explorer",
+  "navLibrary": "Bibliothèque",
+  "navSettings": "Réglages",
+  "railPinned": "Épinglés",
+  "likedTracks": "Titres likés",
+  "downloadsTitle": "Téléchargements",
+  "sourcesTitle": "Sources",
+  "searchHint": "Titres, albums, artistes…",
+  "selectionCount": "{count, plural, =1{1 sélectionné} other{{count} sélectionnés}}",
+  "@selectionCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsAppearance": "Apparence",
+  "settingsColor": "Couleur",
+  "settingsPlayerStyle": "Style du lecteur",
+  "settingsTheme": "Thème",
+  "settingsPlayback": "Lecture",
+  "settingsNormalize": "Volume égal d'un titre à l'autre",
+  "settingsEndRadio": "Radio quand la file se termine",
+  "themeSystem": "Système",
+  "colorSourceNowPlaying": "Ce qui joue",
+  "colorSourcePresets": "Préréglage",
+  "gestureHintTitle": "Le mini-lecteur",
+  "gestureHint": "Glisse ← → pour changer de titre, ↓ pour arrêter.",
+  "updateTitle": "Mise à jour disponible",
+  "updateBody": "Version {version}, {size}. La lecture reprend plus vite après un appel.",
+  "@updateBody": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "addSourceWarning": "Cette source ne vient pas de Vehicoule. Ajoute-la seulement si tu lui fais confiance.",
+  "greeting": "Bonsoir",
+  "discoveryTitle": "Ta découverte du jour",
+  "galleryJump": "Aller à",
+  "galleryMiniPlayer": "Mini-lecteur et bande",
+  "galleryFabs": "Boutons flottants",
+  "galleryButtonGroups": "Groupes de boutons",
+  "galleryToolbars": "Barres d'outils",
+  "galleryMenus": "Menus",
+  "gallerySheets": "Feuilles et dialogues",
+  "galleryNavigation": "Navigation",
+  "gallerySearch": "Recherche et filtres",
+  "galleryCarousels": "Carrousels et étagères",
+  "gallerySettings": "Réglages",
+  "galleryStates": "Chargement et états",
+  "galleryShowDialog": "Afficher un dialogue",
+  "galleryShowSheet": "Ouvrir une feuille",
+  "galleryShowSourceSheet": "Ajouter une source",
+  "galleryShowSideSheet": "Ouvrir une feuille latérale",
+  "galleryOpenMenuEdge": "Menu au bord"
 }

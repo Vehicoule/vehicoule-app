@@ -73,6 +73,9 @@ abstract final class VSize {
   /// Hero card width in a carousel.
   static const heroCard = 280.0;
 
+  /// The veil under a carousel item's text.
+  static const carouselScrim = 0.4;
+
   /// The thin stroke of small progress icons (download).
   static const iconStroke = 3.0;
 
