@@ -247,4 +247,26 @@ void main() {
     expect(location(tester), '/onboarding');
     expect(find.byType(VNavigationBar), findsNothing);
   });
+
+  testWidgets('the rail expands, with its domain, and stays so', (
+    tester,
+  ) async {
+    final r = Rig();
+    await r.pump(tester, size: desktop);
+    await tester.tap(label('Déplier le menu'));
+    await settle(tester, 12);
+    expect(
+      tester.widget<VNavigationRail>(find.byType(VNavigationRail)).expanded,
+      isTrue,
+    );
+    expect(r.api.prefs['ui.rail_expanded'], 'true');
+    expect(find.text('Musique'), findsOneWidget);
+    await r.pump(tester, size: desktop);
+    expect(
+      tester.widget<VNavigationRail>(find.byType(VNavigationRail)).expanded,
+      isTrue,
+    );
+    // The tooltip of the last button hovered goes.
+    await settle(tester, 10);
+  }, variant: mac);
 }

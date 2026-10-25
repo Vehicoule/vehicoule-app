@@ -33,6 +33,22 @@ class MobileShellState extends State<MobileShell> {
   final _sheet = GlobalKey<NowPlayingSheetState>();
   final _extent = ValueNotifier(0.0);
   final _miniArt = ValueNotifier<Rect?>(null);
+  final _bar = GlobalKey(), _mini = GlobalKey();
+
+  /// Snackbars go above the mini player, else above the bar.
+  void _liftSnacks() {
+    if (!mounted) return;
+    final box =
+        (_mini.currentContext ?? _bar.currentContext)?.findRenderObject()
+            as RenderBox?;
+    final mq = MediaQuery.of(context);
+    vSnackLift.value = box == null || !box.hasSize
+        ? 0
+        : (mq.size.height -
+                  box.localToGlobal(Offset.zero).dy -
+                  mq.padding.bottom)
+              .clamp(0, mq.size.height);
+  }
 
   /// ☰: the modal rail.
   void openMenu() => _scaffold.currentState?.openDrawer();
@@ -55,21 +71,26 @@ class MobileShellState extends State<MobileShell> {
     final body = ScreenFabHost(
       builder: (context, action, items, bar) => ListenableBuilder(
         listenable: playback,
-        builder: (context, _) => VFabDock(
-          body: widget.shell,
-          fab: action,
-          fabItems: items,
-          // Nothing loaded: no mini player, the screen's FAB has the corner.
-          player:
-              bar ??
-              (playback.track == null
-                  ? null
-                  : MiniPlayer(
-                      extent: _extent,
-                      onArtworkRect: (r) => _miniArt.value = r,
-                      onOpen: () => _sheet.currentState?.open(),
-                    )),
-        ),
+        builder: (context, _) {
+          // The mini player comes and goes with what plays.
+          WidgetsBinding.instance.addPostFrameCallback((_) => _liftSnacks());
+          return VFabDock(
+            body: widget.shell,
+            fab: action,
+            fabItems: items,
+            // Nothing loaded: no mini player, the screen's FAB has the corner.
+            player:
+                bar ??
+                (playback.track == null
+                    ? null
+                    : MiniPlayer(
+                        key: _mini,
+                        extent: _extent,
+                        onArtworkRect: (r) => _miniArt.value = r,
+                        onOpen: () => _sheet.currentState?.open(),
+                      )),
+          );
+        },
       ),
     );
     return DesktopShortcuts(
@@ -103,6 +124,7 @@ class MobileShellState extends State<MobileShell> {
               bottomNavigationBar: widget.medium
                   ? null
                   : VNavigationBar(
+                      key: _bar,
                       destinations: shellDestinations(l),
                       selected: widget.shell.currentIndex,
                       onSelected: _go,

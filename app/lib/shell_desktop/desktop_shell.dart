@@ -42,6 +42,7 @@ class _DesktopShellState extends State<DesktopShell> {
       ..addListener(() => setState(() {}))
       ..load();
     _restore();
+    vSnackLift.value = 0;
   }
 
   Future<void> _restore() async {
@@ -108,20 +109,24 @@ class _DesktopShellState extends State<DesktopShell> {
     final scope = AppScope.of(context);
     final scheme = Theme.of(context).colorScheme;
     final destinations = shellDestinations(l);
-    final domain = _rail
-        ? VChip(
-            label: l.domainMusic,
-            icon: VIcons.musicNote,
-            filter: true,
-            selected: true,
-            onPressed: () {},
-          )
-        : VIconButton(
-            icon: VIcons.musicNote,
-            label: l.domainMusic,
-            selected: true,
-            onPressed: () {},
-          );
+    // The domain at the rail's bottom: a chip once the rail is wide enough for its
+    // label (as its FAB), an icon while it grows and when collapsed.
+    final domain = LayoutBuilder(
+      builder: (context, box) => _rail && box.maxWidth >= VSize.railFabExtended
+          ? VChip(
+              label: l.domainMusic,
+              icon: VIcons.musicNote,
+              filter: true,
+              selected: true,
+              onPressed: () {},
+            )
+          : VIconButton(
+              icon: VIcons.musicNote,
+              label: l.domainMusic,
+              selected: true,
+              onPressed: () {},
+            ),
+    );
     final main = ScreenFabHost(
       builder: (context, action, items, bar) => Row(
         children: [
@@ -150,20 +155,26 @@ class _DesktopShellState extends State<DesktopShell> {
                 padding: const EdgeInsets.only(bottom: VSpace.s8),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(VRadius.large),
-                  child: Material(
-                    color: scheme.surfaceContainerLow,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(child: widget.shell),
-                        // A selection's toolbar, where a phone has its mini player.
-                        if (bar != null)
-                          Positioned(
-                            left: VSpace.s16,
-                            right: VSpace.s16,
-                            bottom: VSpace.s16,
-                            child: Center(child: bar),
-                          ),
-                      ],
+                  // The content is a card on the window: its own surface, so
+                  // the pages' app bars blend in.
+                  child: vOnSurface(
+                    context,
+                    scheme.surfaceContainerLow,
+                    Material(
+                      color: scheme.surfaceContainerLow,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(child: widget.shell),
+                          // A selection's toolbar, where a phone has its mini player.
+                          if (bar != null)
+                            Positioned(
+                              left: VSpace.s16,
+                              right: VSpace.s16,
+                              bottom: VSpace.s16,
+                              child: Center(child: bar),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

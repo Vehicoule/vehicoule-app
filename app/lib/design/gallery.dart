@@ -807,6 +807,7 @@ class _MiniSectionState extends State<_MiniSection> {
             ),
             const SizedBox(height: VSpace.s8),
             VNavigationBar(
+              safeArea: false,
               destinations: _destinations(l),
               selected: _tab,
               onSelected: (i) => setState(() => _tab = i),
@@ -1462,6 +1463,7 @@ class _FabSectionState extends State<_FabSection> {
                   ),
                 ),
                 VNavigationBar(
+                  safeArea: false,
                   destinations: _destinations(l),
                   selected: 2,
                   onSelected: (_) {},
@@ -1902,6 +1904,7 @@ class _NavigationSectionState extends State<_NavigationSection> {
       SizedBox(
         width: VSize.sideSheet + VSpace.s32,
         child: VNavigationBar(
+          safeArea: false,
           destinations: _destinations(l),
           selected: _tab.clamp(0, 3),
           onSelected: (i) => setState(() => _tab = i),

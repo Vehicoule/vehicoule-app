@@ -27,17 +27,21 @@ class VNavigationBar extends StatelessWidget {
     required this.destinations,
     required this.selected,
     required this.onSelected,
+    this.safeArea = true,
   });
 
   final List<VDestination> destinations;
   final int selected;
   final ValueChanged<int> onSelected;
 
+  /// Clear of the system's gesture bar; false in the gallery's framed demos.
+  final bool safeArea;
+
   @override
   Widget build(BuildContext context) => M3ENavigationBar(
     selectedIndex: selected,
     onDestinationSelected: onSelected,
-    safeArea: false,
+    safeArea: safeArea,
     destinations: [
       for (final d in destinations)
         M3ENavigationBarDestination(
@@ -238,6 +242,8 @@ class VSearchBarState extends State<VSearchBar> {
     barLeading: const VSymbol(VIcons.search),
     viewHintText: AppLocalizations.of(context).searchHint,
     onSubmitted: widget.onSubmitted,
+    // The docked view is as tall as its suggestions: no empty panel.
+    shrinkWrap: true,
     suggestionsBuilder: (context, c) => widget.suggestions(context, c.text),
   );
 }

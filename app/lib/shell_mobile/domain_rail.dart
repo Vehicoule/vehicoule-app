@@ -18,24 +18,34 @@ class DomainRail extends StatelessWidget {
     final at = GoRouterState.of(context).uri.path;
     final selected = _routes.lastIndexWhere((r) => at.startsWith(r));
     void close() => Scaffold.of(context).closeDrawer();
-    return SafeArea(
-      child: SizedBox(
-        width: VSize.railExpanded,
-        child: VNavigationRail(
-          destinations: [
-            VDestination(l.domainMusic, VIcons.musicNote),
-            VDestination(l.sourcesTitle, VIcons.source),
-            VDestination(l.downloadsTitle, VIcons.download),
-          ],
-          pinned: const [],
-          selected: selected < 0 ? 0 : selected,
-          expanded: true,
-          onExpanded: (_) => close(),
-          onSelected: (i) {
-            close();
-            // Musique keeps the current destination; the others are pages.
-            if (i > 0) context.go(_routes[i]);
-          },
+    // The modal rail's sheet: under the status bar too, its end corners rounded.
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadiusDirectional.horizontal(
+          end: Radius.circular(VRadius.medium),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SafeArea(
+        child: SizedBox(
+          width: VSize.railExpanded,
+          child: VNavigationRail(
+            destinations: [
+              VDestination(l.domainMusic, VIcons.musicNote),
+              VDestination(l.sourcesTitle, VIcons.source),
+              VDestination(l.downloadsTitle, VIcons.download),
+            ],
+            pinned: const [],
+            selected: selected < 0 ? 0 : selected,
+            expanded: true,
+            onExpanded: (_) => close(),
+            onSelected: (i) {
+              close();
+              // Musique keeps the current destination; the others are pages.
+              if (i > 0) context.go(_routes[i]);
+            },
+          ),
         ),
       ),
     );

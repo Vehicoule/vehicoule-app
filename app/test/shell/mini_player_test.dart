@@ -43,6 +43,11 @@ void main() {
     await settle(tester);
     expect(r.names.where((n) => n == #crateApiPlaybackStop), hasLength(1));
     expect(find.text('Lecture arrêtée'), findsOneWidget);
+    // Above the navigation bar, never over it.
+    expect(
+      tester.getRect(find.text('Lecture arrêtée')).bottom,
+      lessThan(tester.getRect(find.byType(VNavigationBar)).top),
+    );
     await tester.tap(find.text('Annuler'));
     await settle(tester);
     expect(r.names, contains(#crateApiPlaybackUndoStop));

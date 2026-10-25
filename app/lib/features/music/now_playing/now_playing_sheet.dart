@@ -111,11 +111,11 @@ class NowPlayingSheetState extends State<NowPlayingSheet> {
             );
           },
         );
-        return BackButtonListener(
-          onBackButtonPressed: () async {
-            if (!_shown) return false;
-            close();
-            return true;
+        // Back closes the open player first (and tells the system so: predictive back).
+        return PopScope(
+          canPop: !_shown,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) close();
           },
           child: Stack(
             key: _stack,

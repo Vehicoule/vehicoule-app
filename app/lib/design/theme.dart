@@ -93,6 +93,19 @@ Widget vOnCover(BuildContext context, Color foreground, Widget child) {
   );
 }
 
+/// [child] on [surface] as its own base (the desktop's content card): `surface` takes
+/// that colour for Material and M3E components alike (an app bar blends into the card).
+Widget vOnSurface(BuildContext context, Color surface, Widget child) {
+  final theme = Theme.of(context);
+  return Theme(
+    data: theme.copyWith(
+      colorScheme: theme.colorScheme.copyWith(surface: surface),
+      scaffoldBackgroundColor: surface,
+    ),
+    child: _M3EScope(child: child),
+  );
+}
+
 /// Every delegate the app needs: our strings, and material_ui's own Material, Cupertino
 /// and widgets localizations (flutter_localizations' Material ones are another type).
 const vLocalizationsDelegates = <LocalizationsDelegate<dynamic>>[

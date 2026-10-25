@@ -165,8 +165,11 @@ abstract final class VBreakpoints {
   /// Above this width the desktop "now playing" pane is open by default (spec UI §4.2).
   static const paneOpen = 1000.0;
 
-  /// The desktop window's smallest height (its smallest width is [expanded]).
-  static const windowMinHeight = 600.0;
+  /// The desktop window's smallest height (its smallest width is [expanded]), and its
+  /// size at the first launch (the desktop reference, 1280 × 800).
+  static const windowMinHeight = 600.0,
+      windowWidth = 1280.0,
+      windowHeight = 800.0;
 }
 
 WindowClass windowClassOf(double width) => width < VBreakpoints.medium

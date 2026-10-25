@@ -100,9 +100,18 @@ class WindowKeeper with WindowListener {
   /// Before the first frame shows: the title bar is ours, the bounds the last ones.
   static Future<void> setUp() async {
     await windowManager.ensureInitialized();
+    final saved = await uiPref(key: _key);
     await windowManager.waitUntilReadyToShow(
-      const WindowOptions(
-        minimumSize: Size(VBreakpoints.expanded, VBreakpoints.windowMinHeight),
+      WindowOptions(
+        minimumSize: const Size(
+          VBreakpoints.expanded,
+          VBreakpoints.windowMinHeight,
+        ),
+        // The first launch: the reference size, centred.
+        size: saved == null
+            ? const Size(VBreakpoints.windowWidth, VBreakpoints.windowHeight)
+            : null,
+        center: saved == null,
         titleBarStyle: TitleBarStyle.hidden,
       ),
       () async {

@@ -98,4 +98,19 @@ void main() {
     await settle(tester, 12);
     expect(sheet.controller.size, 0);
   });
+
+  testWidgets('back closes the open player, not the app', (tester) async {
+    final r = Rig();
+    await r.pump(tester);
+    final sheet = tester.state<NowPlayingSheetState>(
+      find.byType(NowPlayingSheet),
+    );
+    sheet.open();
+    await settle(tester, 12);
+    expect(sheet.controller.size, 1);
+    await tester.binding.handlePopRoute();
+    await settle(tester, 12);
+    expect(sheet.controller.size, 0);
+    expect(location(tester), '/home');
+  });
 }
