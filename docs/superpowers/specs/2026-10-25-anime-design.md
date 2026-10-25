@@ -45,7 +45,7 @@ besoin.
 | `items.kind` (§5.1) | + `anime`, `episode` (les livres ajoutent `book`, `chapter`) |
 | Tables communes (§5.2) | + `library_entries`, `categories`, `progress`, `bookmarks`, `source_bindings` (§3) ; `item_relations` (addendum §6) |
 | `vehicoule:host` | 1.1.0 : + `types`, `session` (cookies), `challenge`, `oauth`, filtres, `settings-schema` (§4.5) |
-| SDK | + décompacteur, AES compatible CryptoJS, option `js` (QuickJS compilé en WASM, dans le composant) (§4.5) |
+| SDK | + décompacteur, AES compatible CryptoJS, option `js` (Boa, moteur JS en Rust, compilé en WASM dans le composant) si le spike l'exige (§4.5) |
 | Manifeste (§4.3) | + `adult: bool` ; Réglages › Sources « Afficher les sources pour adultes », désactivé par défaut |
 | Crate `stream` (§3.4) | + HLS : variantes, segments avec reprise, AES-128, playlist locale réécrite, sous-titres à côté (§7) |
 | Lecteur | + seconde session : `WatchState` dans le cœur, `VideoPlayerAdapter` côté Dart (§6.1) |
@@ -330,14 +330,15 @@ change. Les plugins musique 1.0 restent chargés tels quels.
   - le **SDK** fournit en Rust ce qui couvre la plupart des cas, sans moteur JS : le
     décompacteur « p,a,c,k,e,d » (Aniyomi fait de même en Kotlin), le déchiffrement AES
     compatible CryptoJS, les variantes de base64 ;
-  - pour le reste, une option du SDK (`js`) embarque **QuickJS compilé en WASM** dans le
-    composant. Il tourne sous Pulley avec les budgets du plugin (fuel, epoch, mémoire) et n'a
-    ni réseau ni fichiers, puisque le plugin n'en a pas ;
-  - aucun moteur JS natif dans l'hôte, donc aucune nouvelle surface d'attaque, et la version
-    stores reste simple.
+  - **aucun moteur JS écrit en C**, ni dans l'hôte ni dans les plugins : QuickJS accumule les
+    failles de corruption mémoire (CVE-2026-0821, CVSS 9.8 ; CVE-2026-0822, exploit public),
+    et V8 en est à sa sixième faille exploitée de 2026 ;
+  - si le spike (§10.1) montre qu'un hébergeur exige un vrai moteur JS, l'option `js` du SDK
+    embarque **Boa** (moteur JS écrit en Rust) compilé en WASM dans le composant, avec les
+    budgets du plugin, sans réseau ni fichiers.
 
-  Le socle §4.5 (interface `js` native pour YouTube) ne change pas : son JavaScript est d'un
-  autre ordre de taille. Le spike (§10.1) mesure le coût de QuickJS en WASM sous Pulley.
+  **Changement du socle §4.5** (plan B YouTube) : l'interface hôte `js` passe de QuickJS
+  natif à **Boa natif** (Rust), pour la même raison.
 - **`oauth`** (import) : `begin(plugin)` déclenche le flux PKCE de `auth-config` dans le
   navigateur du système, retour par `vehicoule://oauth/<plugin>`. L'hôte garde les jetons
   dans le trousseau du système (Keystore Android, Keychain macOS) et les rafraîchit.
@@ -552,7 +553,7 @@ jetable, plus une sonde Rust pour le HLS.
 | Audio de la vidéo écran éteint, 30 min | sans coupure | Service `mediaPlayback` propre à la vidéo |
 | PiP automatique, Flutter ne dessine que la vidéo | OK sur Android 12+ | PiP manuel (bouton) |
 | Musique et vidéo jouent ensemble : le lecteur vidéo ne prend pas le focus audio exclusif, et `audio_service` ne met pas la musique en pause au démarrage d'un épisode | les deux audibles 10 min | La vidéo joue sans demander le focus audio, et la session musique ignore les pertes de focus causées par l'app elle-même |
-| QuickJS compilé en WASM, dans un composant, sous Pulley sur Android arm64 : un script compacté typique, puis un script obscurci de 100 Ko | ≤ 300 ms et ≤ 2 s ; composant ≤ 2 Mio ; une boucle infinie coupée par le fuel | Interface hôte `js` (QuickJS natif, socle §4.5), version mineure de l'hôte |
+| Les 20 hébergeurs vidéo les plus utilisés par les extensions Aniyomi : combien se traitent avec les aides Rust du SDK seules | ≥ 18 sur 20 | Option `js` du SDK avec Boa en WASM, mesurée sous Pulley : ≤ 2 s pour un script obscurci de 100 Ko, composant ≤ 4 Mio, boucle infinie coupée par le fuel |
 | Deux `MediaSession` (musique + vidéo) | l'écran verrouillé montre la dernière démarrée, chaque bouton atteint la bonne session | Une seule session système, qui bascule sur le dernier média démarré |
 | HLS téléchargé par la sonde Rust (AES-128 compris), lu hors ligne par mpv | lecture complète, avance rapide | Remux en un seul fichier (FFmpeg de libmpv) |
 | Taille : `media_kit_libs_audio` → `media_kit_libs_video` dans toute l'app, arm64 | **+25 Mio au plus** | libmpv vidéo recompilée sans les décodeurs inutiles |
