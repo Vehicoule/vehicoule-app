@@ -42,6 +42,11 @@ refus des IP privées du socle §4.3.
   pour l'en ligne, le hors ligne et le préchargement (« démarrage instantané du suivant »,
   spec anime §6.1).
 - Musique et vidéo l'utilisent pareil. C'est le « serveur local » que le socle §11 prévoyait.
+- **Session du plugin** : quand la vidéo vient d'un plugin qui utilise `session` (spec anime
+  §4.5), le proxy envoie les requêtes avec **sa boîte à cookies et son User-Agent** : un site
+  derrière une protection anti-robots refuse sinon les segments que la page a autorisés.
+- Retour OAuth des trackers par lien vérifié `https://vehicoule.com/oauth/…`, jamais par le
+  schéma `vehicoule://` (spec anime §4.5).
 
 **Tests.** Une playlist HLS dont un segment pointe vers une IP privée → segment refusé, erreur
 typée ; une redirection hors des domaines du plugin → refusée ; un jeton faux → 404 ; mpv

@@ -50,7 +50,7 @@ besoin.
 | Crate `stream` (§3.4) | + HLS : variantes, segments avec reprise, AES-128, playlist locale réécrite, sous-titres à côté (§7) |
 | Lecteur | + seconde session : `WatchState` dans le cœur, `VideoPlayerAdapter` côté Dart (§6.1) |
 | Plateforme | + tâche périodique (mise à jour de la bibliothèque, §5.5), seconde `MediaSession` Android, PiP |
-| Dépendances | `media_kit_libs_audio` → `media_kit_libs_video` pour toute l'app ; + `media_kit_video` |
+| Dépendances | libmpv + FFmpeg vidéo **recompilés réduits** (`2026-10-25-surface-attaque.md` §3) à la place de `media_kit_libs_audio`, pour toute l'app ; + `media_kit_video` |
 
 ## 3. Bibliothèque
 
@@ -360,7 +360,7 @@ change. Les plugins musique 1.0 restent chargés tels quels.
   **Changement du socle §4.5** (plan B YouTube) : l'interface hôte `js` passe de QuickJS
   natif à **Boa natif** (Rust), pour la même raison.
 - **`oauth`** (import) : `begin(plugin)` déclenche le flux PKCE de `auth-config` dans le
-  navigateur du système, retour par `vehicoule://oauth/<plugin>`. L'hôte garde les jetons
+  navigateur du système, retour par un **lien vérifié** `https://vehicoule.com/oauth/<plugin>` (App Links, liens universels) : un schéma `vehicoule://` peut être revendiqué par une autre app installée, pas un lien vérifié (RFC 8252). PKCE en plus. L'hôte garde les jetons
   dans le trousseau du système (Keystore Android, Keychain macOS) et les rafraîchit.
   `send-authorized(request)` envoie une requête avec `Authorization` ajouté par l'hôte : **le
   plugin ne voit jamais le jeton**. « Se déconnecter » efface les jetons.
@@ -586,7 +586,7 @@ jetable, plus une sonde Rust pour le HLS.
 | Les 20 hébergeurs vidéo les plus utilisés par les extensions Aniyomi : combien se traitent avec les aides Rust du SDK seules | ≥ 18 sur 20 | Option `js` du SDK avec Boa en WASM, mesurée sous Pulley : ≤ 2 s pour un script obscurci de 100 Ko, composant ≤ 4 Mio, boucle infinie coupée par le fuel |
 | Deux `MediaSession` (musique + vidéo) | l'écran verrouillé montre la dernière démarrée, chaque bouton atteint la bonne session | Une seule session système, qui bascule sur le dernier média démarré |
 | HLS téléchargé par la sonde Rust (AES-128 compris), lu hors ligne par mpv | lecture complète, avance rapide | Remux en un seul fichier (FFmpeg de libmpv) |
-| Taille : `media_kit_libs_audio` → `media_kit_libs_video` dans toute l'app, arm64 | **+25 Mio au plus** | libmpv vidéo recompilée sans les décodeurs inutiles |
+| Taille : libmpv + FFmpeg vidéo réduits (surface d'attaque §3) à la place de `media_kit_libs_audio`, dans toute l'app, arm64 | **+25 Mio au plus** | Retirer AV1 et HEVC logiciels (décodage matériel seulement) |
 | Licences | ni GPL ni nonfree | Variante vidéo déjà vérifiée (rapport de l'étape 1 de la musique) ; on ajoute libass (ISC) et les shaders Anime4K (MIT) |
 
 Le rapport va dans `docs/superpowers/reports/`, comme celui de la musique.
