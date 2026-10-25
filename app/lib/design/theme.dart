@@ -71,6 +71,27 @@ ThemeData vTheme({
 Color vScreenSurface(ColorScheme cs) =>
     cs.surface == _black ? _black : cs.surfaceContainer;
 
+final _onScrim = Expando<ThemeData>();
+
+/// Light content on a dark scrim over artwork (the Vague's header): white foregrounds
+/// and a light veil for tonal fills, for Material and M3E components alike.
+Widget vOnScrim(BuildContext context, Widget child) {
+  final theme = Theme.of(context);
+  const white = Color(0xFFFFFFFF);
+  final t = _onScrim[theme] ??= theme.copyWith(
+    colorScheme: theme.colorScheme.copyWith(
+      onSurface: white,
+      onSurfaceVariant: white,
+      secondaryContainer: white.withValues(alpha: 0.16),
+      onSecondaryContainer: white,
+    ),
+  );
+  return Theme(
+    data: t,
+    child: _M3EScope(child: child),
+  );
+}
+
 /// Every delegate the app needs: our strings, and material_ui's own Material, Cupertino
 /// and widgets localizations (flutter_localizations' Material ones are another type).
 const vLocalizationsDelegates = <LocalizationsDelegate<dynamic>>[

@@ -2,7 +2,7 @@
 // « Règle d'emploi »: one FAB or split button per screen).
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_3_expressive/material_3_expressive.dart'
-    show M3ENavigationRail, M3EFab, M3EToolbar;
+    show M3ENavigationRail, M3EFab, M3EToolbar, M3ETheme;
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/design/design.dart';
 import 'package:vehicoule/design/gallery.dart';
@@ -66,43 +66,6 @@ void main() {
     expect(picked, ['Radio']);
   });
 
-  testWidgets('on a phone the screen FAB sits above the mini player ⏯', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(412, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      harness(
-        VFabDock(
-          body: ListView(
-            children: [for (var i = 0; i < 60; i++) Text('Ligne $i')],
-          ),
-          fab: VFab(icon: VIcons.play, label: 'Lire', onPressed: noop),
-          player: Row(
-            children: [
-              const Expanded(child: SizedBox(height: VSize.toolbar)),
-              VPlayPauseFab(playing: true, loading: false, onPressed: noop),
-            ],
-          ),
-        ),
-        reduce: true,
-      ),
-    );
-    await tester.pumpAndSettle();
-    final fab = tester.getRect(find.byType(VFab));
-    final play = tester.getRect(find.byType(VPlayPauseFab));
-    expect(fab.right, closeTo(play.right, 0.5), reason: 'right-aligned');
-    expect(play.top - fab.bottom, closeTo(VSpace.s16, 0.5), reason: '16 dp');
-    // Scrolling down hides it, scrolling up brings it back.
-    await tester.drag(find.byType(ListView), const Offset(0, -300));
-    await tester.pumpAndSettle();
-    expect(find.byType(VFab), findsNothing);
-    await tester.drag(find.byType(ListView), const Offset(0, 100));
-    await tester.pumpAndSettle();
-    expect(find.byType(VFab), findsOneWidget);
-  });
-
   testWidgets('the rail shows its destination FAB, collapsed and expanded', (
     tester,
   ) async {
@@ -147,11 +110,27 @@ void main() {
         isNull,
       );
       expect(find.bySemanticsLabel('Nouvelle'), findsOneWidget);
-      if (expanded) expect(find.text('Nouvelle'), findsOneWidget);
+      final fab = tester.getRect(find.bySemanticsLabel('Nouvelle'));
+      if (expanded) {
+        expect(find.text('Nouvelle'), findsOneWidget);
+        // The header's columns are the destinations' (N-4): ≡ over their glyphs,
+        // the FAB's edge on their indicator's.
+        final rail = tester.getRect(find.byType(M3ENavigationRail));
+        final t = M3ETheme.of(tester.element(find.byType(M3ENavigationRail)))
+            .navigationRailTheme;
+        final menu = tester.getRect(find.byIcon(VIcons.menuOpen));
+        final home = tester.getRect(find.byIcon(VIcons.home).first);
+        expect(menu.left, closeTo(home.left, 1));
+        expect(fab.left - rail.left, closeTo(t.expandedItemInset, 1));
+      }
       // A FAB menu: the creations open in a menu under it.
       await tester.tap(find.bySemanticsLabel('Nouvelle'));
       await tester.pumpAndSettle();
       expect(find.text('Importer un lien'), findsOneWidget);
+      // Start-aligned under the FAB, opening toward the content.
+      final panel = tester.getRect(find.byKey(VMenu.panelKey));
+      expect(panel.left, closeTo(fab.left, 1));
+      expect(panel.top, greaterThanOrEqualTo(fab.bottom));
       await tester.tap(find.text('Nouvelle playlist'));
       await tester.pumpAndSettle();
     }

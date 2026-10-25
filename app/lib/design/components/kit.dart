@@ -59,12 +59,17 @@ class VExtendedFab extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.extended = true,
+    this.secondary = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
   final bool extended;
+
+  /// `secondaryContainer`: a screen's FAB above the mini player's ⏯ (which is
+  /// `primaryContainer`), so the two never read as one pair.
+  final bool secondary;
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +79,7 @@ class VExtendedFab extends StatelessWidget {
       label: label,
       extended: extended,
       onPressed: onPressed,
+      color: secondary ? M3EFabColor.secondary : M3EFabColor.primary,
       // M3 Expressive's default extended FAB is the small one (56).
       size: M3EExtendedFabSize.small,
     );
@@ -87,6 +93,11 @@ class VExtendedFab extends StatelessWidget {
       child: reduceMotion(context)
           ? AnimatedSwitcher(
               duration: VDurations.reduced,
+              // Both states keep the end edge, as the morph does.
+              layoutBuilder: (current, previous) => Stack(
+                alignment: AlignmentDirectional.centerEnd,
+                children: [...previous, ?current],
+              ),
               child: fab(extended, ValueKey(extended)),
             )
           : fab(extended),
@@ -94,15 +105,69 @@ class VExtendedFab extends StatelessWidget {
   }
 }
 
+/// A screen's main action as a FAB (spec UI §5.4): [action], or a FAB menu whose [items]
+/// open in a menu anchored to it (above it when there is no room below). Extended with
+/// its label when [extended]; [secondary] off the ⏯'s `primaryContainer`.
+/// [startAligned]: the menu opens from the FAB's start edge (a rail's FAB).
+class VScreenFab extends StatelessWidget {
+  const VScreenFab({
+    super.key,
+    required this.action,
+    this.items = const [],
+    this.extended = true,
+    this.secondary = false,
+    this.startAligned = false,
+  });
+
+  final VAction action;
+  final List<VAction> items;
+  final bool extended, secondary, startAligned;
+
+  @override
+  Widget build(BuildContext context) {
+    void press() {
+      if (items.isEmpty) return action.onSelected();
+      final b = context.findRenderObject()! as RenderBox;
+      showVMenu(
+        context,
+        anchor: b.localToGlobal(Offset.zero) & b.size,
+        quick: const [],
+        groups: [items],
+        startAligned: startAligned,
+      );
+    }
+
+    return extended
+        ? VExtendedFab(
+            icon: action.icon,
+            label: action.label,
+            onPressed: press,
+            secondary: secondary,
+          )
+        : VFab(icon: action.icon, label: action.label, onPressed: press);
+  }
+}
+
 /// A phone screen's bottom corner (spec UI §5.4): the mini player, and the screen's FAB
-/// above its ⏯, right-aligned, 16 dp apart. The FAB hides while [body] scrolls down and
-/// comes back when it scrolls up. A header split button that has scrolled away becomes
-/// [fab] (the screen passes it once its header is gone).
+/// above its ⏯, right-aligned, 16 dp apart, extended with its label and in
+/// `secondaryContainer`. The FAB hides while [body] scrolls down and comes back when it
+/// scrolls up. A header split button that has scrolled away becomes [fab] (the screen
+/// passes it once its header is gone). The dock's height is added to [body]'s bottom
+/// padding, so a list's last row scrolls clear of it.
 class VFabDock extends StatefulWidget {
-  const VFabDock({super.key, required this.body, this.fab, this.player});
+  const VFabDock({
+    super.key,
+    required this.body,
+    this.fab,
+    this.fabItems = const [],
+    this.player,
+  });
 
   final Widget body;
-  final Widget? fab;
+
+  /// The screen's main action; [fabItems] make it a FAB menu.
+  final VAction? fab;
+  final List<VAction> fabItems;
 
   /// The mini player; without it (desktop, nothing playing) the FAB has the corner.
   final Widget? player;
@@ -112,7 +177,9 @@ class VFabDock extends StatefulWidget {
 }
 
 class _VFabDockState extends State<VFabDock> {
+  final _dock = GlobalKey();
   bool _shown = true;
+  double _height = 0;
 
   bool _onScroll(UserScrollNotification n) {
     final shown = switch (n.direction) {
@@ -124,22 +191,38 @@ class _VFabDockState extends State<VFabDock> {
     return false;
   }
 
+  /// The dock's height after layout, for the body's inset.
+  void _measure() {
+    final box = _dock.currentContext?.findRenderObject() as RenderBox?;
+    if (!mounted || box == null || !box.hasSize) return;
+    final h = box.size.height + VSpace.s16;
+    if (h != _height) setState(() => _height = h);
+  }
+
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
     final fab = _shown ? widget.fab : null;
+    final mq = MediaQuery.of(context);
     return Stack(
       children: [
         Positioned.fill(
-          child: NotificationListener<UserScrollNotification>(
-            onNotification: _onScroll,
-            child: widget.body,
+          child: MediaQuery(
+            data: mq.copyWith(
+              padding: mq.padding.copyWith(bottom: mq.padding.bottom + _height),
+            ),
+            child: NotificationListener<UserScrollNotification>(
+              onNotification: _onScroll,
+              child: widget.body,
+            ),
           ),
         ),
         PositionedDirectional(
           start: VSpace.s16,
           end: VSpace.s16,
-          bottom: VSpace.s16,
+          bottom: mq.padding.bottom + VSpace.s16,
           child: Column(
+            key: _dock,
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -163,7 +246,11 @@ class _VFabDockState extends State<VFabDock> {
                               ? 0
                               : VSpace.s16 - (VSize.toolbar - VSize.fab) / 2,
                         ),
-                        child: fab,
+                        child: VScreenFab(
+                          action: fab,
+                          items: widget.fabItems,
+                          secondary: widget.player != null,
+                        ),
                       ),
               ),
               ?widget.player,

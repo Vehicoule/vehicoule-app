@@ -258,21 +258,32 @@ class _VNowPlayingState extends State<VNowPlaying>
     super.dispose();
   }
 
-  double _headerBottom(BuildContext context) =>
-      MediaQuery.paddingOf(context).top + _headerHeight;
-
   double _scrimHeight(BuildContext context) =>
-      _headerBottom(context) + VSize.headerScrimFade;
+      MediaQuery.paddingOf(context).top + VSize.headerScrimHeight;
 
-  /// Solid under the header, fading out below it.
+  /// Short and dark, from the scheme's scrim role (spec UI §6.6, ruling): even under
+  /// the status bar and the header, then an ease-out fade to nothing, with no edge.
   LinearGradient _scrim(BuildContext context) {
-    final surface = Theme.of(context).colorScheme.surface;
-    final solid = surface.withValues(alpha: VSize.headerScrim);
+    final scrim = Theme.of(context).colorScheme.scrim;
+    final height = _scrimHeight(context);
+    final hold = ((MediaQuery.paddingOf(context).top + _headerHeight) / height)
+        .clamp(0.0, 1.0);
+    const steps = 8;
+    final fall = [
+      for (var i = 0; i <= steps; i++)
+        (
+          hold + (1 - hold) * i / steps,
+          VSize.headerScrim * (1 - Curves.easeOut.transform(i / steps)),
+        ),
+    ];
     return LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [solid, solid, surface.withValues(alpha: 0)],
-      stops: [0, _headerBottom(context) / _scrimHeight(context), 1],
+      colors: [
+        scrim.withValues(alpha: VSize.headerScrim),
+        for (final (_, a) in fall) scrim.withValues(alpha: a),
+      ],
+      stops: [0, for (final (t, _) in fall) t],
     );
   }
 
@@ -313,8 +324,8 @@ class _VNowPlayingState extends State<VNowPlaying>
           child: Stack(
             children: [
               Positioned.fill(child: _body(context)),
-              // Under the header, a scrim of the surface: its icons and text read on
-              // any cover (≥ 3:1), then it fades into the artwork.
+              // Under the header, a short dark scrim: its light content reads on any
+              // cover (text 4.5:1, icons 3:1).
               Positioned(
                 top: 0,
                 left: 0,
@@ -337,7 +348,11 @@ class _VNowPlayingState extends State<VNowPlaying>
                     padding: EdgeInsets.only(
                       top: MediaQuery.paddingOf(context).top,
                     ),
-                    child: _header(context),
+                    // Light content on the dark scrim, light status-bar icons.
+                    child: AnnotatedRegion<SystemUiOverlayStyle>(
+                      value: SystemUiOverlayStyle.light,
+                      child: vOnScrim(context, Builder(builder: _header)),
+                    ),
                   ),
                 ),
               ),
@@ -577,7 +592,9 @@ class _VNowPlayingState extends State<VNowPlaying>
                     data.sourceTitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    ),
                   ),
                 ],
               ),

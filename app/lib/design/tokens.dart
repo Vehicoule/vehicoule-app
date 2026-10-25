@@ -99,8 +99,9 @@ abstract final class VSize {
   /// narrowest item that carries text (M3E shows the title from 200).
   static const carouselScrim = 0.6, carouselBand = 0.5, carouselText = 200.0;
 
-  /// The surface's opacity under the Vague's header: its icons read on any cover.
-  static const headerScrim = 0.88, headerScrimFade = 72.0;
+  /// The dark scrim under the Vague's header (below the status bar): how dark under the
+  /// header (its text reads at 4.5:1 on a white cover), and how far it reaches.
+  static const headerScrim = 0.66, headerScrimHeight = 96.0;
 
   /// The thin stroke of small progress icons (download).
   static const iconStroke = 3.0;

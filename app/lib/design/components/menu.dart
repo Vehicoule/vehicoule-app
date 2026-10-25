@@ -45,9 +45,12 @@ Future<void> showVMenu(
   required List<List<VAction>> groups,
   Widget? origin,
   Rect? originRect,
+  bool startAligned = false,
 }) => Navigator.of(c, rootNavigator: true).push(
   _MenuRoute(
     anchor: anchor,
+    // A rail's FAB: the menu opens from its start edge, toward the content.
+    start: startAligned ? Directionality.of(c) : null,
     quick: quick,
     groups: groups,
     origin: origin,
@@ -64,9 +67,13 @@ class _MenuRoute extends PopupRoute<void> {
     required this.origin,
     required this.originRect,
     required this.barrierLabel,
+    this.start,
   });
 
   final Rect anchor, originRect;
+
+  /// Set: the menu is aligned to the anchor's start edge in this direction.
+  final TextDirection? start;
   final List<VAction> quick;
   final List<List<VAction>> groups;
   final Widget? origin;
@@ -221,7 +228,10 @@ class _MenuRoute extends PopupRoute<void> {
               ),
             ),
           ),
-        CustomSingleChildLayout(delegate: _MenuPlacement(anchor), child: panel),
+        CustomSingleChildLayout(
+          delegate: _MenuPlacement(anchor, start),
+          child: panel,
+        ),
       ],
     );
   }
@@ -229,11 +239,12 @@ class _MenuRoute extends PopupRoute<void> {
 
 /// Next to the trigger: a point (right click) is the menu's top-left corner, or its
 /// top-right when there is no room on the right; a rect (⋮, a lifted row) has the menu
-/// under it, right-aligned. Above when there is no room below; always on screen.
+/// under it, right-aligned (start-aligned for a rail's FAB). Above when there is no room below; always on screen.
 class _MenuPlacement extends SingleChildLayoutDelegate {
-  const _MenuPlacement(this.anchor);
+  const _MenuPlacement(this.anchor, this.start);
 
   final Rect anchor;
+  final TextDirection? start;
 
   static const _edge = VSpace.s8, _gap = VSpace.s4;
 
@@ -249,7 +260,10 @@ class _MenuPlacement extends SingleChildLayoutDelegate {
     final maxY = size.height - child.height - _edge;
     final x = point
         ? (anchor.left <= maxX ? anchor.left : anchor.left - child.width)
-        : anchor.right - child.width;
+        : switch (start) {
+            TextDirection.ltr => anchor.left,
+            TextDirection.rtl || null => anchor.right - child.width,
+          };
     final below = anchor.bottom + gap;
     final y = below <= maxY ? below : anchor.top - gap - child.height;
     return Offset(
@@ -259,7 +273,8 @@ class _MenuPlacement extends SingleChildLayoutDelegate {
   }
 
   @override
-  bool shouldRelayout(_MenuPlacement old) => old.anchor != anchor;
+  bool shouldRelayout(_MenuPlacement old) =>
+      old.anchor != anchor || old.start != start;
 }
 
 abstract final class VSheet {

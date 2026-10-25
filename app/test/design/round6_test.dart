@@ -6,7 +6,14 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_3_expressive/material_3_expressive.dart'
-    show M3EProgressIndicator, M3ESlider, M3EButton, M3ETheme, M3EExtendedFab;
+    show
+        M3EProgressIndicator,
+        M3ESlider,
+        M3EButton,
+        M3ETheme,
+        M3EExtendedFab,
+        M3EFab,
+        M3EFabColor;
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/bridge/downloads.dart';
 import 'package:vehicoule/bridge/queue.dart';
@@ -441,37 +448,7 @@ void main() {
     }
   });
 
-  testWidgets('I-2: the Vague header reads on any cover (scrim ≥ 3:1)', (
-    tester,
-  ) async {
-    for (final b in Brightness.values) {
-      await tester.pumpWidget(
-        harness(player(style: PlayerStyle.wave), reduce: true, brightness: b),
-      );
-      await tester.pump();
-      final scrim = tester.widget<DecoratedBox>(
-        find.byKey(VNowPlaying.scrimKey),
-      );
-      final g = (scrim.decoration as BoxDecoration).gradient! as LinearGradient;
-      final cs = Theme.of(tester.element(find.byType(VNowPlaying))).colorScheme;
-      expect(g.colors.first.withValues(alpha: 1), cs.surface);
-      // The header's icons sit within the scrim's solid part.
-      final box = tester.getRect(find.byKey(VNowPlaying.scrimKey));
-      final icons = tester.getRect(find.bySemanticsLabel('Réduire'));
-      expect(
-        icons.bottom,
-        lessThanOrEqualTo(box.top + box.height * g.stops![1]),
-      );
-      for (final cover in [const Color(0xFF000000), const Color(0xFFFFFFFF)]) {
-        final under = Color.alphaBlend(g.colors.first, cover);
-        expect(
-          contrast(cs.onSurfaceVariant, under),
-          greaterThanOrEqualTo(3),
-          reason: '$b over $cover',
-        );
-      }
-    }
-  });
+  // I-2 (surface scrim) is superseded by N-1 (dark scrim, ruling).
 
   testWidgets('I-3: pure black keeps the full-screen player at 0', (
     tester,
@@ -572,5 +549,155 @@ void main() {
       lessThan(wide / 2),
       reason: 'no width spring',
     );
+  });
+
+  // Fix pass 2.
+
+  testWidgets('N-1: the Vague header is light on a short eased dark scrim', (
+    tester,
+  ) async {
+    for (final b in Brightness.values) {
+      await tester.pumpWidget(
+        harness(player(style: PlayerStyle.wave), reduce: true, brightness: b),
+      );
+      await tester.pump();
+      final cs = Theme.of(tester.element(find.byType(VNowPlaying))).colorScheme;
+      final scrim = find.byKey(VNowPlaying.scrimKey);
+      final g =
+          (tester.widget<DecoratedBox>(scrim).decoration as BoxDecoration)
+                  .gradient!
+              as LinearGradient;
+      final box = tester.getRect(scrim);
+      // Short, from the scrim role, eased: many stops, a soft end at 0.
+      expect(box.height, lessThanOrEqualTo(96), reason: '$b');
+      for (final c in g.colors) {
+        expect(c.withValues(alpha: 1), cs.scrim.withValues(alpha: 1));
+      }
+      expect(g.colors.length, greaterThanOrEqualTo(6));
+      expect(g.colors.last.a, 0);
+      expect(g.colors[g.colors.length - 2].a, lessThanOrEqualTo(0.06));
+      double alphaAt(double y) {
+        final t = ((y - box.top) / box.height).clamp(0.0, 1.0);
+        final st = g.stops!;
+        for (var i = 1; i < st.length; i++) {
+          if (t <= st[i]) {
+            final f = (t - st[i - 1]) / (st[i] - st[i - 1]);
+            return g.colors[i - 1].a + (g.colors[i].a - g.colors[i - 1].a) * f;
+          }
+        }
+        return 0;
+      }
+
+      Color under(Element e, double y, Color cover) {
+        var bg = Color.alphaBlend(
+          cs.scrim.withValues(alpha: alphaAt(y)),
+          cover,
+        );
+        // A chip's own fill, when the content sits in one.
+        e.visitAncestorElements((a) {
+          final w = a.widget;
+          if (w is DecoratedBox && w.decoration is ShapeDecoration) {
+            final fill = (w.decoration as ShapeDecoration).color;
+            if (fill != null) bg = Color.alphaBlend(fill, bg);
+            return false;
+          }
+          return a.widget.key != VNowPlaying.headerKey;
+        });
+        return bg;
+      }
+
+      final header = find.byKey(VNowPlaying.headerKey);
+      for (final cover in [const Color(0xFF000000), const Color(0xFFFFFFFF)]) {
+        for (final e
+            in find
+                .descendant(of: header, matching: find.byType(RichText))
+                .evaluate()) {
+          final t = e.widget as RichText;
+          final r = tester.getRect(find.byElementPredicate((x) => x == e));
+          final color = t.text.style!.color!;
+          expect(
+            contrast(color, under(e, r.bottom, cover)),
+            greaterThanOrEqualTo(4.5),
+            reason: '$b « ${t.text.toPlainText()} » over $cover',
+          );
+        }
+        for (final e
+            in find
+                .descendant(of: header, matching: find.byType(Icon))
+                .evaluate()) {
+          final icon = e.widget as Icon;
+          final r = tester.getRect(find.byElementPredicate((x) => x == e));
+          final color = icon.color ?? IconTheme.of(e).color!;
+          expect(
+            contrast(color, under(e, r.bottom, cover)),
+            greaterThanOrEqualTo(3),
+            reason: '$b icon over $cover',
+          );
+        }
+      }
+    }
+  });
+
+  Widget dock(List<int> tapped, {bool fab = true}) => VFabDock(
+    body: ListView(
+      children: [
+        for (var i = 0; i < 40; i++)
+          ListTile(title: Text('Ligne $i'), onTap: () => tapped.add(i)),
+      ],
+    ),
+    fab: fab ? VAction('Lire', VIcons.play, noop) : null,
+    player: player(size: PlayerSize.compact),
+  );
+
+  testWidgets('N-2: the phone FAB is extended, secondary, above the ⏯', (
+    tester,
+  ) async {
+    await show(tester, dock([]), size: const Size(412, 800));
+    final fab = find.descendant(
+      of: find.byType(VFabDock),
+      matching: find.byType(M3EExtendedFab),
+    );
+    expect(tester.widget<M3EExtendedFab>(fab).color, M3EFabColor.secondary);
+    expect(tester.widget<M3EExtendedFab>(fab).extended, isTrue);
+    expect(
+      find.descendant(of: find.byType(VFabDock), matching: find.text('Lire')),
+      findsOneWidget,
+    );
+    final play = find.byType(VPlayPauseFab);
+    expect(
+      tester
+          .widget<M3EFab>(
+            find.descendant(of: play, matching: find.byType(M3EFab)),
+          )
+          .color,
+      M3EFabColor.primary,
+    );
+    // The real mini player: right edges aligned, 16 dp to the ⏯.
+    final f = tester.getRect(fab), p = tester.getRect(play);
+    expect(f.right, closeTo(p.right, 0.5));
+    expect(p.top - f.bottom, closeTo(VSpace.s16, 0.5));
+    // Hides on scroll down, back on scroll up.
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    expect(find.text('Lire'), findsNothing);
+    await tester.drag(find.byType(ListView), const Offset(0, 100));
+    await tester.pumpAndSettle();
+    expect(find.text('Lire'), findsOneWidget);
+  });
+
+  testWidgets('N-3: the last row scrolls clear of the dock', (tester) async {
+    final tapped = <int>[];
+    await show(tester, dock(tapped), size: const Size(412, 800));
+    await tester.drag(find.byType(ListView), const Offset(0, -5000));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    final last = tester.getRect(find.text('Ligne 39'));
+    final mini = tester.getRect(find.byKey(VNowPlaying.compactKey));
+    expect(last.bottom, lessThanOrEqualTo(mini.top), reason: 'clear of it');
+    // Hit-testable down to its bottom edge.
+    final row = tester.getRect(find.widgetWithText(ListTile, 'Ligne 39'));
+    await tester.tapAt(Offset(row.center.dx, row.bottom - 1));
+    expect(tapped, [39]);
   });
 }

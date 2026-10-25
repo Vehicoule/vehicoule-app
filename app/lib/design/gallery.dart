@@ -1307,7 +1307,7 @@ class _FabSectionState extends State<_FabSection> {
         ),
         _rows(),
       ]),
-      fab: gone ? VFab(icon: icon, label: label, onPressed: _noop) : null,
+      fab: gone ? VAction(label, icon, _noop) : null,
       player: player,
     );
     return Column(

@@ -93,19 +93,45 @@ class VNavigationRail extends StatelessWidget {
     final l = AppLocalizations.of(context);
     // The menu button and the FAB are drawn here, not in M3E's slots: its slot lays an
     // extended FAB out while the rail opens from 0 wide, which overflows.
+    final rail = M3ETheme.of(context).navigationRailTheme;
     final header = Column(
       crossAxisAlignment: expanded
           ? CrossAxisAlignment.start
           : CrossAxisAlignment.center,
       children: [
-        VIconButton(
-          icon: expanded ? VIcons.menuOpen : VIcons.menu,
-          label: expanded ? l.actionCollapseMenu : l.actionExpandMenu,
-          onPressed: () => onExpanded(!expanded),
+        // Expanded, the header keeps the destinations' columns: ≡ over their glyphs,
+        // the FAB's edge on their indicator's.
+        Padding(
+          padding: EdgeInsetsDirectional.only(
+            start: expanded
+                ? rail.expandedItemInset +
+                      rail.indicatorLeading -
+                      (VSize.menuTarget - VSize.icon) / 2
+                : 0,
+          ),
+          child: VIconButton(
+            icon: expanded ? VIcons.menuOpen : VIcons.menu,
+            label: expanded ? l.actionCollapseMenu : l.actionExpandMenu,
+            onPressed: () => onExpanded(!expanded),
+          ),
         ),
         if (fab case final fab?) ...[
           const SizedBox(height: VSpace.s8),
-          _RailFab(fab: fab, items: fabItems, expanded: expanded),
+          // Extended once the rail is wide enough for the label (a plain FAB while
+          // it grows); a FAB menu opens from its start edge, toward the content.
+          LayoutBuilder(
+            builder: (context, box) => Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: expanded ? rail.expandedItemInset : 0,
+              ),
+              child: VScreenFab(
+                action: fab,
+                items: fabItems,
+                extended: expanded && box.maxWidth >= VSize.railFabExtended,
+                startAligned: true,
+              ),
+            ),
+          ),
         ],
       ],
     );
@@ -118,13 +144,7 @@ class VNavigationRail extends StatelessWidget {
       labelBehavior: expanded
           ? M3ENavigationRailLabelBehavior.alwaysShow
           : M3ENavigationRailLabelBehavior.alwaysHide,
-      leading: SizedBox(
-        width: double.infinity,
-        child: Padding(
-          padding: EdgeInsetsDirectional.only(start: expanded ? VSpace.s16 : 0),
-          child: header,
-        ),
-      ),
+      leading: SizedBox(width: double.infinity, child: header),
       selectedIndex: selected,
       onDestinationSelected: onSelected,
       sections: [
@@ -157,43 +177,6 @@ class VNavigationRail extends StatelessWidget {
       ],
     );
   }
-}
-
-/// The rail's FAB: extended once the rail is wide enough for its label, a FAB menu's
-/// actions in a menu anchored under it.
-class _RailFab extends StatelessWidget {
-  const _RailFab({
-    required this.fab,
-    required this.items,
-    required this.expanded,
-  });
-
-  final VAction fab;
-  final List<VAction> items;
-  final bool expanded;
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) => Builder(
-      builder: (context) {
-        void press() {
-          if (items.isEmpty) return fab.onSelected();
-          final b = context.findRenderObject()! as RenderBox;
-          showVMenu(
-            context,
-            anchor: b.localToGlobal(Offset.zero) & b.size,
-            quick: const [],
-            groups: [items],
-          );
-        }
-
-        // While the rail grows, the plain FAB until the label fits.
-        return expanded && box.maxWidth >= VSize.railFabExtended
-            ? VExtendedFab(icon: fab.icon, label: fab.label, onPressed: press)
-            : VFab(icon: fab.icon, label: fab.label, onPressed: press);
-      },
-    ),
-  );
 }
 
 /// The search bar; typing opens its suggestions (spec UI §6.2, §4.2). [suggestions]
