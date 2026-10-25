@@ -461,6 +461,8 @@ entre dans la v1 musique (§12).
   - **liens collés** (§3) : liens Deezer et YouTube Music ;
   - **liens de partage** (§3.1) : titres, albums, artistes, playlists ; App Links et liens
     universels (plan 5, Task 4 : le concentrateur de liens), page statique sur `vehicoule.com` ;
+  - **sauvegarde** (§7 bis) : export chiffré, restauration par fusion HLC, sauvegarde
+    automatique hebdomadaire (cœur, plan 3 ; écran Réglages › Sauvegarde, plan 5) ;
   - **M1** paroles romanisées et traduites, **M3** son par sortie audio (§13) ;
   - **« C'est quoi ? »** (§6 bis), mode Écouter : capacité `music.identify` (contrat musique
     1.2, mineure), AcoustID dans le feed officiel, l'écran à grande forme (`VShapeStage` dans
