@@ -114,14 +114,14 @@ sinon.
 
   | Catégorie | Lettre | Exemple |
   |---|---|---|
-  | titre | `t` | `vehicoule.app/t/d3135556` |
-  | album | `a` | `vehicoule.app/a/d302127` |
-  | artiste | `r` | `vehicoule.app/r/d27` |
-  | playlist (éditoriale) | `l` | `vehicoule.app/l/d908622995` |
-  | playlist perso | `p` | `vehicoule.app/p/7Hq2x` (ci-dessous) |
-  | série | `s` | `vehicoule.app/s/a21` |
-  | épisode | `e` | `vehicoule.app/e/a21-1071?t=12m34` |
-  | livre / manga, chapitre | `b`, `c` | `vehicoule.app/c/a30013-1100` |
+  | titre | `t` | `vehicoule.com/t/d3135556` |
+  | album | `a` | `vehicoule.com/a/d302127` |
+  | artiste | `r` | `vehicoule.com/r/d27` |
+  | playlist (éditoriale) | `l` | `vehicoule.com/l/d908622995` |
+  | playlist perso | `p` | `vehicoule.com/p/7Hq2x` (ci-dessous) |
+  | série | `s` | `vehicoule.com/s/a21` |
+  | épisode | `e` | `vehicoule.com/e/a21-1071?t=12m34` |
+  | livre / manga, chapitre | `b`, `c` | `vehicoule.com/c/a30013-1100` |
 
   La **lettre du fournisseur** dit quel catalogue public l'id désigne, par catégorie :
   titres `d` Deezer, `i` ISRC, `m` MusicBrainz ; séries et livres `a` AniList,
@@ -140,7 +140,7 @@ sinon.
   - 200 titres au plus ; débit plafonné par IP ;
   - la feuille de partage le dit : « Ce lien publie la liste des titres » ;
   - **repli** : si le service refuse (quota atteint, hors ligne), le lien porte la liste
-    compressée dans le fragment (`vehicoule.app/p#…`, jamais envoyé au serveur). Il est
+    compressée dans le fragment (`vehicoule.com/p#…`, jamais envoyé au serveur). Il est
     long, mais il marche toujours ;
   - ouvrir le lien propose « Enregistrer dans mes playlists ».
 - **App installée** : Android App Links (`assetlinks.json`) et liens universels Apple
@@ -282,6 +282,7 @@ l'Historique. Livré dès la v1 musique ; chaque domaine y ajoute ses chiffres.
 | UI §6.7 : `/settings/sources` | `/sources` |
 | UI §7.2, §7.3 : fil d'accueil musique | Module `home` commun : chaque étagère porte son domaine, nouvelle étagère `Resume`, filtre par domaine |
 | Socle §5.1 : tables communes | + `item_relations` |
+| Socle §12 : domaine `vehicoule.app`, identifiant `app.vehicoule` | **`vehicoule.com`**, identifiant **`com.vehicoule`** (décision du 2026-10-25, avant toute release : l'identifiant ne change plus ensuite). Sous-domaines : `feeds.vehicoule.com`, `updates.vehicoule.com`, `telemetry.vehicoule.com` |
 | UI §5.5 / plan 7 : minuterie de la file | Minuterie de l'app, qui vise toutes les sessions |
 
 ## 11. Contraintes pour la Task 5 du plan 5 (routes et coques)
@@ -327,6 +328,12 @@ entre dans la v1 musique (§12).
 
 ## 12. Impact sur les autres plans
 
+- **Renommage `app.vehicoule` → `com.vehicoule` et `vehicoule.app` → `vehicoule.com`** sur
+  la branche `socle`, en une tâche isolée, avant le point de contrôle du shell : environ 76
+  occurrences (paquet Kotlin `app/vehicoule/` déplacé, `applicationId`, bundle macOS / iOS,
+  `AppInfo.xcconfig`, canaux de plateforme, `core/core/src/{app,keys,updates}.rs`,
+  `plugin-host` (User-Agent, tests réseau), tests Dart, plans et spec du socle).
+  `git grep -E "app\.vehicoule|vehicoule\.app"` doit être vide après.
 - **Plan 3 (bibliothèque)** : migration `item_relations` (§6), vide en v1.
 - **Plan 7 (fil d'accueil)** : `ShelfView` gagne `domain` ; `ShelfKind::Resume` (en v1 : la
   file musique sauvegardée) ; `home_feed(cursor, filter: Option<Domain>)`. La minuterie
@@ -347,7 +354,7 @@ entre dans la v1 musique (§12).
     en Wi-Fi et en charge (plan 4, service de téléchargement) ;
   - **liens collés** (§3) : liens Deezer et YouTube Music ;
   - **liens de partage** (§3.1) : titres, albums, artistes, playlists ; App Links et liens
-    universels (plan 5, Task 4 : le concentrateur de liens), page statique sur `vehicoule.app` ;
+    universels (plan 5, Task 4 : le concentrateur de liens), page statique sur `vehicoule.com` ;
   - **M1** paroles romanisées et traduites, **M3** son par sortie audio (§13).
 
 ## 13. Idées propres à un domaine
