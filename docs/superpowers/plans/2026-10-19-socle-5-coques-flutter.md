@@ -11,89 +11,146 @@ des critères de la spec.
 fois et partagés ; `shell_mobile/` et `shell_desktop/` ne fournissent que navigation, mise
 en page et comportements (survol, clavier, barre de titre). Pas de gestionnaire d'état :
 Rust pousse `QueueView`, `NowPlaying`, `LibraryChanged`… en flux, les widgets les lisent
-avec `StreamBuilder` ; les pages chargent leurs données par `FutureBuilder` et rechargent
-sur `LibraryChanged`. Seul `platform/` parle aux plugins natifs.
+avec `StreamBuilder` ; les listes chargent par `VAsyncList` et rechargent sur
+`LibraryChanged`. Seul `platform/` parle aux plugins natifs.
 
-**Tech Stack :** Flutter 3.47 (stable), Dart 3.13, go_router 18, media_kit 1.2.6 +
-media_kit_libs_audio 1.0.7, audio_service 0.18.19, window_manager 0.5, connectivity_plus 7,
-url_launcher 6, path_provider 2, material_ui 1.8.0, material_3_expressive 1.2.0 (derrière
-`design/`), dynamic_color (source « Système »), gen-l10n,
-Kotlin (deux services Android).
+**Tech Stack :** Flutter 3.47.2 (stable), Dart 3.13, go_router 18.1.1, media_kit 1.2.6 +
+media_kit_libs_audio 1.0.7, audio_service 0.18.19, window_manager 0.5.2, connectivity_plus
+7.3.2, url_launcher 6.3.3, path_provider 2.1.6, app_links 7.2.2, package_info_plus 10.2.2,
+device_info_plus 13.3.0, share_plus 13.3.1, home_widget 0.10.0, material_ui 1.8.0,
+material_3_expressive 1.2.0 (derrière `design/`), dynamic_color 2.1.0 (source « Système »),
+material_color_utilities 0.13.0, gen-l10n, Kotlin (deux services Android).
 
 **Spec :** `docs/superpowers/specs/2026-10-23-socle-ui-design.md` (interface : identité,
-composants, écrans) ; `docs/superpowers/specs/2026-10-18-socle-musique-design.md` (v4), sections 1
+composants, écrans ; amendée par 1d6b301, 6214976 et 398def0) ;
+`docs/superpowers/specs/2026-10-18-socle-musique-design.md` (v4), sections 1
 (périmètre, critères), 2 (règles des coques), 3.1, 3.4, 3.6, 3.7, 4.6, 6, 7, 8, 12.
 Rapport : « Reste à faire » (test sur téléphone). Prérequis : plan 4 (façade
 `app/lib/bridge/`, squelette `app/`) ; plan 7 avant les tâches 6 et 7 ; plan 6 pour la
 validation finale.
 
+**Espace du plan :** `.superpowers/sdd/2026-10-19-socle-5-coques-flutter/` (ledger
+`progress.md`, `preflight.md`, rapports et captures des tâches).
+
 ## Global Constraints
 
-- Dépôt `/Users/btw/Documents/repo/Vehicoule`, branche `socle-5-app`. Licence MPL-2.0.
-  Commit = `git commit -s -m "<msg>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`.
-- Versions de paquets **figées** (pas de `^`) dans `app/pubspec.yaml`.
-- Dossiers (spec 2) : `app/lib/{bridge,design,l10n,platform,features/music,shell_mobile,shell_desktop}`.
-  `bridge/` n'est jamais modifié à la main.
-- `package:flutter/material.dart` n'est importé nulle part : `material_ui` le remplace.
-  `material_3_expressive` n'est importé **que** dans `app/lib/design/` ; les écrans passent
-  par `design/`. Aucun nombre d'espacement hors des tokens. Des tests le vérifient (tâche 1).
-- Navigation : **go_router**. Coque choisie par `LayoutBuilder` (spec UI §4) :
-  - largeur ≥ **840 dp** → desktop (spec UI §4.2) :
-    - barre de titre maison avec la recherche, sur macOS via `window_manager`
-      (`TitleBarStyle.hidden`) ;
-    - rail M3E permanent avec ses épinglés ;
+- Dépôt `/Users/btw/Documents/repo/Vehicoule-socle`, branche `socle` (copie partagée avec
+  d'autres sessions : jamais de `stash`, de `reset` ni de changement de branche). Licence
+  MPL-2.0. Commit = `git commit -s -m "<msg>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`.
+- Ordre d'exécution : 2, 1, 3, 4, 5, 5b, 6, 7, 10, 8. La 9 est manuelle, sur appareils, après
+  la Task 7 du plan 6. Les tâches 1 et 2 sont terminées.
+- Chaque sous-agent tourne en modèle opus, effort high.
+- Versions de paquets **figées** (pas de `^`) dans `app/pubspec.yaml`, aux versions de la Tech
+  Stack. Chaque tâche ajoute les paquets qu'elle importe la première et liste
+  `app/pubspec.yaml` dans ses Modify.
+- Dossiers (spec 2) : `app/lib/{bridge,design,l10n,platform,features/music,shell_mobile,shell_desktop,debug}`.
+  `bridge/` n'est jamais modifié à la main. `debug/` ne sert qu'en `kDebugMode`, aux tests et
+  à la galerie.
+- `package:flutter/material.dart` n'est importé nulle part : les écrans importent
+  `package:material_ui/material_ui.dart` et `design/design.dart`. `material_3_expressive`
+  n'est importé **que** dans `app/lib/design/`. Aucun nombre d'espacement ni de rayon hors des
+  tokens. Les tests de `test/design/` le vérifient (`imports_test`, `spacing_test`,
+  `guards_test`) ; le garde « brique maison » (`ownBrick`) porte sur `lib/features` et
+  `lib/shell_*`.
+- Navigation : **go_router**. Coque choisie par `windowClassOf(largeur)` (spec UI §4), seule
+  source des points de rupture :
+  - `WindowClass.expanded` (≥ 840 dp) → desktop (spec UI §4.2) :
+    - barre de titre maison avec la recherche, sur macOS, Windows et Linux seulement
+      (`window_manager`, `TitleBarStyle.hidden`) ; une tablette Android ≥ 840 dp n'en a pas,
+      la recherche reste dans la grande app bar ;
+    - rail M3E permanent avec ses épinglés et le FAB de la destination ;
     - à droite, le panneau « en lecture », qui se replie en bande de 76 px : replié par défaut
-      sous **1000 dp**, déplié au-delà. Pas de barre de lecture en bas ;
-  - de **600 à 840 dp** → largeur moyenne (spec UI §4.3) : la coque mobile, mais le rail
-    replié à gauche remplace la barre du bas ;
-  - sinon mobile : barre de navigation M3E (Accueil, Explorer, Bibliothèque, Réglages), ☰ qui
-    ouvre le rail déplié en modal, mini-lecteur flottant au-dessus.
-- Listes : `CustomScrollView` + `SliverAppBar` + `SliverList.builder` (paresseux ; une
-  playlist de 10 000 titres défile sans tout charger : pages de 100 via l'API).
-- Recherche : search bar et search view M3E de `design/`. Suggestions pendant la frappe,
-  résultats à la validation seulement (spec UI §6.2).
+      sous `VBreakpoints.paneOpen` (1000 dp), déplié au-delà. Pas de barre de lecture en bas ;
+  - `WindowClass.medium` (600 à 840 dp) → la coque mobile, mais le rail replié à gauche
+    remplace la barre du bas (spec UI §4.3) ;
+  - `WindowClass.compact` → mobile : barre de navigation M3E (Accueil, Explorer, Bibliothèque,
+    Réglages), ☰ qui ouvre le rail déplié en modal, mini-lecteur flottant au-dessus.
+- Listes : `CustomScrollView` + `VAsyncList` (ses quatre états : chargement, vide, erreur avec
+  « Réessayer », hors ligne). Une longue liste est `VAsyncList.paged` (pages de 100 via l'API) :
+  une playlist de 10 000 titres défile sans tout charger. Une liste dont la requête change
+  (tri, filtre, autre playlist) passe la requête dans `reloadKey`.
+- Recherche : `VSearchBar` de `design/`. Suggestions pendant la frappe, résultats à la
+  validation seulement (spec UI §6.2).
 - Lecteur : **un seul widget `VNowPlaying`** dans `design/` (spec UI §5.5) :
   - trois tailles (compact, moyen, grand) et deux styles (Disque, Vague) ;
-  - le sélecteur Lecteur · Paroles · File, dont les contenus sont fournis par `features/`.
+  - le sélecteur Paroles · Lecteur · File (groupe de boutons connectés), dont les contenus
+    sont fournis par `features/` ;
+  - sur une surface unie (`vScreenSurface`), sans dégradé.
 
-  Plein écran mobile : `DraggableScrollableSheet`. La progression est branchée sur
-  `player.stream.position` côté Dart (Rust ne reçoit qu'une position toutes les ~10 s).
-- Réutilisation (spec UI §5) : les six briques (pochette, contrôles, progression ondulée,
-  sélecteur, ligne de titre, menu) n'existent qu'une fois, dans `design/`. Un test l'impose
-  (tâche 1).
-- Pochettes : `Image.file` sur le chemin rendu par `artworkFile` (cache Rust), jamais
-  d'image réseau.
-- Actions sur un titre : le menu expressif `showVMenu` (appui long, clic droit, ⋮), le même
-  sur les deux coques. Erreurs discrètes : `showVSnack`.
+  Plein écran mobile : `DraggableScrollableSheet`. Le passage mini-lecteur → lecteur suit
+  l'extent de la feuille : `VExtentFlight` entre les rects rendus par
+  `VNowPlaying.onArtworkRect` des deux côtés, jamais un `Hero`. La progression est
+  `PlayerAdapter.position` (`ValueListenable<int>`, ms), branchée sur
+  `player.stream.position` côté Dart (Rust ne reçoit qu'une position toutes les ~10 s) ; un
+  seek y pose sa cible tout de suite.
+- Réutilisation (spec UI §5) : les briques (pochette, contrôles, progression ondulée,
+  sélecteur, ligne de titre, menu, FAB, split button) n'existent qu'une fois, dans `design/`.
+  Un split button est toujours `VSplitButton`, jamais `M3ESplitButton`.
+- Pochettes : `ArtworkResolver` (défaut : `artworkFile`, cache Rust), jamais d'image réseau.
+  Aucune pochette protégée n'est commitée : galerie, tests et captures montrent l'aspect
+  « pochette absente » (`surfaceContainerHighest` uni et l'icône centrée), ou de vraies
+  pochettes lues à l'exécution par le cœur.
+- Actions sur un titre : le menu expressif `showVMenu(anchor:, originRect:)` (appui long, clic
+  droit, ⋮), le même sur les deux coques. Erreurs discrètes : `showVSnack`.
+- **FAB, FAB menu, split button** (spec UI §5.4, règle d'emploi) : un seul FAB ou split button
+  par écran, pour son action principale. Un écran le déclare par `ScreenFab` (Task 5) ; sur
+  téléphone, `VFabDock` le place au-dessus du ⏯ du mini-lecteur ; sur desktop, le rail porte
+  celui de la destination. Les groupes de boutons connectés servent aux bascules et aux choix,
+  jamais à une action principale.
+- Couleur : `seedForArtwork(path, fallback:)` pour le titre qui joue ; une pochette sans
+  couleur donne la graine de repli (Système, sinon le préréglage), jamais celle du titre
+  précédent. `coverTopFromArtwork` va avec la graine dans `NowPlayingData.coverTop`.
 - État : pas de Riverpod ni Bloc.
-- Raccourcis desktop : `Espace` lecture/pause, `←`/`→` recul/avance de 10 s, `Cmd+F`
-  (`Ctrl+F` hors macOS) recherche ; touches média via audio_service. Aucun raccourci
-  quand un champ texte a le focus.
+- Raccourcis desktop : tout le tableau de la spec UI §4.2 (Espace, ← →, ⇧← ⇧→, ⌘↑ ⌘↓, ⌘L,
+  ⌘F, ⌘[ ⌘], ⌘⌥B, ⌘⇧F, ⌘,, ⌘R, Suppr ; `Ctrl` hors macOS) ; touches média via audio_service.
+  Aucun raccourci quand un champ texte a le focus.
 - Android : `applicationId app.vehicoule` ; service audio_service de type
   `mediaPlayback` ; service de téléchargement de premier plan de type `dataSync` avec
   notification de progression ; fichiers dans l'espace propre à l'app, aucune permission
   de stockage.
 - Accessibilité : `Semantics`/`tooltip` sur chaque contrôle sans texte, taille de texte
-  système respectée (pas de `textScaler` forcé), contrastes WCAG AA dans les tokens.
+  système respectée (pas de `textScaler` forcé), contrastes WCAG AA dans les tokens. Les tests
+  trouvent les widgets par libellé sémantique ou `find.byWidgetPredicate`, jamais par un type
+  de `material.dart`.
 - FR et EN dès le départ (`gen-l10n`, ARB) ; aucun texte en dur dans les widgets. Ton et
   vocabulaire de `docs/voice.md` (spec UI §2.9) : « source » et « lien de source », jamais
-  « plugin » ni « dépôt » à l'écran.
+  « plugin » ni « dépôt » à l'écran, dans un nom de fichier ou une route. Sans source de
+  lecture : « Il te faut une source pour lire. » avec l'action « Ajouter une source ».
+- Clés de `uiPref`/`setUiPref` : toujours `ui.*` (une autre clé lève `CoreError.notFound`).
+- Données de test : `lib/debug/library.dart` (vrais titres et artistes, métadonnées seules) et
+  `lib/debug/fake_api.dart` (Task 3), branché par `RustLib.initMock(api: FakeApi())`.
 - **Garde-fous contre l'IA slop** (spec UI §2.8) : chaque tâche les respecte ; le relecteur de
   tâche reçoit le tableau §2.8 comme grille et compte toute violation comme Important.
+- **Revue, captures et rapports** (audit 13a, 13g) :
+  - chaque point de contrôle utilisateur comprend des captures à taille réelle (téléphone
+    412 × 892 dp, desktop 1280 × 800 dp), chacune à côté de la maquette validée rendue à la
+    même largeur, et la liste des écarts. Le relecteur reçoit maquettes et captures, et compte
+    tout écart visuel comme Important. Maquettes :
+    `.superpowers/brainstorm/59588-1792794291/content/{lecteur-v3,app-formes,desktop-2}.html`
+    et `.superpowers/brainstorm/14247-1792758406/content/accueil.html` ;
+  - les captures vont dans l'espace du plan,
+    `.superpowers/sdd/2026-10-19-socle-5-coques-flutter/task-<n>-screenshots/` ;
+    `app/.shots/` (le banc de capture temporaire) n'est jamais commité ;
+  - une ronde de corrections Important ne prend pas les mineurs : ils sont listés dans le
+    ledger et gardés pour la revue finale, sauf ruling contraire ;
+  - chaque rapport se termine par la fin de la sortie de `flutter test` et de
+    `flutter analyze`.
 - Télémétrie Dart : pas de `sentry_flutter`. Les erreurs Dart non rattrapées
   (`FlutterError.onError`, `PlatformDispatcher.instance.onError`) passent par
   `reportDartError` du cœur : un seul filtre, testé au plan 4. Limite connue : les
   plantages natifs Kotlin/Swift ne sont pas captés en v1 ; on ajoutera `sentry_flutter`
   s'ils apparaissent.
-- Mesure du premier son : horodatage au tap, première position > 0 après le `Play`
-  correspondant → `reportPerf(tapToFirstSoundMs)`.
+- Mesure du premier son : horodatage au tap (`PlayerAdapter.markTap()`, appelé par
+  `playTracks`, Task 6), première position > 0 après le `Play` correspondant →
+  `reportPerf(metric: PerfMetric.tapToFirstSoundMs, valueMs:)`.
 
 ## Review Focus
 
 1. **Espace ou flèches tapés dans le champ de recherche sur desktop** : le texte reçoit la
    touche, la lecture ne se met pas en pause. → test `shortcuts_ignored_while_typing` (tâche 5).
 2. **Texte système à 200 %** : aucun débordement sur l'accueil, Explorer, le
-   mini-lecteur et le lecteur plein écran. → test `no_overflow_at_text_scale_2` (tâche 8).
+   mini-lecteur, le lecteur plein écran et les Réglages. → test `no_overflow_at_text_scale_2`
+   (tâche 8).
 3. **Erreur du lecteur qui cache un 403 dans un message mpv** : elle doit arriver à Rust
    comme `Forbidden` pour déclencher la nouvelle résolution, pas comme `Other`.
    → test `classify_player_errors` (tâche 3).
@@ -103,10 +160,17 @@ validation finale.
 5. **Premier lancement hors ligne** (feed officiel injoignable) : l'accueil explique qu'il
    faut du réseau pour installer les sources, l'app ne reste pas bloquée sur un indicateur.
    → test `onboarding_offline_explains_and_continues` (tâche 7).
+6. **Seek** : la progression montre la cible dès le geste, sans retour à l'ancienne position
+   ni minuterie dans `design/`. → test `seek_publishes_its_target_at_once` (tâche 3).
 
 ---
 
 ### Task 1 : système de design (`design/`)
+
+**État : terminée** (commits 0901a7a..becfd07 ; 143 tests, analyse propre ; galerie
+approuvée par le contrôleur sous délégation de l'utilisateur, consigné au ledger). Les étapes
+ci-dessous sont l'historique de la tâche ; le bloc Interfaces est l'API livrée. Le code
+(`app/lib/design/design.dart` et `components/`) fait foi.
 
 **Files :**
 - Create :
@@ -121,77 +185,221 @@ validation finale.
   polices déclarées).
 - Test : `app/test/design/{contrast,imports,spacing,color,track_row,menu,motion}_test.dart`.
 
-**Interfaces :**
-- Produces :
+**Interfaces (livrées) :**
+- Produces — les écrans et les coques importent `design/design.dart` (qui cache
+  `VArtworkPicture`) ; données de démonstration dans `app/lib/debug/library.dart`
+  (`sampleTracks`, `sampleCollections`, `sampleQuery`) :
   ```dart
-  // tokens.dart — valeurs de la spec UI §2.7 et §5.1
+  // tokens.dart
   abstract final class VSpace { static const s4 = 4.0, s8 = 8.0, s12 = 12.0, s16 = 16.0, s24 = 24.0, s32 = 32.0;
-    static const marginCompact = 16.0, marginWide = 24.0, sectionGap = 24.0, cardGap = 8.0; }
-  abstract final class VSize { static const trackRow = 56.0, trackArt = 44.0, trackArtRadius = 12.0, menuTarget = 48.0, shelfCard = 108.0; }
+    static const marginCompact = 16.0, marginWide = 24.0, sectionGap = 24.0, cardGap = 8.0; static double margin(WindowClass c); }
+  abstract final class VSize { static const trackRow = 56.0 /* hauteur minimale */, trackArt = 44.0, trackArtRadius = 12.0, menuTarget = 48.0,
+    shelfCard = 108.0, strip = 76.0, sideSheet = 360.0, railExpanded = 280.0, compactArt = 56.0, fab = 56.0, toolbar = 64.0, swipe = 96.0,
+    headerArt = 220.0, heroCard = 280.0, icon = 24.0, iconLarge = 48.0, albumColumn = 220.0, durationColumn = 56.0; /* … voir tokens.dart */ }
+  abstract final class VRadius { static const small = 12.0, medium = 16.0, large = 28.0; }
+  enum WindowClass { compact, medium, expanded }
+  abstract final class VBreakpoints { static const medium = 600.0, expanded = 840.0, paneOpen = 1000.0; }
+  WindowClass windowClassOf(double width);                               // seule source des points de rupture
   // color.dart
   enum ColorSource { nowPlaying, system, preset }
-  Color pastelSeed(Color raw);                 // HCT : chroma plafonnée à 48, teinte gardée
-  Future<Color?> seedFromArtwork(String path);  // Isolate.run, QuantizerCelebi sur l'image réduite à 112 px ; cache LRU de 64 chemins
+  abstract final class VPresets { static const List<Color> seeds; }
+  Color pastelSeed(Color raw);                                           // HCT : chroma plafonnée à 48, teinte gardée
+  Future<Color?> seedFromArtwork(String path);                           // décodée à 112 px, quantifiée dans Isolate.run ; cache LRU de 64 chemins
+  Future<Color> seedForArtwork(String? path, {required Color fallback}); // pochette sans couleur ou absente → fallback
+  Future<Color?> systemSeed();                                           // dynamic_color ; null sans le plugin
+  class VCoverTop { const VCoverTop(double low, double high); }          // luminance du haut de la pochette (1er et 99e centiles)
+  Future<VCoverTop?> coverTopFromArtwork(String path);                   // même décodage que la graine, même cache
+  enum VOnCover { light, dark, scrim }
+  VOnCover vOnCoverFor(VCoverTop? top);                                  // contenu de l'en-tête de la Vague
   // theme.dart
-  ThemeData vTheme({required Brightness brightness, required Color seed, bool pureBlack = false}); // M3ETheme + nos réglages ; pureBlack : surfaces sombres à 0
-  // typography.dart : titres ROND 100, texte courant ROND 0, repli Noto Sans JP
-  // motion.dart — les seules transitions de l'app (spec UI §5.6)
-  bool reduceMotion(BuildContext c);          // MediaQuery.disableAnimations
-  Page<T> vContainerTransformPage<T>({required LocalKey key, required Widget child, required Object heroTag}); // carte/ligne → page
-  Page<T> vFadeThroughPage<T>({required LocalKey key, required Widget child});   // changement de destination
-  Widget vSharedAxis({required Widget child, required Object key});             // vues du sélecteur, étapes du premier lancement
-  // reduceMotion → toutes deviennent un fondu de 150 ms
-  // haptics.dart — mobile seulement, respecte le réglage système
-  abstract final class VHaptics { static void light(); static void selection(); static void medium(); } // like / ⏯ ; sélecteur, seuils de geste ; arrêt ↓, dépôt réordonné
-  // symbols.dart
-  class VSymbol extends StatelessWidget { const VSymbol(IconData icon, {bool filled = false, double weight = 400, String? semanticLabel}); } // FILL / wght animés
-  // components/
-  enum ArtKind { item, artist }                // la forme se déduit du sens (spec UI §2.3) : un écran ne choisit jamais une forme
-  class VArtwork extends StatelessWidget { const VArtwork({required String itemId, required double size, ArtKind kind = ArtKind.item, bool playing = false, bool selected = false, double? progress, ValueChanged<double>? onSeek, String? semanticLabel}); }
-      // item : carré arrondi ; playing → cookie qui tourne (un tour en 20 s ; morph vers le carré quand playing passe à false) ; selected → cookie + coche ;
-      // artist : toujours le cercle (playing → égaliseur, selected → cookie + coche) ; progress non nul = anneau ondulé autour (plat si !playing) ; onSeek = l'anneau est un slider
+  ThemeData vTheme({required Brightness brightness, required Color seed, bool pureBlack = false});
+  Color vScreenSurface(ColorScheme cs);                                  // fond plein écran : surfaceContainer, 0 en noir pur
+  const List<LocalizationsDelegate<dynamic>> vLocalizationsDelegates;    // les nôtres + ceux de material_ui
+  Widget vAppBuilder(BuildContext context, Widget? child);               // MaterialApp.builder : M3ETheme, police, anneau de focus
+  // typography.dart
+  abstract final class VFonts { static const family = 'GoogleSansFlex'; static const fallback = ['NotoSansJP']; }
+  TextTheme vTextTheme(TextTheme base); void vRegisterFontLicenses();
+  // motion.dart — les seules durées, courbes et transitions de l'app
+  abstract final class VDurations { reduced /*150 ms*/, short, medium, long, undo /*5 s*/, snack /*4 s*/, themeFade, debounce /*150 ms*/,
+    seekStep /*10 s*/, stagger /*40 ms*/, spin /*20 s*/; }
+  abstract final class VCurves { emphasized, emphasizedDecelerate, emphasizedAccelerate, standard, linear, spring; }
+  abstract final class VSprings { spatial, spatialFast, effects; }
+  bool reduceMotion(BuildContext c); Duration vMotion(BuildContext c, Duration d);
+  Page<T> vContainerTransformPage<T>({required LocalKey key, required Widget child, required Object heroTag});
+  Widget vContainerSource({required Object heroTag, required Widget child}); // la carte ou la ligne d'origine
+  Page<T> vFadeThroughPage<T>({required LocalKey key, required Widget child});
+  Widget vSharedAxis({required Widget child, required Object key, bool reverse = false});
+  Widget vEntrance(int index, Widget child);                             // fondu + montée, décalé de VDurations.stagger
+  class VExtentFlight extends StatelessWidget { const VExtentFlight({required double extent, required Rect from, required Rect to,
+    required Widget Function(BuildContext context, double side) builder}); } // Positioned dans un Stack ; rect interpolé par l'extent 0..1, sans Hero
+  // haptics.dart : VHaptics.light() / selection() / medium(), Android et iOS seulement
+  // symbols.dart : abstract final class VIcons { … }   (Material Symbols Rounded ; la liste grandit par tâche)
+  class VSymbol extends StatelessWidget { const VSymbol(IconData icon, {bool filled = false, double weight = 400, double? size, Color? color, String? semanticLabel}); }
+  // components/artwork.dart
+  typedef ArtworkSource = Future<ImageProvider?> Function(String itemId, int px);
+  class ArtworkResolver extends InheritedWidget { const ArtworkResolver({required ArtworkSource resolve, required Widget child}); }
+  class NowPlayingScope extends InheritedWidget { const NowPlayingScope({required String? trackId, String? contextId, required bool playing,
+    required Widget child}); static bool isPlaying(BuildContext c, String itemId); }   // fourni par les coques
+  enum ArtKind { item, artist }   enum ArtShape { roundedSquare, cookie, circle }
+  class VArtwork extends StatefulWidget { const VArtwork({required String itemId, required double size, ArtKind kind = ArtKind.item, bool? playing,
+    bool selected = false, List<String>? mosaic, double? progress, ValueChanged<double>? onSeek, double seekStep = 0.05, String? semanticLabel}); }
   enum VDecorShape { clover, flower, sunny, burst, pill, arch, gem, cookie }
-  VDecorShape decorFor(String id);             // stable : même id → même forme (hash), pour les genres, étapes, états vides
-  class VDecor extends StatelessWidget { const VDecor({required VDecorShape shape, required double size, String? imageItemId, Widget? child, double tilt = 0}); } // image découpée dans la forme, ou une icône au centre
-  class VFlexibleHeader extends StatelessWidget { const VFlexibleHeader({required Widget artwork, required String title, String? subtitle, required List<Widget> actions, required Widget fab}); } // sliver : la pochette rétrécit jusqu'à l'app bar, le titre la suit, les actions étendues → FAB
-  class VOfflineChip extends StatelessWidget {}  // « Hors ligne · tes téléchargements restent là »
-  class VRefresh extends StatelessWidget { const VRefresh({required Future<void> Function() onRefresh, required Widget child}); } // tirer pour rafraîchir avec le loading indicator M3E
-  class VMosaicArtwork extends StatelessWidget { const VMosaicArtwork({required List<String> itemIds, required double size}); } // pochette d'une playlist perso sans image : 2×2 des 4 premiers titres distincts (1 → pleine, 2-3 → 2×2 avec répétition), 0 → icône
-  class VWaveArtwork extends StatelessWidget { const VWaveArtwork({required String itemId, required double width, required double progress, required bool playing, required ValueChanged<double> onSeek}); } // style Vague : bord bas en onde, partie jouée en primary, glisser le long du bord
-  class VWaveProgress extends StatelessWidget { const VWaveProgress({required double progress, required bool playing, required ValueChanged<double> onSeek}); } // linéaire (téléchargements, premier lancement)
-  class VControls extends StatelessWidget { const VControls({required bool playing, required bool loading, required bool shuffle, required RepeatMode repeat, required VoidCallback onPlayPause, required VoidCallback onNext, required VoidCallback onPrevious, required VoidCallback onShuffle, required VoidCallback onRepeat, bool compact = false}); } // button group M3E, largeurs qui morphent ; ⏯ morphe ; loading → loading indicator M3E
+  VDecorShape decorFor(String id);
+  class VDecor extends StatelessWidget { const VDecor({required VDecorShape shape, required double size, String? imageItemId, Widget? child, double tilt = 0}); }
+  class VEqualizer extends StatefulWidget { const VEqualizer({required double size, bool onArtwork = false}); }
+  // components/wave_progress.dart, wave_artwork.dart
+  class VWaveProgress extends StatelessWidget { const VWaveProgress({required double progress, required bool playing, required ValueChanged<double>? onSeek, double step = 0.05}); }
+  class VDownloadIcon extends StatelessWidget { const VDownloadIcon({required DownloadStateView? state, double? progress, double size = VSize.icon}); } // flèche → anneau → coche
+  class VWaveArtwork extends StatefulWidget { const VWaveArtwork({required String itemId, required double width, required double progress,
+    required bool playing, required ValueChanged<double> onSeek, double seekStep = 0.05, double? height}); }
+  // components/controls.dart
+  enum VIconStyle { standard, filled, tonal, outlined }
+  class VIconButton extends StatelessWidget { const VIconButton({required IconData icon, required String label, required VoidCallback? onPressed,
+    bool? selected, VIconStyle style = VIconStyle.standard, bool? glyphFilled}); }   // selected null = pas une bascule
+  enum VButtonStyle { filled, tonal, outlined, text }
+  class VButton extends StatelessWidget { const VButton({required String label, required VoidCallback? onPressed, IconData? icon, VButtonStyle style = VButtonStyle.filled}); }
+  class VConnectedGroup extends StatelessWidget { const VConnectedGroup({required List<VAction> actions, bool autofocusFirst = false}); } // bascules (VAction.selected)
+  class VSplitButton extends StatelessWidget { const VSplitButton({required String label, required IconData icon, required VoidCallback onPressed, required List<VAction> items}); }
+  class VControls extends StatelessWidget { const VControls({required bool playing, required bool loading, required bool shuffle, required Repeat repeat,
+    required VoidCallback onPlayPause, required VoidCallback onNext, required VoidCallback onPrevious, required VoidCallback onShuffle,
+    required VoidCallback onRepeat, bool tall = false}); }
+  class VPlayPauseFab extends StatelessWidget { const VPlayPauseFab({required bool playing, required bool loading, required VoidCallback onPressed}); }
+  class VVolume extends StatelessWidget { const VVolume({required double value, required ValueChanged<double>? onChanged, bool vertical = false}); }
+  class VSlider extends StatelessWidget { const VSlider({required double value, required ValueChanged<double>? onChanged, required String label}); }
+  // components/kit.dart
+  enum VFabSize { small, regular, large }
+  class VFab extends StatelessWidget { const VFab({required IconData icon, required String label, required VoidCallback? onPressed, VFabSize size = VFabSize.regular}); }
+  class VExtendedFab extends StatelessWidget { const VExtendedFab({required IconData icon, required String label, required VoidCallback? onPressed,
+    bool extended = true, bool secondary = false}); }
+  class VScreenFab extends StatelessWidget { const VScreenFab({required VAction action, List<VAction> items = const [], bool extended = true,
+    bool secondary = false, bool startAligned = false}); }   // items non vide → FAB menu
+  class VFabMenu extends StatelessWidget { const VFabMenu({required List<VAction> items, required String label, IconData icon = VIcons.add}); }
+  class VFabDock extends StatefulWidget { const VFabDock({required Widget body, VAction? fab, List<VAction> fabItems = const [], Widget? player}); }
+  class VChoiceGroup<T> extends StatelessWidget { const VChoiceGroup({required List<(T, String)> choices, required T value, required ValueChanged<T> onChanged}); }
+  class VToolbar extends StatelessWidget { const VToolbar({required List<VAction> actions, String? title, Widget? leading, bool docked = false, Widget? fab}); }
+  class VChip extends StatelessWidget { const VChip({required String label, required VoidCallback? onPressed, IconData? icon, bool selected = false, bool filter = false}); }
+  class VSwitch extends StatelessWidget { const VSwitch({required bool value, required ValueChanged<bool>? onChanged, required String label}); }
+  class VBadge extends StatelessWidget { const VBadge({required Widget child, int? count, String? label}); }
+  class VRichTooltip extends StatefulWidget { const VRichTooltip({required String title, required String message, required Widget child, bool showOnStart = false}); }
+  class VSkeleton extends StatelessWidget { const VSkeleton({required double width, required double height, ArtKind? kind}); static Widget row(); }
+  // components/menu.dart
+  class VAction { const VAction(String label, IconData icon, VoidCallback onSelected, {bool selected = false, Widget? leading}); }
+  Future<void> showVMenu(BuildContext c, {required Rect anchor, required List<VAction> quick, required List<List<VAction>> groups,
+    Widget? origin, Rect? originRect, bool startAligned = false});      // anchor = le déclencheur ; origin/originRect = l'élément soulevé
+  Future<T?> showVSheet<T>(BuildContext c, {required WidgetBuilder builder}); // bottom sheet < 840, dialogue au-delà ; null si une feuille est ouverte
+  // components/surfaces.dart
+  class VDestination { const VDestination(String label, IconData icon, {int? badge}); }
+  class VNavigationBar extends StatelessWidget { const VNavigationBar({required List<VDestination> destinations, required int selected, required ValueChanged<int> onSelected}); }
+  class VPinned { const VPinned(String itemId, String label, {ArtKind kind = ArtKind.item}); }
+  class VNavigationRail extends StatelessWidget { const VNavigationRail({required List<VDestination> destinations, required List<VPinned> pinned,
+    required int selected, required ValueChanged<int> onSelected, required bool expanded, required ValueChanged<bool> onExpanded,
+    VAction? fab, List<VAction> fabItems = const []}); }               // fab = le FAB de la destination, replié et déplié
+  class VSearchBar extends StatefulWidget { const VSearchBar({required List<Widget> Function(BuildContext context, String text) suggestions, ValueChanged<String>? onSubmitted}); }
+  enum VCarouselKind { hero, multiBrowse, uncontained }
+  class VCarouselItem { const VCarouselItem({required String itemId, required String title, String? subtitle, required VoidCallback onTap}); }
+  class VCarousel extends StatelessWidget { const VCarousel({required VCarouselKind kind, required List<VCarouselItem> items, required double height}); }
+  Future<bool?> showVDialog(BuildContext c, {required String title, required String message, required String action, String? cancel});
+  Future<void> showVSideSheet(BuildContext c, {required String title, required Widget body});
+  class VStandardSheet extends StatelessWidget { const VStandardSheet({required Widget child}); }
+  class VListGroup extends StatelessWidget { const VListGroup({required String title, required List<Widget> children}); }
+  class VListRow extends StatelessWidget { const VListRow({String? title, String? subtitle, Widget? trailing, Widget? below, VoidCallback? onTap}); }
+  class VLargeAppBar extends StatelessWidget { const VLargeAppBar({required String title, Widget? leading, List<Widget> actions = const []}); }
+  class VCircularProgress extends StatelessWidget { const VCircularProgress({required double? value, double size = VSize.iconLarge}); }
+  // components/now_playing.dart
+  enum PlayerSize { compact, medium, large }   enum PlayerStyle { disc, wave }   String vTime(int ms);
+  class NowPlayingData { const NowPlayingData({required TrackView track, required String sourceTitle, required bool playing, required bool loading,
+    required int durationMs, required bool liked, required DownloadStateView? download, double? downloadProgress, required bool shuffle,
+    required Repeat repeat, Duration? sleepLeft, bool sleepEndOfTrack = false, VCoverTop? coverTop}); }
+  class NowPlayingActions { const NowPlayingActions({required VoidCallback onPlayPause, required VoidCallback onNext, required VoidCallback onPrevious,
+    required ValueChanged<int> onSeek, required VoidCallback onLike, required VoidCallback onAddToPlaylist, required VoidCallback onDownload,
+    required VoidCallback onShuffle, required VoidCallback onRepeat, VoidCallback? onOutput, ValueChanged<Rect>? onMenu, VoidCallback? onCollapse,
+    VoidCallback? onOpen, VoidCallback? onStop}); }                    // onSeek en ms ; onMenu reçoit le rect du ⋮
+  class VNowPlaying extends StatefulWidget { const VNowPlaying({required NowPlayingData data, required ValueListenable<int> position,
+    required PlayerSize size, required PlayerStyle style, required PlayerView view, required ValueChanged<PlayerView> onView,
+    required NowPlayingActions actions, required WidgetBuilder lyrics, required WidgetBuilder queue, VoidCallback? onImmersive, Widget? volume,
+    Axis axis = Axis.horizontal, bool wide = false, bool immersive = false, bool artworkVisible = true, ValueChanged<Rect>? onArtworkRect}); }
+  // components/view_selector.dart
   enum PlayerView { player, lyrics, queue }
-  class VViewSelector extends StatelessWidget { const VViewSelector({required PlayerView value, required ValueChanged<PlayerView> onChanged}); } // toolbar flottante segmentée, l'actif s'élargit avec son libellé
-  enum PlayerSize { compact, medium, large }
-  enum PlayerStyle { disc, wave }
-  class NowPlayingData { const NowPlayingData({required TrackView track, required String sourceTitle, required bool playing, required bool loading, required int positionMs, required int durationMs, required bool liked, required DownloadState? download, required bool shuffle, required RepeatMode repeat}); }
-  class VNowPlaying extends StatelessWidget { const VNowPlaying({required NowPlayingData data, required PlayerSize size, required PlayerStyle style, required PlayerView view, required ValueChanged<PlayerView> onView, required NowPlayingActions actions, required WidgetBuilder lyrics, required WidgetBuilder queue, VoidCallback? onImmersive, Widget? volume}); }
-      // présentation seulement : les blocs de la spec UI §5.5 dans l'ordre ; compact = pochette cookie + titre + like + ⏯ (mini-lecteur, bande, en-tête des vues Paroles/File) ;
-      // en vues Paroles et File, la pochette se rétracte en en-tête compact (transition partagée)
-  class NowPlayingActions { /* onPlayPause, onNext, onPrevious, onSeek, onLike, onAddToPlaylist, onDownload, onShuffle, onRepeat, onOutput, onMenu, onCollapse */ }
-  class VTrackRow extends StatelessWidget { const VTrackRow({required TrackView track, int? number, bool playing = false, bool offline = false, required VoidCallback onTap, required VoidCallback onPlayNext, required List<VAction> quick, required List<List<VAction>> groups}); }
-  class VAction { const VAction(String label, IconData icon, VoidCallback onSelected); }
-  Future<void> showVMenu(BuildContext c, {required Rect anchor, required List<VAction> quick, required List<List<VAction>> groups}); // menu expressif, mobile et desktop
-  class VSideSheet extends StatelessWidget { const VSideSheet({required bool open, required Widget child, double width = 360}); } // side sheet standard, coplanaire
-  class VShelf extends StatelessWidget { const VShelf({required String title, String? subtitle, VoidCallback? onMore, required double extent, required List<Widget> items}); } // rangée horizontale aimantée, hauteur fixe
-  class VLoading extends StatelessWidget {}   // loading indicator M3E
-  class VEmptyState extends StatelessWidget { const VEmptyState({required IconData icon, required String message, Widget? action}); } // grande VDecor (decorFor(message)) + icône, aucune image externe
-  void showVSnack(BuildContext c, String message, {String? actionLabel, VoidCallback? onAction, Duration duration = const Duration(seconds: 4)});
+  class VViewSelector extends StatelessWidget { const VViewSelector({required PlayerView value, required ValueChanged<PlayerView> onChanged,
+    List<PlayerView> views = VViewSelector.order}); static const order = [PlayerView.lyrics, PlayerView.player, PlayerView.queue]; }
+  // components/track_row.dart
+  class VTrackRow extends StatefulWidget { const VTrackRow({required TrackView track, int? number, Widget? leading, bool? playing, bool offline = false,
+    bool selected = false, bool wide = false, int? handleIndex, required VoidCallback onTap, VoidCallback? onDoubleTap,
+    required VoidCallback onPlayNext, VoidCallback? onRemove, required List<VAction> quick, required List<List<VAction>> groups}); }
+  // components/shelf.dart, header.dart
+  class VShelf extends StatelessWidget { const VShelf({required String title, String? subtitle, VoidCallback? onMore, required double extent,
+    required List<Widget> items, double itemWidth = VSize.shelfCard}); }
+  class VCard extends StatelessWidget { const VCard({required String itemId, required String title, String? subtitle, ArtKind kind = ArtKind.item, required VoidCallback onTap}); }
+  class VHeroCard extends StatelessWidget { const VHeroCard({required String itemId, required String title, String? subtitle, required VoidCallback onTap}); }
+  class VScreenBackground extends StatelessWidget { const VScreenBackground({required Widget child}); } // le seul dégradé : haut d'écran surfaceContainer → surface
+  class VFlexibleHeader extends StatelessWidget { const VFlexibleHeader({required Widget artwork, required String title, String? subtitle,
+    required List<Widget> actions, required Widget fab}); }
+  // components/async_list.dart
+  class VAsyncList<T> extends StatefulWidget {
+    const VAsyncList({required Future<List<T>> Function() load, required Widget Function(BuildContext, List<T>) builder, required Widget empty,
+      required String Function(Object error) errorText, Object? reloadKey});
+    const VAsyncList.stream({required Stream<List<T>> Function() watch, required Widget Function(BuildContext, List<T>) builder, required Widget empty,
+      required String Function(Object error) errorText, Object? reloadKey});
+    const VAsyncList.paged({required Future<List<T>> Function(int offset, int limit) page, required Widget Function(BuildContext, T, int) itemBuilder,
+      required Widget empty, required String Function(Object error) errorText, Object? reloadKey, int pageSize = 100}); }
+  // components/loading.dart, empty_state.dart, snack.dart, side_sheet.dart, focus_ring.dart
+  class VLoading extends StatelessWidget { const VLoading({double size = VSize.iconLarge, bool contained = false, bool onContainer = false}); }
+  class VRefresh extends StatelessWidget { const VRefresh({required Future<void> Function() onRefresh, required Widget child}); }
+  class VEmptyState extends StatelessWidget { const VEmptyState({required IconData icon, required String message, Widget? action}); }
+  class VOfflineChip extends StatelessWidget { const VOfflineChip(); }  // « Hors ligne · tes téléchargements restent là »
+  void showVSnack(BuildContext c, String message, {String? actionLabel, VoidCallback? onAction, Duration duration = VDurations.snack});
+  class VSideSheet extends StatelessWidget { const VSideSheet({required bool open, required Widget child, double width = VSize.sideSheet}); }
+  class VFocusRing extends StatefulWidget { const VFocusRing({required Widget child, ShapeBorder shape = const StadiumBorder(), FocusNode? node}); }
   ```
-- Règles (spec UI §2, §3, §5) :
+- Règles (spec UI §2, §3, §5), telles que livrées :
   - **Couleur** : une seule source de teinte à la fois. Aucune extraction ailleurs que dans
-    `seedFromArtwork`.
-  - **Mouvement** : les ressorts viennent de `M3ETheme`. Avec `reduceMotion`, tout devient
-    un fondu de 150 ms.
-  - **Ligne de titre** : 56 de haut, marge 16, pochette 44 de rayon 12 (ronde pour un
-    artiste) :
-    - avec `number`, le numéro remplace la pochette dans le même carré ;
-    - `playing` : titre en `primary` et égaliseur animé (`Semantics` « en lecture ») ;
+    `color.dart`. Le lecteur est sur `vScreenSurface`, sans dégradé ; le seul dégradé est
+    `VScreenBackground`.
+  - **Mouvement** : les ressorts viennent de `M3ETheme` et de `VSprings`. Avec
+    `reduceMotion`, toute transition de page devient un fondu de 150 ms et chaque ressort est
+    instantané. Les tags de `vContainerSource` sont uniques par source (route + étagère + id),
+    sinon une carte au même tag sur la route précédente s'envole aussi.
+  - **Pochette** : la forme vient du sens (`artShapeFor`) — carré arrondi au repos, cookie qui
+    tourne en lecture, cercle pour un artiste, cookie + coche sélectionnée. `playing` null =
+    lu dans `NowPlayingScope`. `mosaic` = les ids des 4 premiers titres distincts d'une
+    playlist perso sans image (1 pleine, 2 en diagonale, 3 répétés, 4 distincts, 0 l'icône).
+    `progress` dessine l'anneau qui suit le contour ; `onSeek` en fait un slider.
+  - **Ligne de titre** : hauteur minimale 56, elle grandit avec le texte ; marge 16 ; pochette
+    44 de rayon 12 (ronde pour un artiste) :
+    - `number` ou `leading` (le rang du Top 50) remplace la pochette dans le même carré ;
+    - `playing` : pochette en cookie, égaliseur à côté du ⋮ (à la place du numéro s'il y en a
+      un), `Semantics` « en lecture » ;
     - `offline` : opacité 0,38, et le toucher affiche le message hors ligne ;
-    - glisser à droite : `onPlayNext`, avec un fond tonal ;
-    - appui long, clic droit ou ⋮ : `showVMenu`.
-  - **Menu** : la rangée `quick` en groupe connecté, puis les groupes séparés par un espace.
-    L'élément d'origine se soulève.
+    - glisser à droite : `onPlayNext` ; à gauche : `onRemove` ; haptique au seuil ;
+    - `wide` : colonnes album et durée, ▶ et ⋮ au survol ou au focus, clic / double-clic ;
+    - `handleIndex` : la poignée d'une `ReorderableList` ;
+    - appui long, clic droit, ⋮, touche Menu ou ⇧F10 : `showVMenu` ;
+    - badges E et téléchargé depuis `TrackView` ; un seul nœud sémantique (« titre, artistes,
+      état ») avec « Lire ensuite » et « Retirer » en actions.
+  - **Menu** : la rangée `quick` en groupe connecté en tête de la même surface, puis les
+    groupes séparés ; l'origine se soulève ; ouvert près de `anchor` (le déclencheur).
+  - **Lecteur `VNowPlaying`** : présentation seulement, blocs de la spec UI §5.5 dans l'ordre ;
+    seule la progression se reconstruit à chaque `position`.
+    - `compact` est le mini-lecteur complet : toolbar flottante (pochette disque + anneau,
+      titre, artiste, like) et `VPlayPauseFab` à côté. Les gestes ← → ↑ ↓ (seuil
+      `VSize.swipe`, haptiques) et leurs entrées de menu appellent `onNext`, `onPrevious`,
+      `onOpen`, `onStop`. Toucher appelle `onOpen` ;
+    - `axis: Axis.vertical` en compact = la bande desktop de 76 ;
+    - `wide` = deux colonnes (paysage, largeur moyenne, immersif) ; `immersive` = la vue
+      immersive desktop (son sélecteur n'a pas « Lecteur ») ;
+    - `artworkVisible: false` garde la place sans peindre la pochette (pendant un
+      `VExtentFlight`) ; `onArtworkRect` rend le rect global de la pochette après chaque mise
+      en page ;
+    - l'en-tête de la Vague s'adapte à `coverTop` (`vOnCoverFor`) ; sans `coverTop`, un voile.
+  - **Sélecteur** : Paroles · Lecteur · File, centré, groupe de boutons connectés M3E ; l'actif
+    est plein avec son icône et son libellé, les autres n'ont que l'icône.
+  - **FAB** : `VFabDock` place le FAB d'écran au-dessus du ⏯ du mini-lecteur (bord droit
+    aligné, 16 dp d'écart, `VScreenFab` étendu en `secondaryContainer`), le masque au
+    défilement vers le bas, le rend vers le haut, et ajoute sa hauteur au padding bas du
+    `body`. Sans `player`, le FAB a le coin. `VNavigationRail(fab:, fabItems:)` porte le FAB
+    de la destination, replié et déplié ; ses `fabItems` s'ouvrent dans un menu sous lui.
+  - **Choix** : `VChoiceGroup` (groupe de boutons connectés à choix unique) ; pas de segmented
+    button.
 
 **Ajouts — 8 sujets (spec UI §2.2, §2.8, §4.3, §4.4) :**
 - `WindowClass { compact, medium, expanded }` et `windowClassOf(width)` (< 600, 600–840,
@@ -270,17 +478,22 @@ testWidgets('reduce motion settles in one frame', ...);  // disableAnimations : 
 
 ### Task 2 : traductions FR / EN et messages d'erreur
 
+**État : terminée** (commits f0cfc40..0901a7a, revue propre après une ronde).
+
 **Files :**
 - Create : `app/l10n.yaml`, `app/lib/l10n/app_fr.arb`, `app/lib/l10n/app_en.arb`,
   `app/lib/l10n/errors.dart`
 - Test : `app/test/l10n/l10n_test.dart`
 
-**Interfaces :**
-- Produces : `AppLocalizations` (généré, modèle `app_fr.arb`) ;
-  `String errorMessage(AppLocalizations l, CoreError e)` — un message par variante :
-  `network`, `providerWall`, `rateLimited`, `budgetExceeded`, `notFound`, `expired`,
-  `internal`, `offline`, `noPlugin(capability)` (pour `resolve` : « Aucune source de
-  lecture installée » + renvoi vers « Ajoute une source pour lire », spec UI §6.7).
+**Interfaces (livrées) :**
+- Produces : `AppLocalizations` (généré dans `lib/l10n/`, modèle `app_fr.arb`) ;
+  `String errorMessage(AppLocalizations l, CoreError e)` — un `switch` exhaustif sur les 10
+  variantes : `network`, `providerWall`, `rateLimited`, `budgetExceeded`, `notFound` (« Ce
+  contenu n'est plus disponible. »), `expired`, `internal`, `offline`, `invalidFeed`,
+  `noPlugin(capability)` (une phrase « Il te faut une source pour … » par capacité ; pour
+  `resolve` : « Il te faut une source pour lire. », avec l'action « Ajouter une source »).
+- `docs/voice.md` : règles et tableau des messages types FR/EN. Mots interdits en EN
+  seulement : `repo`, `repository` (« repos » est un mot français).
 
 **Ajouts — ton (spec UI §2.9) :** écrire `docs/voice.md` (règles + tableau des messages
 types FR/EN de la maquette « Le ton des messages »), puis :
@@ -303,36 +516,54 @@ test('every CoreError variant has a message in both languages', ...);
 - [ ] **Step 4 : vérifier** → PASS.
 - [ ] **Step 5 : commit** — `feat(app): traductions FR/EN et messages d'erreur`.
 
-### Task 3 : lecteur (`platform/player.dart`)
+### Task 3 : lecteur (`platform/player.dart`) et API simulée de debug
 
 **Files :**
-- Create : `app/lib/platform/player.dart`, `app/lib/platform/player_errors.dart`
-- Test : `app/test/platform/player_test.dart`, `app/test/platform/player_errors_test.dart`
+- Create : `app/lib/platform/player.dart`, `app/lib/platform/player_errors.dart`,
+  `app/lib/debug/fake_api.dart`
+- Modify :
+  - `app/pubspec.yaml` (`media_kit: 1.2.6`, `media_kit_libs_audio: 1.0.7`) ;
+  - `app/lib/design/components/wave_progress.dart` : `VSeekable` perd `_held` et le `Timer`
+    `_hold` (audit 13d) ;
+  - `app/test/design/artwork_test.dart` : les tests du seek tenu sont réécrits (voir Step 1).
+- Test : `app/test/platform/player_test.dart`, `app/test/platform/player_errors_test.dart`,
+  `app/test/debug/fake_api_test.dart`
 
 **Interfaces :**
 - Consumes : `playerCommands()`, `playerEvent(e:)` (synchrone, `void` : appelé dans l'ordre
-  des événements, jamais attendu), `reportPerf` (plan 4).
+  des événements, jamais attendu), `reportPerf(metric:, valueMs:)` (plan 4) ; le type du pont
+  `Source { uri, headers: List<(String, String)> }`.
 - Produces :
   ```dart
   abstract interface class MediaBackend {        // media_kit en vrai, faux dans les tests
-    Future<void> open(List<MediaSource> items, {required bool play});
-    Future<void> add(MediaSource m); Future<void> removeAt(int index);
+    Future<void> open(List<Source> items, {required bool play});
+    Future<void> add(Source s); Future<void> removeAt(int index);
     Future<void> seek(Duration d); Future<void> play(); Future<void> pause(); Future<void> playOrPause();
     Future<void> setVolume(double percent);
     Stream<int> get index; Stream<Duration> get position; Stream<Duration> get duration;
     Stream<bool> get playing; Stream<bool> get completed; Stream<String> get errors;
   }
-  class MediaSource { final String uri; final Map<String, String> headers; }
   class PlayerAdapter {
-    PlayerAdapter(MediaBackend backend);
-    void start();                                  // écoute playerCommands, émet les PlayerEvent
-    Stream<Duration> get position;                 // pour le Slider et les paroles
+    PlayerAdapter(MediaBackend backend, {Stream<PlayerCommand>? commands, void Function(PlayerEvent e)? report}); // défauts : playerCommands(), playerEvent
+    void start();                                  // écoute les commandes, émet les PlayerEvent
+    ValueListenable<int> get position;             // ms ; VNowPlaying.position et les paroles
     Stream<Duration?> get duration; Stream<bool> get playing;
-    Future<void> togglePlay(); Future<void> seek(Duration d); Future<void> seekBy(Duration delta);
+    Stream<bool> get loading;                      // vrai au markTap() ou à un Play ; faux à la première position > 0, à Error, à Stop
+    ValueListenable<double> get volume;            // 0..1, le réglage de l'utilisateur
+    Future<void> setVolume(double v);              // le backend reçoit v × gainToVolume(gain de l'entrée)
+    Future<void> play(); Future<void> pause(); Future<void> togglePlay();  // play/pause pour l'écran verrouillé, toggle pour l'interface
+    Future<void> seek(Duration d); Future<void> seekBy(Duration delta);
     void markTap();                                // horodatage pour la mesure du premier son
   }
   PlayerErrorKind classifyPlayerError(String mpvMessage);
   double gainToVolume(double gainDb);              // 100 × 10^(gain/20)
+  // lib/debug/fake_api.dart
+  class FakeApi implements RustLibApi {            // pas `extends Fake` : lib/ ne dépend pas de flutter_test
+    FakeApi();                                     // données de lib/debug/library.dart
+    final List<Invocation> calls;                  // chaque appel reçu, pour les tests
+    final StreamController<PlayerCommand> commands;   // crateApiPlaybackPlayerCommands() le rend
+    @override dynamic noSuchMethod(Invocation i);  // consigne l'appel puis lève UnimplementedError(nom du membre)
+  }
   ```
 - Contrat avec Rust (plan 4, `player.rs`) : le lecteur tient une piste courante et au plus
   une suivante. `Play` remplace les deux (la suivante tenue est abandonnée) ;
@@ -350,8 +581,8 @@ test('every CoreError variant has a message in both languages', ...);
   `EnqueueNext`/`ReplaceNext` → `removeAt(courant + 1)` s'il y a une suivante, puis `add` ;
   `ClearNext` → `removeAt(courant + 1)` s'il y en a une ; `Stop` → `pause` + `open([])` ;
   `Pause { fadeMs }` (minuterie de sommeil, plan 7 Task 8) → volume ramené à 0 en fondu sur
-  `fadeMs`, `pause`, volume restauré, puis `Paused`. C'est une pause « système », conforme
-  au contrat de `Paused`.
+  `fadeMs` depuis `volume × gain`, `pause`, volume restauré, puis `Paused`. C'est une pause
+  « système », conforme au contrat de `Paused`.
   L'adaptateur tient la liste `index mpv → entry` et le gain de chaque entrée (appliqué au
   changement d'index). Événements : `TrackStarted` à chaque changement d'index,
   `Duration` dès connue, `Position` toutes les 10 s pendant la lecture et à chaque pause,
@@ -359,8 +590,18 @@ test('every CoreError variant has a message in both languages', ...);
   avec `positionMs` = position au moment de l'erreur (un 403 reprend là ; en pause, Rust
   renvoie un `Play` sans autoplay ; 0 si le lecteur l'a perdue à l'ouverture : Rust garde
   la dernière connue).
+- **Seek** (audit 13d) : `seek(d)` pose `d` dans `position` avant d'appeler le backend. Les
+  positions du backend arrivées avant que `backend.seek` ait rendu sont ignorées ; ensuite
+  `position` suit le backend. `seekBy` part de `position.value`. `design/` ne tient plus de
+  seek : `VSeekable` affiche `_drag ?? widget.progress`.
+- `MediaKitBackend` = `Player()` de media_kit ; en-têtes passés par
+  `Media(uri, httpHeaders: Map.fromEntries(headers))`.
+- `FakeApi` : données de `lib/debug/library.dart`. Cette tâche couvre les flux du lecteur
+  (`playerCommands`, `playerEvent`, `nowPlaying`, `queueStates`) ; chaque tâche suivante y
+  ajoute les appels qu'elle utilise et le liste dans ses Modify.
 
-- [ ] **Step 1 : tests qui échouent** (avec un `FakeBackend` et un flux de commandes de test)
+- [ ] **Step 1 : tests qui échouent** (`FakeBackend`, et les paramètres `commands`/`report`
+  de `PlayerAdapter` à la place du pont)
 
 ```dart
 test('play opens the source at the given position', ...);
@@ -369,42 +610,80 @@ test('auto_advance_reports_preloaded_entry', ...);   // EnqueueNext(e2) puis ind
 test('replace_next swaps the queued source', ...);
 test('position is reported every 10s and on pause', ...); // fakeAsync
 test('gain is applied when the track changes', ...);  // gainToVolume(-6) ≈ 50.1
-test('classify_player_errors', ...);                  // messages relevés à l'étape 1 (probes/android-playback/tool/check_log.dart) : "...HTTP error 403 Forbidden" → forbidden ; "Failed to open ... Connection refused" / "timed out" → network ; "Failed to recognize file format" → decode ; autre → other
+test('user volume scales the gain and the sleep fade starts from it', ...); // setVolume(0.5), gain -6 → backend 25.05
+test('pause when already paused stays paused', ...);  // pause() deux fois → aucun play
+test('loading turns on at tap and off at the first position', ...);
+test('classify_player_errors', ...);                  // échantillons en ligne : "...HTTP error 403 Forbidden" → forbidden ; "Failed to open ... Connection refused" / "timed out" → network ; "Failed to recognize file format" → decode ; autre → other
 test('first position after a tap reports tap-to-first-sound', ...);
+test('seek_publishes_its_target_at_once', ...);       // seek(90 s) → position.value == 90000 avant tout événement ; une position backend à 12 s pendant le seek est ignorée
+test('fake api records calls and streams player commands', ...);  // fake_api_test.dart
+// artwork_test.dart, réécrits :
+testWidgets('a seek shows the given progress with no timer left', ...);   // remplace l'attente du seek tenu
+testWidgets('arrow keys step from the progress the parent passes', ...);  // remplace « a second arrow during a held seek… »
 ```
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
-- [ ] **Step 3 : implémenter** (`MediaKitBackend` = `Player()` de media_kit ; en-têtes
-  passés par `Media(uri, httpHeaders: …)`).
-- [ ] **Step 4 : vérifier** → PASS.
-- [ ] **Step 5 : commit** — `feat(app): adaptateur du lecteur (commandes Rust, événements)`.
+- [ ] **Step 3 : vérifier media_kit d'abord** : `media_kit` ajouté, `flutter build apk --debug`
+  et `flutter build macos --debug`. Si l'un échoue, s'arrêter et le rapporter.
+- [ ] **Step 4 : implémenter.**
+- [ ] **Step 5 : vérifier** : `cd app && flutter test` puis `flutter analyze` → PASS.
+- [ ] **Step 6 : commit** — `feat(app): adaptateur du lecteur (commandes Rust, événements, seek immédiat) et API simulée de debug`.
 
-### Task 4 : plateforme (écran verrouillé, téléchargements, réseau, chemins, mises à jour)
+### Task 4 : plateforme (écran verrouillé, téléchargements, réseau, chemins, liens, mises à jour, démarrage)
 
 **Files :**
-- Create : `app/lib/platform/{lock_screen,downloads_service,network,paths,updates,errors}.dart`
-- Create : `app/android/app/src/main/kotlin/app/vehicoule/DownloadService.kt`,
-  `app/android/app/src/main/kotlin/app/vehicoule/Installer.kt`,
-  `app/android/app/src/main/res/xml/file_paths.xml`
-- Modify : `app/android/app/src/main/AndroidManifest.xml`, `MainActivity.kt`,
-  `app/macos/Runner/*.entitlements` (réseau sortant)
-- Test : `app/test/platform/lock_screen_test.dart`, `app/test/platform/downloads_service_test.dart`
+- Create :
+  - `app/lib/platform/{lock_screen,downloads_service,network,paths,updates,errors,links,notifications}.dart` ;
+  - `app/lib/design/components/splash_overlay.dart` (exporté par `design.dart`) ;
+  - `app/android/app/src/main/kotlin/app/vehicoule/DownloadService.kt`,
+    `app/android/app/src/main/kotlin/app/vehicoule/Installer.kt`,
+    `app/android/app/src/main/res/xml/file_paths.xml`,
+    `app/android/app/src/main/res/drawable/splash_mochi.xml` (vecteur animé),
+    `app/android/app/src/main/res/values/strings.xml`,
+    `app/android/app/src/main/res/values-fr/strings.xml` (textes natifs : actions de la
+    notification) ;
+  - `branding/icon/export.sh` : exporte, depuis `branding/icon/mochi_master.svg`, l'icône
+    adaptative et monochrome Android, la tuile macOS, les icônes Windows et Linux et la
+    variante ≤ 48 px (rail, barre des tâches).
+- Modify :
+  - `app/android/app/src/main/AndroidManifest.xml`, `MainActivity.kt` (canal
+    `app.vehicoule/notifications`) ;
+  - `app/macos/Runner/*.entitlements` (réseau sortant), `app/macos/Runner/Info.plist`
+    (`CFBundleURLTypes`, schéma `vehicoule`) ;
+  - `app/pubspec.yaml` (`audio_service: 0.18.19`, `connectivity_plus: 7.3.2`,
+    `path_provider: 2.1.6`, `url_launcher: 6.3.3`, `app_links: 7.2.2`,
+    `package_info_plus: 10.2.2`, `device_info_plus: 13.3.0`) ;
+  - `app/lib/debug/fake_api.dart` (les appels de la tâche).
+- Test : `app/test/platform/{lock_screen,downloads_service,network,links,notifications}_test.dart`,
+  `app/test/design/splash_test.dart`
 
 **Interfaces :**
+- Consumes : `PlayerAdapter` (Task 3) ; `initApp`, `setOnline`, `nowPlaying`, `skipNext`,
+  `previous(positionMs:)`, `setLiked`, `stop`, `downloadProgress`, `tracks`, `downloadUpdate`,
+  `reportDartError`, `uiPref`/`setUiPref` (`ui.notif_asked`).
 - Produces :
   ```dart
-  Future<AppConfig> appConfig();                     // path_provider : data = applicationSupport, cache = applicationCache,
-                                                     // downloads = Android getExternalStorageDirectory()/music, macOS applicationSupport/downloads ; région = pays de la locale
-  class LockScreen extends BaseAudioHandler { LockScreen(PlayerAdapter p); } // play/pause/seek → adaptateur ; skipToNext/Previous → skipNext()/previous() ; mediaItem depuis nowPlaying() (artUri file://)
+  Future<AppConfig> appConfig();                     // les 8 champs d'AppConfig : data = applicationSupport, cache = applicationCache,
+                                                     // downloads = Android getExternalStorageDirectory()/music, macOS applicationSupport/downloads ;
+                                                     // région = pays de la locale ; appVersion (package_info_plus) ; platform, osVersion, deviceModel (device_info_plus)
+  class LockScreen extends BaseAudioHandler { LockScreen(PlayerAdapter p); } // play() → p.play(), pause() → p.pause(), seek → p.seek ;
+                                                     // skipToNext → skipNext() ; skipToPrevious → previous(positionMs: p.position.value) ;
+                                                     // customAction 'like' → setLiked, 'stop' → stop() ; mediaItem depuis nowPlaying() (artUri file://)
   class DownloadsService { void start(); }           // canal app.vehicoule/downloads : start/update(title, done, total)/stop selon downloadProgress() ;
                                                      // titres par tracks(ids) (plan 4)
-  class Network { void start(); }                    // connectivity_plus → setOnline
+  class Network { void start(); ValueListenable<bool> get online; } // connectivity_plus → setOnline et online
+  Stream<Uri> links();                               // platform/links.dart : app_links, chaque vehicoule:// une fois ; branché Task 7 (add-source) et Task 10 (now-playing)
+  Future<bool> requestNotificationPermission();      // platform/notifications.dart : Android 13+ par le canal de MainActivity
+                                                     // (ActivityCompat.requestPermissions) ; true ailleurs
   Future<void> installUpdate(UpdateInfo u);          // Android : downloadUpdate puis canal app.vehicoule/update install(path) ; macOS : url_launcher(pageUrl)
   void installErrorHooks();                          // FlutterError.onError et PlatformDispatcher.onError → reportDartError
+  class SplashOverlay extends StatefulWidget { const SplashOverlay({required Widget child}); } // macOS, Windows, Linux : la séquence du Mochi au premier frame
   ```
 - Manifeste : `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`,
   `FOREGROUND_SERVICE_DATA_SYNC`, `POST_NOTIFICATIONS`, `REQUEST_INSTALL_PACKAGES`,
   `INTERNET`, `WAKE_LOCK` ; service audio_service `foregroundServiceType="mediaPlayback"` ;
-  `DownloadService` `foregroundServiceType="dataSync"` ; `FileProvider` pour l'APK.
+  `com.ryanheise.audioservice.MediaButtonReceiver` déclaré (boutons du widget, Task 10) ;
+  `DownloadService` `foregroundServiceType="dataSync"` ; `FileProvider` pour l'APK ; filtre
+  d'intent `vehicoule://add-source`.
   `DownloadService` (service de premier plan) : actif seulement tant qu'un téléchargement
   est `Running` (pas pour `Queued` : hors ligne, la file attend sans service), arrêté sinon ; notification de progression mise à jour au rythme des événements
   (≤ 2/s, déjà limité par Rust).
@@ -412,20 +691,23 @@ test('first position after a tap reports tap-to-first-sound', ...);
 **Ajouts — 8 sujets (spec UI §6.10, §6.11, §6.7) :**
 - **Écran de démarrage** : Android 12+ par l'API SplashScreen avec une icône animée en vecteur
   (le Mochi rebondit, la note sort, ≤ 900 ms) ; macOS, Windows et Linux jouent la même séquence
-  dans la fenêtre au premier frame (`SplashOverlay` dans `design/`). Rien au démarrage à chaud ;
+  dans la fenêtre au premier frame (`SplashOverlay`). Rien au démarrage à chaud ;
   « réduire les animations » → icône fixe et fondu. Les ressources viennent de
-  `branding/icon/`.
+  `branding/icon/`, fichiers Mochi de l'utilisateur, que le contrôleur demande avant la tâche.
+  Sans eux, l'écran de démarrage et les icônes utilisent un remplaçant neutre (aucun Mochi
+  inventé), la demande va dans la liste « Pending user confirmation » du ledger, et
+  `export.sh` se relance à leur arrivée.
 - **Lien profond** `vehicoule://add-source` : filtre d'intent Android, `CFBundleURLTypes` sur
-  macOS, `app_links` ; il ouvre `AddSourceSheet` (Task 7), jamais un ajout direct.
+  macOS, `links()`. Cette tâche s'arrête au flux ; la Task 7 ouvre `AddSourceSheet`.
 - **Notification média** : like en action personnalisée d'audio_service (le cœur se remplit),
-  et × pour arrêter.
+  et × pour arrêter. Libellés dans `strings.xml` (FR et EN).
 - **Demande de notifications** : `requestNotificationPermission()` (Android 13+), appelée par le
   premier lancement et au premier téléchargement si `ui.notif_asked` dit « plus tard ».
 - **macOS** : « En cours de lecture » et touches média via audio_service (infos de lecture du
   système).
 
 ```dart
-test('add-source deep link opens the sheet and never adds by itself', ...);
+test('links emits each vehicoule uri once', ...);
 test('media notification exposes like and stop actions', ...);
 test('notification permission is asked again only at the first download', ...);
 testWidgets('splash is static with reduce motion', ...);
@@ -435,116 +717,163 @@ testWidgets('splash is static with reduce motion', ...);
 
 ```dart
 test('lock screen skip goes through Rust, play/pause stays local', ...);
+test('lock screen previous passes the current position', ...);   // previous(positionMs: position.value)
 test('now playing becomes a media item with a file artUri', ...);
 test('downloads service starts on first running download and stops when idle', ...); // canal de méthode simulé
+test('network exposes online and calls setOnline', ...);
+test('app config fills all eight fields', ...);
 ```
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
 - [ ] **Step 3 : implémenter.**
-- [ ] **Step 4 : vérifier** → PASS ; sur l'émulateur, `flutter run` puis un téléchargement
-  lancé et l'app mise en arrière-plan : la notification de progression reste et le fichier
-  se termine.
-- [ ] **Step 5 : commit** — `feat(app): écran verrouillé, téléchargements en arrière-plan, réseau, mises à jour`.
+- [ ] **Step 4 : vérifier** → `flutter test` puis `flutter analyze` → PASS ; sur l'émulateur,
+  `flutter run` puis un téléchargement lancé et l'app mise en arrière-plan : la notification
+  de progression reste et le fichier se termine.
+- [ ] **Step 5 : commit** — `feat(app): écran verrouillé, téléchargements en arrière-plan, réseau, liens, mises à jour, démarrage`.
 
 ### Task 5 : routes et coques
 
 **Files :**
 - Create :
   - `app/lib/router.dart` ;
-  - `app/lib/shell_mobile/{mobile_shell,mini_player,domain_rail}.dart` ;
+  - `app/lib/app_scope.dart` (`AppScope`) et `app/lib/screen_fab.dart` (`ScreenFab`,
+    `ScreenFabHost`) ;
+  - `app/lib/shell_mobile/{mobile_shell,mini_player,domain_rail}.dart` (le rail replié de la
+    largeur moyenne est dans `mobile_shell.dart`) ;
   - `app/lib/shell_desktop/{desktop_shell,now_playing_pane,title_bar,pinned,shortcuts,immersive}.dart` ;
-  - `app/lib/features/music/now_playing/now_playing_sheet.dart` (squelette, rempli à la
-    Task 6) ;
+  - `app/lib/features/music/now_playing/now_playing_sheet.dart` (la feuille et le vol de la
+    pochette ; contenus remplis à la Task 6) ;
   - `app/lib/theme_controller.dart`.
-- Modify : `app/lib/main.dart`.
-- Test : `app/test/shell/{shell,mini_player,theme}_test.dart`.
+- Modify : `app/lib/main.dart`, `app/pubspec.yaml` (`go_router: 18.1.1`,
+  `window_manager: 0.5.2`), `app/lib/debug/fake_api.dart`, ARB FR/EN.
+- Test : `app/test/shell/{shell,mini_player,sheet,theme,shortcuts,screen_fab}_test.dart`.
 
 **Interfaces :**
-- Consumes : `design/` (Task 1) ; API des plans 4 et 7 (`nowPlaying`, `queueOp`, `stop`,
-  `undoStop`, `uiPref`, `setUiPref`, `artworkFile`).
+- Consumes : `design/` (Task 1, API livrée) ; `PlayerAdapter` (Task 3) ; `Network.online`,
+  `LockScreen`, `DownloadsService`, `appConfig`, `installErrorHooks` (Task 4) ; API des plans
+  4 et 7 : `nowPlaying`, `queueStates`, `skipNext`, `previous(positionMs:)`, `stop`,
+  `undoStop`, `uiPref`, `setUiPref`, `artworkFile`, `onboarding`, `addToPlaylist`, `setLiked`,
+  `download`, `notices`, `checkUpdates`.
 - Produces :
   ```dart
   GoRouter buildRouter();   // StatefulShellRoute.indexedStack, branches : /home, /explore, /library, /settings
                             // routes : /album/:id, /artist/:id, /playlist/:id, /category/:id, /library/liked, /library/downloaded,
-                            //          /library/top, /library/history, /downloads, /settings/plugins, /settings/feeds/add,
-                            //          /settings/diagnostics, /onboarding (redirect tant que onboarding().done == false)
-  class AdaptiveShell extends StatelessWidget { const AdaptiveShell({required StatefulNavigationShell shell}); } // < 840 mobile ; ≥ 840 desktop ; panneau à droite ≥ 1000
+                            //          /library/top, /library/history, /downloads, /settings/sources, /settings/appearance,
+                            //          /settings/diagnostics, /onboarding (redirect tant que onboarding().done == false),
+                            //          /debug/gallery (kDebugMode seulement)
+  class AdaptiveShell extends StatelessWidget { const AdaptiveShell({required StatefulNavigationShell shell}); } // windowClassOf : compact, medium → mobile ; expanded → desktop
+  class AppScope extends InheritedWidget { const AppScope({required PlayerAdapter player, required ThemeController theme,
+    required ValueListenable<bool> online, required Widget child}); static AppScope of(BuildContext c); }
+  class ScreenFab extends StatefulWidget { const ScreenFab({VAction? action, List<VAction> items = const [], Widget? bar, required Widget child}); }
+      // l'action principale d'un écran ; items non vide → FAB menu ; bar → remplace le mini-lecteur (sélection multiple)
+  class ScreenFabHost extends StatefulWidget { const ScreenFabHost({required Widget Function(BuildContext, VAction? action, List<VAction> items, Widget? bar) builder}); }
+      // fourni par la coque ; seule publie la ScreenFab dont la route est courante (ModalRoute.isCurrent) et la branche active (TickerMode.valuesOf(context).enabled)
   class DesktopShortcuts extends StatelessWidget { const DesktopShortcuts({required Widget child, required PlayerAdapter player, required VoidCallback focusSearch}); }
-  class ThemeController extends ChangeNotifier { ThemeData light; ThemeData dark; ThemeMode mode; } // source ui.color_source, ui.preset, ui.pure_black, ui.theme ; nowPlaying → seedFromArtwork → pastelSeed, une fois par titre
+      // une table intent → action, la même pour la PlatformMenuBar
+  class ThemeController extends ChangeNotifier {
+    ThemeData get light; ThemeData get dark; ThemeMode get mode; PlayerStyle get playerStyle; VCoverTop? get coverTop;
+    Future<void> setSource(ColorSource s); Future<void> setPreset(int index); Future<void> setPureBlack(bool v);
+    Future<void> setMode(ThemeMode m); Future<void> setPlayerStyle(PlayerStyle s);   // chacun : setUiPref puis notifyListeners
+  } // clés ui.color_source, ui.preset, ui.pure_black, ui.theme, ui.player_style
   ```
-- Règles (spec UI §4, §5.3, §2.2) :
+- Règles (spec UI §4, §5.3, §5.4, §2.2) :
   - **Mobile** :
-    - barre de navigation M3E à 4 destinations (Accueil, Explorer, Bibliothèque, Réglages) ;
-    - une grande app bar qui se replie, par onglet, avec ☰ à gauche ;
+    - `VNavigationBar` à 4 destinations (Accueil, Explorer, Bibliothèque, Réglages) ;
+    - une `VLargeAppBar` qui se replie, par onglet, avec ☰ à gauche ;
     - ☰ ouvre `domain_rail` : le rail déplié en modal, avec le domaine Musique, puis
       « Sources » (`/settings/sources`) et « Téléchargements » (`/downloads`) ;
-    - le mini-lecteur flottant est au-dessus de la barre.
-  - **Mini-lecteur** (spec UI §5.3) : une toolbar flottante qui contient `VNowPlaying` en
-    taille compacte (pochette cookie qui tourne, avec son anneau, titre, artiste, like), et à
-    côté un FAB carré arrondi ⏯ qui morphe et devient le loading indicator pendant un
-    chargement. Gestes, sur la toolbar :
-    - glisser horizontalement de plus de 30 % de la largeur, ou lancer → titre
-      suivant / précédent (`queueOp`) ;
-    - vers le haut → le lecteur s'ouvre (`Hero` sur la pochette) ;
-    - vers le bas → `stop()`, puis `showVSnack` « Lecture arrêtée », action « Annuler » →
-      `undoStop()`, pendant 5 s ;
-    - chaque geste a son équivalent dans le menu du mini-lecteur (« Arrêter »…).
+    - au-dessus de la barre : `ScreenFabHost` → `VFabDock(body: shell, fab: action, fabItems: items,
+      player: bar ?? miniPlayer)`. Le FAB d'écran se place au-dessus du ⏯, se masque au
+      défilement vers le bas et revient vers le haut. Sans titre chargé, pas de mini-lecteur :
+      le FAB a le coin.
+  - **Mini-lecteur** (spec UI §5.3) : `VNowPlaying(size: PlayerSize.compact)`. La toolbar, le
+    `VPlayPauseFab` (loading indicator pendant un chargement), les gestes au seuil
+    `VSize.swipe`, leurs haptiques et leurs entrées de menu sont dans `design/` ; la coque ne
+    fournit que `NowPlayingActions` :
+    - `onNext` → `skipNext()` ; `onPrevious` → `previous(positionMs: player.position.value)` ;
+    - `onOpen` (↑ ou toucher) → la feuille du lecteur s'ouvre ;
+    - `onStop` (↓) → `stop()`, puis `showVSnack` « Lecture arrêtée », action « Annuler » →
+      `undoStop()`, pendant `VDurations.undo`.
+  - **Lecteur plein écran mobile** (`now_playing_sheet.dart`, audit 13d) :
+    - un `DraggableScrollableSheet` (extent 0 → 1) au-dessus de la coque ; `onOpen` l'anime
+      vers 1, ⌄ ou un glisser vers le bas le ramène à 0 ;
+    - pendant que l'extent est entre 0 et 1, un `VExtentFlight(extent, from: rect du disque du
+      mini-lecteur, to: rect de la pochette du lecteur)` dessine la pochette, et les deux
+      `VNowPlaying` ont `artworkVisible: false` ;
+    - les deux rects viennent de `onArtworkRect`. Ils sont rendus après chaque mise en page,
+      donc une feuille qui déplace le lecteur sans le reconstruire les rend périmés : `to` est
+      gardé relatif au haut de la feuille et recalculé à chaque extent.
   - **Desktop** (spec UI §4.2) :
-    - **Barre de titre** maison (`TitleBarStyle.hidden`, `DragToMoveArea`, place laissée aux
-      boutons natifs à gauche) :
+    - **Barre de titre** maison, sur macOS, Windows et Linux (`TitleBarStyle.hidden`,
+      `DragToMoveArea`, place laissée aux boutons natifs à gauche) :
       - ← → (historique go_router, ⌘[ ⌘]) ;
-      - le champ de recherche au centre (⌘F). Ses suggestions sont celles de la Task 6, en menu
-        déroulant ;
+      - `VSearchBar` au centre (⌘F). Ses suggestions sont celles de la Task 6
+        (`suggestions_view.dart`), en menu déroulant ; Entrée ouvre les résultats dans Explorer ;
       - à droite, téléchargements, puis Sources.
-    - **Rail** permanent, replié ↔ déplié (`ui.rail_expanded`) :
+    - **Rail** `VNavigationRail`, permanent, replié ↔ déplié (`ui.rail_expanded`) :
       - les 4 destinations ;
+      - `fab`/`fabItems` = la `ScreenFab` publiée (le FAB de la destination : « Lancer »
+        sur Accueil, « Nouvelle » sur Bibliothèque, « Ajouter une source » sur Sources) ;
       - « Épinglés » (`pinned.dart`) : ids dans `ui.pinned` (JSON), par défaut Likés et
         Téléchargés ; pochettes seules quand le rail est replié ;
       - en bas, le domaine.
 
       Déposer une sélection de titres sur un épinglé fait ceci : playlist → `addToPlaylist` ;
-      Likés → `setLiked` ; Téléchargés → `download`.
-    - **Panneau à droite** : `VNowPlaying` en taille moyenne dans un `VSideSheet`, avec le
-      volume. Replié, c'est une **bande de 76 px** : `VNowPlaying` compact en colonne, ⏭ et
-      volume. `ui.now_playing_open` est retenu ; sans valeur, déplié si la largeur ≥ 1000,
-      replié sinon. Pas de barre en bas.
-    - **Immersif** (`immersive.dart`) : l'icône ⤢ du panneau, ou ⌘⇧F. `VNowPlaying` en grande
-      taille sur toute la fenêtre, mis en largeur (pochette à gauche, vue Paroles ou File à
-      droite). Échap pour sortir.
+      Likés → `setLiked` pour chaque id ; Téléchargés → `download` (la Task 6 le fait passer
+      par `startDownload`).
+    - **Panneau à droite** : `VNowPlaying(size: PlayerSize.medium, volume: VVolume(…))` dans un
+      `VSideSheet`. Replié, c'est une **bande de 76 px** : `VNowPlaying(size:
+      PlayerSize.compact, axis: Axis.vertical, volume: VVolume(vertical: true, …))`.
+      `ui.now_playing_open` est retenu ; sans valeur, déplié si la largeur ≥
+      `VBreakpoints.paneOpen`, replié sinon. Pas de barre en bas.
+    - **Immersif** (`immersive.dart`) : l'icône ⤢ du panneau (`onImmersive`), ou ⌘⇧F.
+      `VNowPlaying(size: PlayerSize.large, immersive: true, wide: true)` sur toute la fenêtre
+      (pochette à gauche, vue Paroles ou File à droite). Échap pour sortir.
     - **Fenêtre** :
-      - taille minimale 840 × 600 ; taille et position retenues ;
+      - taille minimale 840 × 600 ; taille et position enregistrées dans `ui.window_bounds`
+        (sur `onWindowResized`/`onWindowMoved`, après `VDurations.debounce`) et restaurées ;
       - fermer la fenêtre garde la lecture (l'app reste dans le Dock) ; ⌘Q quitte ;
-      - la barre de menus macOS (Lecture, Aller, Fenêtre) porte les raccourcis.
-    - **Raccourcis** : le tableau de la spec UI §4.2, aucun quand un champ texte a le focus.
-  - **Ce qui joue** : la coque fournit un `NowPlayingScope` (InheritedWidget : id du titre en
-    cours, id de son contexte, en lecture ou non). Chaque `VArtwork` des écrans le lit pour
-    savoir s'il est « playing » (spec UI §2.3). Aucun écran ne recalcule cette information.
-  - **Hors ligne** : sous l'app bar de chaque destination, `VOfflineChip` apparaît tant que
-    `Network` est hors ligne.
+      - la `PlatformMenuBar` macOS (Lecture, Aller, Fenêtre) prend ses actions dans la table de
+        `DesktopShortcuts`.
+    - **Raccourcis** : tout le tableau de la spec UI §4.2, aucun quand un champ texte a le
+      focus. ⌘↑/⌘↓ → `player.setVolume(±0,1)` ; Suppr agit seulement dans la vue File et une
+      playlist perso (retrait différé, Task 6) ; Espace sélectionne quand le focus est dans un
+      tableau de titres, sinon lecture/pause.
+  - **Ce qui joue** : la coque fournit `NowPlayingScope(trackId:, contextId:, playing:)` depuis
+    `nowPlaying()`, `queueStates()` et `player.playing`. Chaque `VArtwork` le lit. Aucun écran
+    ne recalcule cette information.
+  - **Hors ligne** : sous l'app bar de chaque destination, `VOfflineChip` tant que
+    `AppScope.of(c).online.value` est faux.
+  - **Notices** : un seul écouteur de `notices()`, dans `router.dart`, au-dessus des deux
+    coques : `skipped` → `showVSnack` (texte : Task 6), `updateAvailable` → la feuille de mise à
+    jour (Task 7), `error` → `showVSnack(errorMessage(l, e))`.
   - **Transitions** : chaque route go_router prend sa page dans `motion.dart`. Les pages
-    album, artiste, playlist et catégorie s'ouvrent en container transform ; le changement de
-    destination se fait en fade through. Les gestes du mini-lecteur appellent `VHaptics` au
-    franchissement de leur seuil.
+    album, artiste, playlist et catégorie s'ouvrent en `vContainerTransformPage` (tag unique
+    par source : route + étagère + id) ; le changement de destination se fait en
+    `vFadeThroughPage`.
   - **Thème** :
-    - le changement de couleur se fait en fondu de 400 ms (`AnimatedTheme`), seulement quand
-      le titre change ;
-    - sans fondu avec `reduceMotion` ;
-    - la source `system` lit `DynamicColorPlugin` sur Android et la couleur d'accent sur
-      macOS.
+    - la graine du titre qui joue vient de `seedForArtwork(artworkPath, fallback:)`, une fois
+      par titre ; `fallback` = `systemSeed()`, sinon le préréglage choisi. `coverTop` vient de
+      `coverTopFromArtwork` en même temps ;
+    - le changement de couleur se fait en fondu de `VDurations.themeFade` (`AnimatedTheme`),
+      seulement quand le titre change ; sans fondu avec `reduceMotion` ;
+    - la source `system` lit `systemSeed()`.
 - `main.dart` :
-  1. `RustLib.init()`, `installErrorHooks()`, `initApp(await appConfig())`,
-     `AudioService.init(LockScreen)`, `windowManager` (desktop) ;
+  1. `RustLib.init()` (en `kDebugMode` avec `--dart-define=VEHICOULE_FAKE=true` :
+     `RustLib.initMock(api: FakeApi())`), `installErrorHooks()`, `initApp(await appConfig())`,
+     `AudioService.init(LockScreen)`, `windowManager` (desktop), `vRegisterFontLicenses()` ;
   2. les abonnements de `PlayerAdapter`, `LockScreen`, `Network`, `DownloadsService` et
-     `ThemeController` ;
+     `ThemeController` ; le volume lu dans `ui.volume`, réécrit à chaque `setVolume` ;
   3. **puis `start()`**, pour que la restauration de la file et la reprise des
      téléchargements arrivent sur des flux déjà écoutés ;
-  4. puis `runApp` ;
+  4. puis `runApp` (`MaterialApp.router` avec `localizationsDelegates:
+     vLocalizationsDelegates`, `builder: vAppBuilder`, sous `AppScope`) ;
   5. après le premier frame : `checkUpdates(force: false)`, jamais bloquant.
 
   Une mise à jour n'est affichée que par `Notice.updateAvailable(UpdateInfo)`.
 
 **Ajouts — 8 sujets (spec UI §4.3, §4.4) :**
 - Largeur moyenne : la coque mobile avec le rail replié à gauche à la place de la barre du
-  bas ; mini-lecteur inchangé.
+  bas ; mini-lecteur et `VFabDock` inchangés.
 - Clavier : ordre de Tab barre de titre → rail → contenu → panneau ; focus itinérant dans les
   tableaux et grilles (Entrée lit, Espace sélectionne dans une liste, Menu / ⇧F10 ouvre le
   menu, Échap ferme) ; une ligne focalisée montre ▶.
@@ -555,81 +884,124 @@ testWidgets('tab order is title bar, rail, content, panel', ...);
 testWidgets('arrow keys move focus inside a track table', ...);
 ```
 
-- [ ] **Step 1 : tests qui échouent** (API simulée : `FakeApi`, voir la Task 8)
+- [ ] **Step 1 : tests qui échouent** (API simulée : `FakeApi` de `lib/debug/fake_api.dart`)
 
 ```dart
 testWidgets('narrow width uses the navigation bar and mini player', ...);   // 400 dp : 4 destinations
 testWidgets('menu button opens the modal rail with domains and global sections', ...);
 testWidgets('900 dp starts with the collapsed strip, no bottom bar', ...);
+testWidgets('android tablet at 900 dp has no title bar', ...);
 testWidgets('the playing album is a cookie in lists, shortcuts and pinned', ...);   // NowPlayingScope : contexte = album X → toutes ses VArtwork en playing
 testWidgets('offline shows the chip under the app bar', ...);
 testWidgets('1280 dp starts with the side sheet; collapsing is remembered', ...); // replier → ui.now_playing_open = "false" ; relance → bande
 testWidgets('immersive opens from the pane icon and closes with Escape', ...);
 testWidgets('dropping tracks on a pinned playlist adds them', ...);
 testWidgets('title bar history buttons navigate back and forward', ...);
-testWidgets('mini player FAB shows the loading indicator while loading', ...);
-testWidgets('mini player swipe left skips, right goes back', ...);
-testWidgets('mini player swipe down stops and Annuler undoes', ...);        // stop() puis undoStop() ; sans Annuler en 5 s : un seul stop()
-testWidgets('mini player swipe up opens the player', ...);
-testWidgets('theme seed changes once per track, not per position', ...);    // 3 NowPlaying même titre → 1 seedFromArtwork
-testWidgets('space toggles playback on desktop', ...);
+testWidgets('mini player swipe left skips, right goes back with the position', ...); // skipNext() ; previous(positionMs:)
+testWidgets('mini player swipe down stops and Annuler undoes', ...);        // stop() puis undoStop() ; sans Annuler pendant VDurations.undo : un seul stop()
+testWidgets('the artwork flies with the sheet extent, no Hero', ...);       // extent 0 → rect du disque, 1 → rect du lecteur, 0,5 → entre les deux ; aucun Hero
+testWidgets('only the visible screen publishes its FAB', ...);              // téléphone : au-dessus du ⏯ ; desktop : en haut du rail ; branche cachée : rien
+testWidgets('a selection bar replaces the mini player while it is set', ...);
+testWidgets('theme seed changes once per track, not per position', ...);    // 3 NowPlaying même titre → 1 seedForArtwork
+testWidgets('a colourless cover gives the fallback seed, not the previous one', ...);
+testWidgets('theme setters persist then notify', ...);                      // setPlayerStyle(wave) → setUiPref("ui.player_style", "wave") puis notifyListeners
+testWidgets('every 4.2 shortcut reaches its action', ...);                  // une table : touche → appel attendu sur FakeApi / PlayerAdapter
 testWidgets('shortcuts_ignored_while_typing', ...);                         // focus dans la search bar, Espace → texte " ", lecteur inchangé
+testWidgets('space selects in a focused track table', ...);
 testWidgets('cmd+f focuses search', ...);                                    // desktop : le champ de la barre de titre ; mobile : /explore
+testWidgets('menu bar items and shortcuts share one intent table', ...);
+testWidgets('window bounds are saved and restored', ...);
 testWidgets('first launch redirects to onboarding', ...);
 ```
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
 - [ ] **Step 3 : implémenter.**
-- [ ] **Step 4 : vérifier** → PASS.
-- [ ] **Step 5 : commit** : `feat(app): routes, coques mobile et desktop, mini-lecteur à gestes, thème suivant la lecture`.
+- [ ] **Step 4 : vérifier** : `flutter test` puis `flutter analyze` → PASS.
+- [ ] **Step 5 : commit** : `feat(app): routes, coques mobile et desktop, mini-lecteur à gestes, feuille du lecteur, thème suivant la lecture`.
 - [ ] **Step 6 : point de contrôle utilisateur du shell (bloquant).** Lancer l'app en debug
-  avec `FakeApi` (`--dart-define=VEHICOULE_FAKE=true`, branché par `RustLib.initMock` dans
-  `main.dart` seulement en `kDebugMode`) sur le téléphone Android de référence et sur macOS.
-  Écrans fictifs simples, sans contenu réel. Faire valider par l'utilisateur :
+  avec `FakeApi` (`flutter run --debug --dart-define=VEHICOULE_FAKE=true`) sur le téléphone
+  Android de référence et sur macOS. Écrans fictifs simples, sans contenu réel. Captures à
+  taille réelle dans `task-5-screenshots/`, chacune à côté de sa maquette :
+  `lecteur-v3.html` (mini-lecteur, lecteur Disque et Vague, sélecteur, vues Paroles et File),
+  `desktop-2.html` (barre de titre, rail replié et déplié avec son FAB, panneau, bande,
+  immersif), `app-formes.html` (FAB d'écran au-dessus du ⏯) ; la liste des écarts va dans le
+  rapport. Faire valider :
   - la barre du bas, le ☰ et le rail modal ;
-  - le rail desktop replié et déplié ;
+  - le rail desktop replié et déplié, avec le FAB de la destination ;
   - la barre de titre (recherche, ← →), les épinglés et le glisser-déposer ;
   - le panneau « en lecture » déplié, puis replié en bande (fenêtre redimensionnée en
     direct), puis l'immersif ;
-  - les deux styles du lecteur (Disque, Vague), le sélecteur Lecteur · Paroles · File ;
-  - le mini-lecteur : toolbar + FAB, anneau, like, ⏯, et les 4 gestes avec l'Annuler ;
-  - l'ouverture du lecteur ;
-  - le thème qui suit la pochette, et « réduire les animations ».
+  - les deux styles du lecteur (Disque, Vague), le sélecteur Paroles · Lecteur · File ;
+  - le mini-lecteur : toolbar + FAB, anneau, like, ⏯, les 4 gestes avec l'Annuler, et le FAB
+    d'écran au-dessus du ⏯ ;
+  - l'ouverture du lecteur, la pochette qui suit la feuille ;
+  - le thème qui suit la pochette, le repli pour une pochette sans couleur, et « réduire les
+    animations ».
 
   Ses retours sont corrigés dans `design/` ou les coques, avec les tests verts, puis commités.
   La tâche 6 ne commence qu'après son accord, consigné dans le ledger
   (`Ruling (user): shell approved`).
 
-### Task 5b : reliquats du fil d'accueil (cœur, avant la Task 6)
+### Task 5b : fil d'accueil et données du cœur pour la spec UI v2 (Rust, avant la Task 6)
 
-Issus de la revue finale du plan 7 (`final-rereview.md`). Rust uniquement, TDD, dans
-`core/core/src/home/mod.rs` :
+Aucune fonction de la spec UI v2 n'est coupée : les données qui manquent viennent du cœur, ici.
+L'implémenteur vérifie d'abord ce qui existe déjà, puis n'ajoute que ce qui manque, en TDD.
+
+**Files :**
+- Modify : `core/core/src/home/mod.rs` (items 1 à 3) ; pour les items 4 à 12, les modules du
+  cœur qui portent la donnée (`core/core/src/{plugins,player}.rs`,
+  `core/core/src/api/*.rs`, `core/core/src/library/**`), puis le pont régénéré
+  (`app/lib/bridge/**`, jamais à la main) et `app/lib/debug/fake_api.dart` (les nouveaux
+  appels).
+- Test : tests Rust à côté du code (`#[cfg(test)]`), `cargo test -p core`.
+
+**Items :**
+
+Issus de la revue finale du plan 7 (`final-rereview.md`), dans `core/core/src/home/mod.rs` :
 
 1. `failure()` ne compte pas `NotFound` (radio vide) comme une panne réseau. Test : toutes
    les radios répondent vide en ligne → le fil est reconstruit, pas figé.
 2. La page 1 s'arrête sur une étagère « Parce que tu as écouté » non chargée au lieu de la
-   sauter. Test : 4 étagères locales vides devant la 2ᵉ BYL → elle arrive en page 2, chargée.
+   sauter, **seulement quand `ask`** (découvertes activées et en ligne) ; sinon elle garde
+   `continue`. Test : 4 étagères locales vides devant la 2ᵉ BYL → elle arrive en page 2,
+   chargée ; hors ligne, la page 1 n'est pas coupée.
 3. Un build réseau demandé, l'appareil désormais hors ligne et un doc existant → `Offline`,
    rien n'est écrit. Test : le doc stocké reste identique à l'octet près.
 
-   L'arrêt ne vaut qu'en ligne avec les découvertes activées ; sinon la page continue.
+Données du cœur pour la spec UI v2 (Rust + pont régénéré) :
 
-La Task 6 doit aussi repartir de la page 1 à chaque `LibraryChanged::Home`, et continuer à
-charger tant qu'une page a moins de deux étagères.
-
-**Données du cœur pour la spec UI v2** (Rust + pont régénéré ; vérifier d'abord ce qui existe
-déjà, puis ajouter seulement ce qui manque, en TDD) :
-
-4. Activer / désactiver une source (`set_plugin_enabled(id, bool)`, état dans
-   `installed_plugins`). Une source désactivée n'est plus routée.
+4. Activer / désactiver une source : `set_plugin_enabled(id, enabled)`, état dans
+   `installed_plugins` (`PluginView.enabled`). Une source désactivée n'est plus routée.
+   (Écran Sources, Task 7.)
 5. Mise à jour d'un feed signée par une autre clé : refusée avec une erreur distincte
-   (`CoreError::FeedKeyChanged { url }` ou équivalent), exposée par `feeds()` pour que l'écran
-   Sources montre le message de spec UI §6.7.
-6. Taille de la mise à jour dans `UpdateInfo` (la taille de l'asset de la release).
-7. `playlists_containing(track_id) -> Vec<String>` pour « Ajouter à une playlist ».
+   (`FeedView.error: Option<FeedErrorKind>` avec `KeyChanged`, ou équivalent), pour que l'écran
+   Sources montre le message de spec UI §6.7. (Task 7.)
+6. Taille de la mise à jour dans `UpdateInfo` (la taille de l'asset de la release). (Feuille de
+   mise à jour, Task 7.)
+7. `playlists_containing(track_id) -> Vec<String>` pour « Ajouter à une playlist » (cookie +
+   coche). (Task 6.)
 8. Candidats de « Ce n'est pas le bon morceau » avec la source et la durée, et un moyen de
-   lire un candidat avant de le choisir (sans le retenir).
+   lire un candidat avant de le choisir, sans le retenir. (Task 6.)
 9. Progression de l'import page par page (`LibraryChanged::ImportProgress { page, pages }` ou
-   un flux équivalent), pour la progression ondulée.
+   un flux équivalent), pour la progression ondulée. (Task 7.)
+10. Année et durée totale d'un album dans `CollectionView` (en-tête de spec UI §6.4). (Task 6.)
+11. La source en cause dans `CoreError::ProviderWall` et `Notice::Skipped`, pour « YouTube
+    bloque ce titre pour l'instant » (spec UI §2.9). (Task 6 : `errorMessage` et le texte de
+    `Notice.skipped` prennent le nom.)
+12. Radio depuis un titre : `play_radio(track_id)` (la file devient la radio de ce titre),
+    pour « Radio de ce que j'écoute » (FAB menu de l'Accueil) et l'entrée « Radio » des
+    split buttons des likés et téléchargés. (Tasks 6 et 7.)
+
+La Task 6 repart de la page 1 à chaque `LibraryChanged::Home`, et continue à charger tant
+qu'une page a moins de deux étagères hors écran.
+
+- [ ] **Step 1 : tests qui échouent** (un test Rust par item, noms en `snake_case`
+  reprenant l'item) → `cargo test -p core` FAIL.
+- [ ] **Step 2 : implémenter les items 1 à 3** → `cargo test -p core home::` PASS. Commit —
+  `fix(core): fil d'accueil — NotFound n'est pas une panne, page 1 s'arrête sur une BYL non chargée, build hors ligne n'écrit rien`.
+- [ ] **Step 3 : implémenter les items 4 à 12**, régénérer le pont, étendre `FakeApi` →
+  `cargo test -p core`, `cargo clippy -p core`, puis `cd app && flutter test` et
+  `flutter analyze` → PASS. Commit —
+  `feat(core): données de la spec UI v2 (sources activables, clé changée, taille de mise à jour, playlists d'un titre, candidats écoutables, progression d'import, année et durée, source bloquante, radio d'un titre)`.
 
 ### Task 6 : écrans d'écoute (accueil, Explorer, pages, lecteur, file, paroles)
 
@@ -638,106 +1010,183 @@ déjà, puis ajouter seulement ce qui manque, en TDD) :
   - `app/lib/features/music/home/{home_page,discovery_hero,feed_shelf}.dart` ;
   - `features/music/explore/{explore_page,suggestions_view,results_view,category_page}.dart` ;
   - `features/music/entity/{album_page,artist_page,playlist_page}.dart` ;
-  - `features/music/now_playing/{now_playing_sheet,now_playing_controller,lyrics_view,queue_view}.dart`
+  - `features/music/now_playing/{now_playing_controller,lyrics_view,queue_view}.dart`
     (les données de `VNowPlaying` et les contenus des vues Paroles et File) ;
-  - `features/music/actions/track_actions.dart` : like, lire ensuite, ajouter à la file,
-    ajouter à une playlist, télécharger, « ce n'est pas le bon morceau ».
+  - `features/music/actions/track_actions.dart` : les seuls chemins vers la lecture, le
+    téléchargement et le menu d'un titre.
+- Modify :
+  - `features/music/now_playing/now_playing_sheet.dart` (Task 5 : contenus réels) ;
+  - `shell_desktop/title_bar.dart` (suggestions de `suggestions_view.dart`),
+    `shell_mobile/mini_player.dart` (astuce de geste), `shell_desktop/pinned.dart` (dépôt sur
+    Téléchargés → `startDownload`), `router.dart` (texte de `Notice.skipped`) ;
+  - `app/android/app/src/main/kotlin/app/vehicoule/MainActivity.kt` (sélecteur de sortie
+    audio) ;
+  - `app/lib/l10n/errors.dart` (la source bloquante, Task 5b item 11),
+    `app/lib/debug/fake_api.dart` (fil de 12 étagères, 2 catégories vedettes et 6 catégories,
+    recherche, entités), ARB FR/EN.
 - Test : `app/test/features/{home,explore,entity,now_playing,actions}_test.dart`.
 
 **Interfaces :**
 - Consumes :
   - API du plan 4 : `search`, `searchLibrary`, `entity`, `play`, `queueOp`, `queueStates`,
-    `nowPlaying`, `lyrics`, `fixMatch`, `chooseMatch`, `setLiked`, `download`,
-    `addToPlaylist`, `notices`, `hasResolver` ;
+    `skipNext`, `previous(positionMs:)`, `nowPlaying`, `lyrics`, `fixMatch`, `chooseMatch`,
+    `setLiked`, `download`, `addToPlaylist`, `playlistEntries`, `removeFromPlaylist`,
+    `moveInPlaylist`, `setSleepTimer`, `notices`, `hasResolver`, `artistLatestRelease`,
+    `uiPref`/`setUiPref` ;
   - API du plan 7 : `homeFeed`, `refreshHome`, `playMix`, `browseCategories`,
-    `browseCategory`, `suggest` (rend `SuggestionView`), `libraryChanges` (`Home`) ;
-  - `PlayerAdapter.position` et `design/`.
+    `browseCategory`, `suggest` (rend `SuggestionView`), `likedTracks`, `libraryChanges`
+    (`Home`) ;
+  - Task 5b : `playlistsContaining`, candidats écoutables, année et durée, `playRadio` ;
+  - `AppScope` (`player`, `theme`, `online`), `ScreenFab`, `NowPlayingScope` et `design/`.
+- Produces (`track_actions.dart`) :
+  ```dart
+  Future<void> playTracks(BuildContext c, List<String> ids, int start, PlayContext context);   // player.markTap() puis play(...) ; tout toucher qui lit passe ici
+  Future<void> shuffleTracks(BuildContext c, List<String> ids, PlayContext context);           // playTracks(ids, index au hasard, context) puis queueOp(QueueOp.shuffle(true))
+  Future<void> startDownload(BuildContext c, List<String> ids);                                // au premier téléchargement, requestNotificationPermission() si ui.notif_asked == "later", puis download(ids)
+  Future<void> showTrackMenu(BuildContext c, TrackView t, {required Rect anchor, Rect? originRect, Widget? origin});
+      // showVMenu : quick = like, lire ensuite, ajouter à la file ; groupes = ajouter à une playlist, télécharger,
+      // aller à l'album, aller à l'artiste, « Ce n'est pas le bon morceau »
+  List<VAction> playVariants(BuildContext c, {required List<String> Function() ids, required PlayContext context, bool shuffleFirst = false});
+      // le ▾ d'un split : « Lire » → Aléatoire, Lire ensuite, Ajouter à la file ;
+      // « Aléatoire » (shuffleFirst) → Lire dans l'ordre, Radio, Lire ensuite, Ajouter à la file
+  ```
 - Règles :
   - **Accueil** (spec UI §6.1) :
-    - « Bonsoir / Bonjour / Bonne nuit » selon l'heure locale, dans une grande app bar qui se
-      replie ;
+    - « Bonsoir / Bonjour / Bonne nuit » selon l'heure locale, dans une `VLargeAppBar` qui
+      se replie ;
     - pas de `SliverList` de pages : un `CustomScrollView` d'étagères à hauteur fixe ;
-    - `homeFeed(next)` est appelé à 2 étagères de la fin ;
-    - les étagères qui chargent sont des squelettes de la même hauteur ;
-    - tirer pour rafraîchir appelle `refreshHome()` ;
-    - le titre d'une étagère se traduit depuis son `kind` et sa `seed` ;
+    - `homeFeed(cursor: next)` est appelé tant que `next != null` et qu'il reste moins de 2
+      étagères hors écran : une page courte en appelle une autre tout de suite ;
+    - à chaque `LibraryChanged.home`, le fil repart de la page 1 ;
+    - les étagères qui chargent sont des `VSkeleton` de la même hauteur ;
+    - tirer pour rafraîchir (`VRefresh`) appelle `refreshHome()` ; sur `Offline`, le geste
+      se termine et `showVSnack` dit qu'on est hors ligne, sans réessai ;
+    - le titre d'une étagère se traduit depuis son `ShelfKindView` et sa `seed` ;
+    - `shortcuts` : une rangée de `VChip` avec leur `VArtwork`, les 6 collections les plus
+      jouées ;
     - `Discovery` : `discovery_hero` (un toucher sur ▶ appelle
-      `play(tous les titres, 0, PlayContext(kind: "discovery"))`), puis des pages de 4
-      `VTrackRow` qui s'aimantent, avec leur `reason` (« comme … ») ;
-    - `Mixes` : carousel héros, un toucher appelle `playMix(id)` ;
+      `playTracks(tous les titres, 0, PlayContext(kind: 'discovery', title: <titre traduit de l'étagère>))`),
+      puis des pages de 4 `VTrackRow` qui s'aimantent, avec leur `reason` (« comme … ») ;
+      sur une page sans étagère `shortcuts` ni `recent` (historique vide), la carte devient
+      « Pour commencer » ;
+    - sans `browse` (`browseCategories` lève `NoPlugin(browse)`) et sans étagère
+      `Discovery`, une carte envoie vers Explorer ;
+    - `Mixes` : `VCarousel(kind: VCarouselKind.hero)`, un toucher appelle `playMix(artistId:)` ;
     - `End` : la carte « Tu as fait le tour » vers `/explore` ;
-    - une étagère entre en fondu avec une montée de 16 px la première fois qu'elle est
-      construite (décalage de 40 ms par carte), et plus jamais ;
+    - une étagère entre par `vEntrance(index, …)` la première fois qu'elle est construite, et
+      plus jamais ;
     - la carte héros se rétracte en sortant de l'écran (échelle 1 → 0,92 et parallaxe) ;
-    - pas d'aimantation verticale.
+    - pas d'aimantation verticale ;
+    - **FAB menu « Lancer »** (`ScreenFab(action: VAction(l.fabLaunch, VIcons.play, …), items: …)`) :
+      - « Mélanger mes likés » → `shuffleTracks(likedTracks par pages de 500, PlayContext(kind: 'liked', title:))` ;
+      - « Radio de ce que j'écoute » → `playRadio(id du titre en cours)`, sinon du dernier
+        titre de `history` ; absente sans l'un ni l'autre ;
+      - « Reprendre la dernière écoute » → `queueOp(QueueOp.jumpTo(currentEntry))` sur la file
+        restaurée ; absente si `queueStates` n'a pas d'entrée courante ou si elle joue.
   - **Explorer** (spec UI §6.2) :
-    - au repos : la search bar, les catégories `featured` en deux grandes cartes, puis la
-      grille « Parcourir » (2 colonnes sur mobile, de 3 à 5 sur desktop). La teinte d'une
+    - au repos : `VSearchBar`, les catégories `featured` en deux grandes cartes, puis la
+      grille « Parcourir » (2 colonnes en compact, de 3 à 5 en expanded). La teinte d'une
       tuile est `pastelSeed` d'une teinte tirée du hash de `CategoryView.id`. Son image est un
-      `VDecor(decorFor(id), imageItemId: artwork)` incliné qui dépasse du coin. Au toucher, la
-      forme grossit et morphe en carré pendant le container transform. Les cartes vedettes
-      font de même, en plus grand ;
+      `VDecor(shape: decorFor(id), imageItemId: artwork)` incliné qui dépasse du coin. Au
+      toucher, la forme grossit et morphe en carré pendant le container transform. Les cartes
+      vedettes font de même, en plus grand ;
     - pendant la frappe, la search view plein écran ne contient **que** :
-      - « Dans ta bibliothèque » : `searchLibrary`, au plus 3 lignes, un toucher ouvre
-        l'élément ;
-      - puis « Suggestions » : `suggest`, après 150 ms sans frappe, la requête précédente
-        ignorée. L'icône est l'horloge si `fromHistory`, la loupe sinon. Le préfixe tapé est
-        en gras, et ↖ recopie la suggestion dans le champ ;
+      - « Dans ta bibliothèque » : `searchLibrary` (des titres), au plus 3 lignes ; un toucher
+        lit le titre (`playTracks`) ;
+      - puis « Suggestions » : `suggest`, après `VDurations.debounce` sans frappe ; une réponse
+        plus ancienne que la dernière demande (numéro de séquence) est ignorée. L'icône est
+        l'horloge si `fromHistory`, la loupe sinon. Le préfixe tapé est en gras, et ↖ recopie
+        la suggestion dans le champ ;
+    - `suggestions_view.dart` sert aussi au menu déroulant de la barre de titre desktop ;
     - aucune `search()` avant la validation ;
-    - à la validation : `search()`, `VLoading` pendant l'appel, les puces Tout / Titres /
-      Albums / Artistes / Playlists, le meilleur résultat en carte, puis les sections ;
-    - hors ligne, ou sur `NoPlugin(browse)` : la recherche locale et l'historique restent ;
-      les vedettes et la grille sont remplacées par un message, ou par la copie
-      (`fromCache`) quand elle existe ;
-    - `/category/:id` : `browseCategory`, avec ses étagères paginées.
+    - à la validation : `search()`, `VLoading` pendant l'appel, les `VChip` Tout / Titres /
+      Albums / Artistes / Playlists, le meilleur résultat en carte, puis les sections. Meilleur
+      résultat : l'artiste dont le nom normalisé égale la requête, sinon le premier titre ;
+    - les catégories s'affichent dès que `browseCategories()` rend `Ok` (même hors ligne,
+      depuis le cache) ; sur `Err(Offline)` ou `Err(NoPlugin(browse))`, la recherche locale
+      et l'historique restent, les vedettes et la grille sont remplacées par un message ;
+    - `/category/:id` : `browseCategory(id:, cursor:)`, ses étagères paginées, leur titre
+      (`tracks`, `albums`, `artists`, `playlists`) traduit ; la copie du cache
+      (`fromCache`) est signalée ; split button « Lire | ▾ ».
   - **Pages** (spec UI §6.4, §6.5) :
     - la pochette ou la photo est en grand, fondue dans la surface, sans teinte propre, dans un
-      `VFlexibleHeader` (album, playlist, artiste en cercle, catégorie) ;
-    - album : lignes numérotées, et split button « Lire | ▾ » (aléatoire, lire ensuite,
-      ajouter à la file) ;
-    - le FAB lecture reste quand l'en-tête est replié ;
-    - artiste : bouton Radio, puis la carte « Dernière sortie » si `artistLatestRelease(id)`
-      rend une valeur (appel séparé, la page ne l'attend pas), puis les titres populaires et
-      les albums en carousel multi-browse ;
-    - les playlists perso sans image utilisent `VMosaicArtwork` (4 premiers titres de
-      `playlistEntries(id, 0, 4)`), partout où elles apparaissent ;
-    - les pages sont paginées par 100 (`entity(cursor)`).
+      `VFlexibleHeader` (album, playlist, artiste en cercle, catégorie) ; titre, artistes,
+      année et durée (Task 5b item 10) ;
+    - **split button d'en-tête** (`VSplitButton` dans `actions`), like et télécharger en
+      `VIconButton(style: VIconStyle.tonal)` :
+      - album, playlist, catégorie : « Lire | ▾ » → `playTracks(ids, 0, context)`, ▾ =
+        `playVariants(…)` ;
+      - artiste : « Aléatoire | ▾ » → `shuffleTracks(titres populaires, context)`, ▾ =
+        `playVariants(…, shuffleFirst: true)`, dont « Radio » → `playMix(artistId:)`. C'est
+        la radio de l'artiste (spec UI §6.5) ; pas de second bouton Radio ;
+    - en-tête replié : dans la coque mobile, le split devient le FAB d'écran
+      (`ScreenFab(action: VAction(<même libellé>, <même icône>, <même action>))`, placé par
+      `VFabDock` au-dessus du ⏯) et l'en-tête reçoit `fab: const SizedBox.shrink()` ; sur
+      desktop, l'en-tête replié montre `VFab` dans son app bar, et la page ne publie pas de
+      `ScreenFab` ;
+    - album : lignes numérotées ;
+    - artiste : la carte « Dernière sortie » si `artistLatestRelease(artistId:)` rend une
+      valeur (appel séparé, la page ne l'attend pas), puis les titres populaires et les albums
+      en `VCarousel(kind: VCarouselKind.multiBrowse)` ;
+    - une playlist perso sans image a `VArtwork(mosaic: <ids des 4 premiers titres distincts de playlistEntries(id, 0, 4)>)`,
+      partout où elle apparaît ;
+    - une playlist perso est paginée par `playlistEntries(id:, offset:, limit: 100)` (les
+      `entry` servent à réordonner) ; les entités du fournisseur par `entity(id:, cursor:)` ;
+    - **playlist perso, sélection multiple** (mobile) : appui long → mode sélection ; l'app
+      bar montre le nombre et « Annuler » ; `ScreenFab(bar: VToolbar(actions: [ajouter à une
+      playlist, télécharger, like, retirer], fab: VFab(« Lire »)))` prend la place du
+      mini-lecteur ; « Lire » → `playTracks(ids sélectionnés, 0, context)` ;
+    - retirer d'une playlist ou supprimer une playlist : la ligne disparaît tout de suite,
+      `showVSnack` avec « Annuler » ; `removeFromPlaylist`/`deletePlaylist` part quand le
+      snack se ferme sans « Annuler ».
   - **Lecteur** (spec UI §5.5, §6.6) :
-    - `now_playing_controller` construit `NowPlayingData` depuis `nowPlaying`, `queueStates`
-      et `PlayerAdapter.position`, et fournit `NowPlayingActions`. Le style vient de
-      `ui.player_style` (Disque par défaut).
-    - Vue Paroles : `lyrics_view`. Vue File : `queue_view`, avec « À suivre » puis
-      « Radio · titres proches », en `VTrackRow` avec poignée. Glisser pour réordonner ;
-      glisser à gauche pour retirer (`QueueOp.remove`).
-    - Les mêmes contenus servent au plein écran mobile, au panneau desktop et à l'immersif.
-    - La sortie audio ouvre le sélecteur du système (mobile) ou le menu des sorties (desktop,
-      à côté du volume).
-    - `NowPlaying.source` et `mime` alimentent « détails du flux » (menu ⋮).
-    - Le menu ⋮ porte aussi la **Minuterie** : 15, 30, 45 ou 60 min, fin du titre, annuler
-      (`setSleepTimer`). `NowPlaying.sleep` affiche une lune et le temps restant dans
-      l'en-tête.
-    - Like et ⏯ appellent `VHaptics.light()`, et le sélecteur `VHaptics.selection()`.
+    - `now_playing_controller` construit `NowPlayingData` depuis `nowPlaying`, `queueStates`,
+      `player.playing`, `player.loading`, `downloadProgress` et `theme.coverTop`, et fournit
+      `NowPlayingActions`. La position est `player.position`, passée telle quelle à
+      `VNowPlaying.position`. Le style vient de `ThemeController.playerStyle` (Disque par
+      défaut) ;
+    - vue Paroles : `lyrics_view` (ligne active = la dernière dont `startMs ≤ position` ; un
+      toucher y amène la lecture). Vue File : `queue_view`, avec « À suivre » puis « Radio ·
+      titres proches », en `VTrackRow(handleIndex:)`. Glisser pour réordonner
+      (`QueueOp.move(entry:, after: voisin du dessus)`) ; glisser à gauche pour retirer
+      (`onRemove` → `QueueOp.remove(entry)`) ;
+    - les mêmes contenus servent au plein écran mobile, au panneau desktop et à l'immersif ;
+    - en paysage (téléphone) et en largeur moyenne : `VNowPlaying(wide: true)` ;
+    - la sortie audio : sur Android 11+, l'intent `android.settings.panel.action.MEDIA_OUTPUT`
+      par le canal de `MainActivity`, bouton masqué avant 11 ; sur desktop, un `showVMenu` des
+      sorties media_kit (`audioDevices`, `setAudioDevice`), près du volume ;
+    - `NowPlaying.source` et `mime` alimentent « Détails du flux » (menu ⋮, dans
+      `showVSheet`) ;
+    - le menu ⋮ porte aussi la **Minuterie** : 15, 30, 45 ou 60 min, fin du titre, annuler
+      (`setSleepTimer`). `NowPlaying.sleep` donne `sleepLeft` ou `sleepEndOfTrack` à
+      `NowPlayingData` ;
+    - « Ce n'est pas le bon morceau » (`showVSheet`) : les candidats avec leur source et leur
+      durée, « Lire » pour écouter avant de choisir (Task 5b item 8), « Choisir » →
+      `chooseMatch`.
+  - **Ajouter à une playlist** (`showVSheet`) : « Nouvelle playlist » en tête, puis une
+    recherche ; les playlists de `playlistsContaining(trackId)` portent le cookie + coche.
   - **Desktop, listes** (spec UI §4.2) :
-    - les listes de titres sont en tableau (#, titre + artistes, album, durée, ⋮), avec la
-      même `VTrackRow` en mode large ;
+    - les listes de titres sont en tableau (#, titre + artistes, album, durée, ⋮), avec
+      `VTrackRow(wide: true)` ;
     - au survol, le numéro devient ▶ et ⋮ apparaît ;
-    - **double-clic = lire**, clic = sélectionner, ⇧/⌘ clic = sélection multiple, Entrée lit
-      la sélection ;
+    - **double-clic = lire** (`onDoubleTap` → `playTracks`), clic = sélectionner
+      (`selected`), ⇧/⌘ clic = sélection multiple, Entrée lit la sélection, Suppr retire
+      (vue File, playlist perso) ;
     - glisser la sélection vers un épinglé, une playlist ou la file ;
     - au survol d'une carte, un bouton ▶ apparaît ;
     - « Épingler / Désépingler » figure dans le menu des collections.
   - **Règles reprises du plan 4** :
-    - sans résolveur, le bouton lecture explique pourquoi et renvoie vers « Ajouter un
-      dépôt » ;
-    - `Notice.skipped` → snackbar discrète ;
-    - paroles synchronisées : la ligne active est la dernière dont `startMs ≤ position` ;
-    - bouton lecture sans piste chargée → `queueOp(QueueOp.jumpTo(currentEntry))` ;
-    - réordonner la file : `QueueOp.move(entry, after: voisin du dessus)`.
+    - sans résolveur (`hasResolver()` faux), le bouton lecture dit « Il te faut une source
+      pour lire. » avec l'action « Ajouter une source » (ouvre `AddSourceSheet`, Task 7) ;
+    - `Notice.skipped` → snackbar discrète, avec le nom de la source s'il est connu ;
+    - bouton lecture sans piste chargée → `queueOp(QueueOp.jumpTo(currentEntry))`.
+  - Like, ⏯ et le sélecteur appellent leurs `VHaptics` dans `design/` ; aucun écran ne les
+    appelle pour eux.
 
 **Ajouts — 8 sujets (spec UI §5.7, §4.3) :**
 - Astuces de gestes, une seule fois chacune (`ui.hint.mini_player`, `ui.hint.row_swipe`) :
-  la tooltip du premier mini-lecteur avec l'esquisse du geste, puis la première ligne qui
-  s'entrouvre. Avec « réduire les animations » : la tooltip seule. Rien sur desktop.
+  la `VRichTooltip` du premier mini-lecteur avec l'esquisse du geste, puis la première ligne
+  qui s'entrouvre. Avec « réduire les animations » : la tooltip seule. Rien sur desktop.
 - Lecteur en deux colonnes en paysage (téléphone) et en largeur moyenne.
 
 ```dart
@@ -749,167 +1198,246 @@ testWidgets('landscape player uses two columns', ...);
 
 ```dart
 testWidgets('home pages the feed two shelves before the end', ...);   // FakeApi : 12 étagères → homeFeed("4") demandé, pas homeFeed("8") avant défilement
-testWidgets('home pull to refresh calls refreshHome', ...);
-testWidgets('discovery hero plays the whole shelf', ...);
+testWidgets('a short page fetches the next one at once', ...);
+testWidgets('home reloads from page 1 on LibraryChanged.home', ...);
+testWidgets('home pull to refresh calls refreshHome through VRefresh', ...);
+testWidgets('home refresh offline ends and says so', ...);
+testWidgets('discovery hero plays the whole shelf', ...);              // playTracks(…, PlayContext(kind: 'discovery', title: …))
 testWidgets('discovery rows show their reason', ...);
+testWidgets('empty history turns discovery into Pour commencer', ...);
+testWidgets('shortcuts row shows six chips', ...);
 testWidgets('mix tap calls playMix', ...);
 testWidgets('shelf titles come from kind and seed', ...);             // BecauseYouListened + seed "Kaytranada" → « Parce que tu as écouté Kaytranada »
 testWidgets('end card leads to explore', ...);
+testWidgets('home FAB menu Lancer runs its launches', ...);           // likés mélangés ; playRadio ; jumpTo(currentEntry)
 testWidgets('explore idle shows featured cards then the grid', ...);
 testWidgets('typing shows only suggestions, no search', ...);          // "y","yo","yoa" à 100 ms → 1 suggest("yoa"), 0 search
+testWidgets('a stale suggestion answer is dropped', ...);
 testWidgets('history suggestions use the clock icon', ...);
 testWidgets('north west arrow fills the field without searching', ...);
-testWidgets('library hit opens the item directly', ...);
+testWidgets('library hit plays the track', ...);
 testWidgets('submit shows chips and sectioned results', ...);
+testWidgets('best result is the exact artist, else the first track', ...);
 testWidgets('explore offline keeps local search and explains', ...);
 testWidgets('category page shows its shelves', ...);
 testWidgets('album rows are numbered', ...);
+testWidgets('album header shows year and duration', ...);
 testWidgets('playlist page builds lazily', ...);                       // 10 000 titres simulés : moins de 50 VTrackRow construits
-testWidgets('tapping a track plays it with its context', ...);         // play(items, start, PlayContext(kind: "album"...))
-testWidgets('play without resolver explains why', ...);
+testWidgets('tapping a track plays it with its context', ...);         // markTap() puis play(items, start, PlayContext(kind: 'album', title: …))
+testWidgets('play without resolver explains why', ...);                // « Il te faut une source pour lire. » + « Ajouter une source »
+testWidgets('collection split plays and its menu shuffles', ...);
+testWidgets('artist split shuffles and its menu starts the radio', ...);
+testWidgets('collapsed header split becomes the screen FAB above the mini player', ...);
+testWidgets('user playlist selection shows the toolbar and its Lire FAB', ...);
+testWidgets('removing from a playlist hides at once and calls the API when the snackbar closes', ...);
 testWidgets('synced lyrics highlight the current line', ...);
-testWidgets('not the right track lists candidates and pins the choice', ...);
+testWidgets('not the right track lists candidates, plays one, pins the choice', ...);
+testWidgets('add to playlist marks playlists that hold the track', ...);
 testWidgets('track actions use the expressive menu on both shells', ...);
-testWidgets('player progress wave is flat when paused', ...);
+testWidgets('first download asks for notifications once', ...);        // startDownload
 testWidgets('player style setting switches Disque and Vague live', ...);
 testWidgets('sleep timer menu sets the timer and the header shows the moon', ...);
 testWidgets('artist page shows the latest release card only when present', ...);
 testWidgets('user playlist without image shows a mosaic', ...);
 testWidgets('genre tile uses the same decor shape for the same id', ...);
-testWidgets('album header collapses into the app bar and the play FAB remains', ...);
-testWidgets('home pull to refresh uses VRefresh', ...);
+testWidgets('album header collapses into the app bar', ...);
 testWidgets('queue view reorders with move(entry, after) and removes on swipe left', ...);
 testWidgets('desktop: double click plays, single click selects, shift selects a range', ...);
 testWidgets('desktop: hover shows play on the row number', ...);
 ```
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
 - [ ] **Step 3 : implémenter.**
-- [ ] **Step 4 : vérifier** → PASS.
+- [ ] **Step 4 : vérifier** : `flutter test` puis `flutter analyze` → PASS.
 - [ ] **Step 5 : commit** : `feat(app): accueil, Explorer, pages, lecteur, file, paroles`.
+- [ ] **Step 6 : point de contrôle utilisateur (bloquant).** Lancer l'app en debug avec
+  `FakeApi` sur le téléphone Android de référence et sur macOS, et avec les vraies sources
+  (feed de dev local du ledger) quand elles répondent. Captures à taille réelle dans
+  `task-6-screenshots/`, chacune à côté de sa maquette :
+  - l'accueil (téléphone : « Bonsoir », raccourcis, découverte, mixes, étagères, FAB menu
+    « Lancer ») ↔ `14247-1792758406/content/accueil.html` ;
+  - Explorer au repos (vedettes, grille « Parcourir ») et une catégorie ↔
+    `59588-1792794291/content/app-formes.html` ;
+  - le lecteur (Disque, Vague, Paroles, File) ↔ `lecteur-v3.html` ;
+  - l'accueil, un album en tableau et Explorer à 1280 dp ↔ `desktop-2.html`.
+
+  Le rapport liste les écarts ; le relecteur compte tout écart visuel comme Important. Les
+  retours sont corrigés, tests verts, puis commités. La tâche 7 ne commence qu'après
+  l'accord, consigné dans le ledger (`Ruling (user): listening screens approved`).
 
 ### Task 7 : bibliothèque, réglages, sources, premier lancement
 
 **Files :**
 - Create :
   - `app/lib/features/music/library/{library_page,collection_list,track_list_page,top_page,history_page,sort_sheet}.dart` ;
-  - `features/music/library/import_dialog.dart` ;
-  - `features/music/settings/{settings_page,appearance_page,plugins_page,add_feed_page,diagnostics_page}.dart` ;
+  - `features/music/library/{new_playlist_sheet,import_dialog}.dart` ;
+  - `features/music/settings/{settings_page,appearance_page,sources_page,add_source_sheet,diagnostics_page}.dart`
+    (`parseSourceLink` dans `add_source_sheet.dart`) ;
   - `features/music/downloads/downloads_page.dart` ;
-  - `features/music/onboarding/onboarding_page.dart`, `features/music/updates/update_banner.dart`.
-- Test : `app/test/features/{library,settings,onboarding}_test.dart`.
+  - `features/music/onboarding/onboarding_page.dart`, `features/music/updates/update_sheet.dart`.
+- Modify : `app/lib/router.dart` (`links()` → `AddSourceSheet` ; `Notice.updateAvailable` →
+  `update_sheet`), `app/pubspec.yaml` (`share_plus: 13.3.1`), `app/lib/debug/fake_api.dart`,
+  ARB FR/EN.
+- Test : `app/test/features/{library,settings,sources,onboarding,downloads}_test.dart`.
+- Autre dépôt : `/Users/btw/Documents/repo/vehicoule-ytmusic-socle`, branche `socle-plugin`
+  (README, voir les Ajouts).
 
 **Interfaces :**
 - Consumes :
   - API du plan 4 : `playlists`, `playlistEntries`, `createPlaylist`, `renamePlaylist`,
     `deletePlaylist`, `moveInPlaylist`, `removeFromPlaylist`, `importPlaylist`,
-    `downloads`, `cancelDownload`, `searchLibrary`, `libraryChanges`, `settings`,
-    `setSettings`, `installedPlugins`, `capabilityOrder`, `setCapabilityOrder`,
-    `previewFeed`, `addFeed`, `removeFeed`, `refreshFeeds`, `onboarding`,
+    `downloads`, `downloadProgress`, `cancelDownload`, `searchLibrary`, `libraryChanges`,
+    `settings`, `setSettings`, `installedPlugins`, `capabilityOrder`, `setCapabilityOrder`,
+    `previewFeed(url:, publicKey:)`, `addFeed`, `removeFeed`, `refreshFeeds`, `onboarding`,
     `finishOnboarding`, `diagnostics`, `exportLogs`, `checkUpdates`, `feeds`, `tracks`,
-    `hasResolver`, et `installUpdate` ;
-  - API du plan 7 : `liked(kind, sort, …)`, `likedTracks(sort, …)`, `playlists(sort)`,
-    `downloaded(sort, …)`, `topTracks`, `history` (`HistoryEntryView`), `uiPref`,
-    `setUiPref`, `Settings.discover`.
+    `hasResolver`, `browseCategories`, `browseCategory`, `search`, `setLiked`, et
+    `installUpdate`, `links`, `requestNotificationPermission` (Task 4) ;
+  - API du plan 7 : `liked(kind:, sort:, offset:, limit:)`, `likedTracks(sort:, …)`,
+    `playlists(sort:)`, `downloaded(sort:, …)`, `downloadStorage`, `topTracks`, `history`
+    (`HistoryEntryView`), `uiPref`, `setUiPref`, `Settings.discover` ;
+  - Task 5b : `setPluginEnabled`, `FeedView.error`, `UpdateInfo` avec sa taille, la
+    progression d'import, `playRadio` ;
+  - Task 6 : `playTracks`, `shuffleTracks`, `startDownload`, `playVariants` ; Task 5 :
+    `ThemeController` (ses setters), `ScreenFab`.
+- Produces :
+  ```dart
+  ({String url, String publicKey})? parseSourceLink(String text); // vehicoule://add-source?feed=<url>&key=<clé>, sinon null
+  Future<void> showAddSourceSheet(BuildContext c, {required String url, required String publicKey});
+  ```
 - Règles :
   - **Bibliothèque** (spec UI §6.3) :
-    - grande app bar avec ☰, recherche et tri ;
-    - tuiles Likés / Téléchargés / Top 50 / Historique ;
-    - puces Playlists / Albums / Artistes, puis la liste ;
-    - FAB menu : nouvelle playlist, importer un lien ;
-    - tuiles : Likés montre un collage des 3 dernières pochettes likées ; chaque tuile a son
-      icône dans une `VDecor` de forme différente ;
+    - `VLargeAppBar` avec ☰, recherche (`searchLibrary`) et tri ;
+    - tuiles Likés / Téléchargés / Top 50 / Historique ; Likés montre un collage des 3
+      dernières pochettes likées ; chaque tuile a son icône dans une `VDecor` de forme
+      différente ;
+    - `VChip` Playlists / Albums / Artistes, puis la liste (`VAsyncList`, `reloadKey` = tri) ;
+    - **FAB menu « Nouvelle »** : `ScreenFab(action: VAction(l.fabNew, VIcons.add, …), items:
+      [VAction(l.actionNewPlaylist, VIcons.playlistAdd, …), VAction(l.actionImportLink,
+      VIcons.addLink, …)])`. « Nouvelle playlist » → `new_playlist_sheet` (`showVSheet` : un
+      nom et l'aperçu de la mosaïque) → `createPlaylist` ; « Importer un lien » →
+      `import_dialog` ;
+    - **Likés, Téléchargés** (`track_list_page`) : split button « Aléatoire | ▾ » →
+      `shuffleTracks(toutes les pages, par 500)`, ▾ = `playVariants(…, shuffleFirst: true)`
+      (« Radio » → `playRadio` du premier titre dans le tri courant) ; replié, il devient le
+      FAB d'écran (règle de la Task 6) ;
     - **Top 50 en podium** (`top_page`) :
       - les 3 premiers en tête, le n°1 au centre et plus grand, en `VArtwork` (cookie + anneau
         s'il joue) ;
       - puis les rangs en grands chiffres arrondis en contour (style `displaySmall` ROND 100,
-        trait `primary`), à la place du numéro de `VTrackRow` ;
+        trait `primary`), passés à `VTrackRow(leading:)` ;
       - le sous-titre donne le nombre d'écoutes ;
-      - ▶ et aléatoire dans l'app bar, ordre fixe, sans menu de tri ;
+      - split button « Lire | ▾ » (ordre des rangs ; ▾ = `playVariants(…)`), replié en FAB
+        d'écran ; ordre fixe, pas de tri ;
     - Historique : groupé par jour local (« Aujourd'hui », « Hier », puis la date longue), avec
-      des en-têtes de jour qui restent visibles au défilement.
-  - **Tri** :
-    - bottom sheet sur mobile, menu sur desktop ;
-    - collections : Récents (défaut), Dernière écoute, Nom A→Z ;
-    - titres : Date d'ajout (défaut), Titre, Artiste ;
+      des en-têtes de jour qui restent visibles au défilement ;
+    - **états vides** : `VEmptyState` ; les likés vides montrent `VIcons.favorite` avec son
+      libellé parlé, jamais le caractère ♡.
+  - **Tri** (`sort_sheet`, `showVSheet` : feuille sur mobile, dialogue au-delà de 840) :
+    - collections : Récents (`CollectionSort.recent`, défaut), Dernière écoute
+      (`CollectionSort.played`), Nom A→Z (`CollectionSort.title`) ;
+    - titres : Date d'ajout (`TrackSort.added`, défaut), Titre, Artiste ;
     - le choix est passé à l'API et retenu par liste (`setUiPref("ui.sort.<liste>")`).
-  - **Réglages** : listes M3E en groupes arrondis.
-    - Apparence (`appearance_page`) :
-      - en haut, un **aperçu en direct** : un `VNowPlaying` compact sur ce qui joue, ou sur une
-        pochette d'exemple, qui se met à jour à chaque toucher ;
-      - les choix sont des groupes de boutons connectés.
-
-      Les réglages : source de couleur (Ce qui joue, par défaut / Système / Préréglage + choix),
-      noir pur, thème clair/sombre/système, style du lecteur (Disque, par défaut / Vague), le
-      tout dans `ui.*` et appliqué en direct (`ThemeController`, `ui.player_style`).
+  - **Import** (`import_dialog`, `showVSheet`) : l'avertissement de coupe à 50 pages (5 000
+    titres) avant de commencer, la progression ondulée page par page (Task 5b item 9), puis
+    « Ouvrir » ; `ImportResult.truncated` → mention « playlist tronquée à 50 pages ».
+  - **Réglages** : `VListGroup` et `VListRow` (listes M3E en groupes arrondis). Les choix sont
+    des `VChoiceGroup` (groupes de boutons connectés), jamais des listes radio ni des segmented
+    buttons.
+    - Apparence (`appearance_page`, `/settings/appearance`) :
+      - en haut, un **aperçu en direct** : un `VNowPlaying(size: PlayerSize.compact)` sur ce
+        qui joue, ou sur un titre de `sampleTracks` en pochette absente, qui se met à jour à
+        chaque toucher ;
+      - source de couleur (Ce qui joue, par défaut / Système / Préréglage + choix), noir pur,
+        thème clair/sombre/système, style du lecteur (Disque, par défaut / Vague) ; chaque choix
+        appelle le setter de `ThemeController`, jamais `setUiPref` directement.
     - Lecture : radio de fin de file, normalisation.
     - Téléchargements.
-    - Sources : dépôts, ordre des capacités.
+    - Sources : lien vers l'écran Sources, l'ordre des capacités.
     - Confidentialité : télémétrie, « Découvertes à partir de mon écoute »
       (`Settings.discover`).
     - À propos : mises à jour, diagnostics, rapport de bug.
     - Desktop : « Afficher dans la barre des menus » (macOS, `ui.menu_bar`, activé par
-      défaut).
-  - **Premier lancement** (spec 4.6) : `VLoading`, puis 4 étapes :
+      défaut ; la Task 10 branche `MenuBar.setVisible`).
+  - **Premier lancement** (spec 4.6, spec UI §6.7) : `VLoading`, puis 6 étapes (3 et 4
+    sautables, 5 seulement sur Android 13 et plus) :
     1. ce qu'est l'app, livrée sans source de streaming ;
-    2. installation du feed officiel (`refreshFeeds`, progression, réessai si hors ligne).
-       Après `refreshFeeds`, l'étape décide du réessai par `hasResolver()` ;
-    3. **« Ajoute une source pour lire »**, facultatif : une phrase, un champ « Colle un lien
-       de source » qui ouvre `AddSourceSheet`, puis « Passer » ;
+    2. installation du feed officiel (`refreshFeeds`, `VLoading`) : l'étape réussit quand
+       `installedPlugins()` n'est pas vide ; sinon « Réessayer », avec le message hors ligne si
+       `online` est faux. `refreshFeeds` ne lève pas par feed : seul `installedPlugins` décide ;
+    3. **« Ajoute une source pour lire »**, poussée seulement si `hasResolver()` est faux : une
+       phrase, un champ « Colle un lien de source » qui ouvre `AddSourceSheet`, puis
+       « Passer » ;
     4. **« Choisis au moins 3 artistes »** (spec UI §6.7) :
        - des **bulles** de tailles variées (3 tailles, réparties sans chevauchement, qui
          flottent doucement ; immobiles avec « réduire les animations »), tirées de l'étagère
-         « artists » de `browseCategory("chart:0")`, avec une recherche au-dessus (`search`,
-         artistes) ;
-       - un toucher appelle `setLiked(id, true)` : la bulle grossit et devient
-         `VArtwork(kind: artist, selected: true)` (cookie avec coche), puis
+         « artists » de `browseCategory(id: <première catégorie featured de browseCategories()>)`,
+         avec une recherche au-dessus (`search`, artistes) ;
+       - un toucher appelle `setLiked(id:, liked: true)` : la bulle grossit et devient
+         `VArtwork(kind: ArtKind.artist, selected: true)` (cookie avec coche), puis
          `VHaptics.light()` ;
        - « Continuer · N » s'active à partir de 3 artistes, « Passer » est toujours là ;
-       - l'étape est sautée sans `browse` ou hors ligne ;
+       - l'étape est sautée sans `browse`, sans catégorie vedette, ou hors ligne ;
     5. **« Les notifications »** (Android 13 et plus seulement), spec UI §6.7 : « Plus tard » /
-       « Autoriser » ; après « Plus tard », la demande revient seulement au premier
-       téléchargement (`ui.notif_asked`) ;
+       « Autoriser » (`requestNotificationPermission`) ; après « Plus tard »,
+       `ui.notif_asked` = `"later"` et la demande revient seulement au premier téléchargement
+       (`startDownload`) ;
     6. télémétrie : deux boutons, **aucun présélectionné**, et on ne peut pas continuer sans
-       choisir.
+       choisir → `finishOnboarding(telemetry:)`.
 
-    Les étapes s'enchaînent en shared axis. Chacune a sa grande `VDecor`, qui morphe vers
+    Les étapes s'enchaînent en `vSharedAxis`. Chacune a sa grande `VDecor`, qui morphe vers
     celle de l'étape suivante.
-  - **Ajout d'une source** (spec UI §6.7), une seule feuille `AddSourceSheet` :
-    - entrée : un **lien de source** `vehicoule://add-source?feed=<url>&key=<clé>`, venu du
-      lien profond (Task 4) ou collé ; `parseSourceLink` rejette tout autre texte avec une
-      phrase de `voice.md` ;
-    - `previewFeed(url, key)` → nom, capacités en mots (« Lecture des titres · Paroles »), la
-      phrase de confiance ; empreinte, domaines et version repliés sous « Détails » ;
-    - « Ajouter » → `addFeed` (l'accord explicite), puis snackbar « <nom> ajoutée » ;
+  - **Ajout d'une source** (spec UI §6.7), une seule feuille `AddSourceSheet` (`showVSheet`) :
+    - entrée : un **lien de source** `vehicoule://add-source?feed=<url>&key=<clé>`, venu de
+      `links()` (branché dans `router.dart`) ou collé ; `parseSourceLink` rejette tout autre
+      texte avec la phrase de `voice.md` (`invalidFeed`) ;
+    - `previewFeed(url:, publicKey:)` → nom, capacités en mots (« Lecture des titres ·
+      Paroles »), la phrase de confiance ; empreinte, domaines et version repliés sous
+      « Détails » ;
+    - « Ajouter » → `addFeed` (toucher « Ajouter » vaut accord explicite), puis snackbar
+      « <nom> ajoutée » ;
     - jamais d'ajout sans la feuille, ni case à cocher ni champ de clé.
-    - Écran Sources : `feeds()` groupés par origine (Officiel, puis chaque lien) ; une ligne
-      par source avec ce qu'elle fait et un interrupteur ; « Retirer » (`removeFeed`) avec
-      Annuler ; l'ordre par capacité dans « Avancé », replié.
-    - Clé changée à la mise à jour : le message de spec UI §6.7.
-  - **Import** : `ImportResult.truncated` → mention « playlist tronquée à 50 pages ».
+  - **Écran Sources** (`sources_page`, `/settings/sources`) :
+    - `feeds()` groupés par origine (Officiel, puis chaque lien) ; une ligne par source
+      (`installedPlugins`) avec ce qu'elle fait en mots et un `VSwitch` →
+      `setPluginEnabled(id, enabled)` ;
+    - le menu d'un lien propose « Retirer » : la ligne disparaît tout de suite, `showVSnack`
+      avec « Annuler », `removeFeed(url:)` part quand le snack se ferme sans « Annuler » ;
+    - l'ordre par capacité (`capabilityOrder`/`setCapabilityOrder`) dans « Avancé », replié ;
+    - un feed dont `error` vaut « clé changée » montre : « Cette source a changé de
+      signature. Retire-la, puis ajoute-la de nouveau depuis son lien. » ;
+    - **FAB étendu « Ajouter une source »** : `ScreenFab(action: VAction(l.actionAddSource,
+      VIcons.add, …))`, qui ouvre un champ « Colle un lien de source » puis `AddSourceSheet` ;
+      sur desktop il est en haut du rail.
+  - **Mise à jour** (`update_sheet`, `showVSheet`, ouverte par `Notice.updateAvailable`) :
+    version, taille (Task 5b item 6), notes en trois lignes au plus, « Plus tard » /
+    « Installer » (`installUpdate`).
   - **« Rechercher une mise à jour »** = `checkUpdates(force: true)` :
     - `Ok(None)` → « à jour » ;
     - `Some` n'est pas affiché depuis la valeur de retour, seulement par
       `Notice.updateAvailable` ;
-    - `Err` → message traduit.
-  - **« Envoyer un rapport »** : `exportLogs` vers un fichier du dossier cache, que Dart
-    enregistre ou partage, puis ouverture de
-    `https://github.com/Vehicoule/vehicoule/issues/new` sans aucune donnée dans l'URL.
+    - `Err` → `errorMessage`.
+  - **« Envoyer un rapport »** : `exportLogs(dest:)` vers un fichier du dossier cache ; sur
+    Android, `share_plus` le partage ; sur macOS, il est copié dans `~/Downloads` et montré
+    dans le Finder. Puis ouverture de `https://github.com/Vehicoule/vehicoule/issues/new`
+    sans aucune donnée dans l'URL.
   - **Téléchargements** (`/downloads`, ouvert depuis le rail) :
     - `downloads()`, avec les titres via `tracks(ids)`, et l'annulation ;
-    - en tête, la barre de stockage (`downloadStorage()` du plan 7, Task 8 : musique
-      téléchargée / espace libre) ;
-    - un titre en cours affiche `VArtwork(progress: pourcentage)`, avec l'anneau ondulé du
-      mini-lecteur.
+    - en tête, la barre de stockage (`downloadStorage()` : musique téléchargée / espace
+      libre) ;
+    - un titre en cours affiche `VArtwork(progress: pourcentage)`, l'anneau du mini-lecteur.
 
 **Ajouts — 8 sujets (spec UI §6.7, §5.8) :** l'écran Sources, `AddSourceSheet` et les étapes
-« Ajoute une source pour lire » et « Les notifications » (détails ci-dessous). Les feuilles
-et dialogues suivent spec UI §5.8. Le README de `vehicoule-ytmusic` publie son lien de source
-(un commit dans ce dépôt).
+« Ajoute une source pour lire » et « Les notifications » (détails ci-dessus). Les feuilles
+et dialogues suivent spec UI §5.8 par `showVSheet`. Le lien de source de ytmusic est publié
+dans le README de `vehicoule-ytmusic-socle` (branche `socle-plugin`, un commit dans ce dépôt) ;
+sa clé publique vient de ce dépôt ou de son `feed.json` publié, jamais de
+`~/.config/vehicoule/feed-keys/`. Si aucun des deux ne l'a, la demande va dans « Pending user
+confirmation ».
 
 ```dart
 test('parseSourceLink accepts only vehicoule://add-source with feed and key', ...);
 testWidgets('add source sheet shows name, capabilities and trust line, details folded', ...);
 testWidgets('add source needs the Ajouter tap', ...);
+testWidgets('add-source deep link opens the sheet and never adds by itself', ...);
 testWidgets('a changed signing key shows the re-add message', ...);
 ```
 
@@ -917,70 +1445,99 @@ testWidgets('a changed signing key shows the re-add message', ...);
 
 ```dart
 testWidgets('library tiles open liked, downloaded, top 50 and history', ...);
+testWidgets('library FAB menu Nouvelle creates a playlist or imports a link', ...);
 testWidgets('sort choice reaches the API and is remembered per list', ...); // Nom A→Z → liked(kind, CollectionSort.title, …) puis setUiPref("ui.sort.albums", "title")
-testWidgets('top 50 has no sort menu', ...);
+testWidgets('liked split shuffles and its menu plays in order', ...);
+testWidgets('empty likes show the heart icon with its spoken label', ...);
+testWidgets('top 50 has a split button and no sort menu', ...);
+testWidgets('top 50 shows a podium then outlined ranks', ...);
 testWidgets('history is grouped by local day', ...);
-testWidgets('appearance changes apply live', ...);                        // noir pur → surface == Colors.black
+testWidgets('history keeps the day header pinned while scrolling', ...);
+testWidgets('settings choices are connected button groups', ...);
+testWidgets('appearance changes apply live', ...);                        // noir pur → surface noire, par ThemeController.setPureBlack
+testWidgets('appearance preview updates on every choice', ...);
 testWidgets('discoveries toggle saves Settings.discover', ...);
 testWidgets('playlist reorder calls moveInPlaylist with the new neighbour', ...);
-testWidgets('import shows progress then opens the new playlist', ...);
+testWidgets('import warns, shows page progress, then opens the new playlist', ...);
 testWidgets('local library search shows fuzzy hits', ...);
+testWidgets('sources FAB opens the add source sheet', ...);
+testWidgets('source switch calls setPluginEnabled', ...);
+testWidgets('removing a source hides it and calls removeFeed when the snackbar closes', ...);
+testWidgets('update sheet shows version, size and notes', ...);
+testWidgets('onboarding has six steps, 3 and 4 skippable, 5 on Android 13 and later only', ...);
+testWidgets('onboarding step 2 succeeds once installedPlugins is not empty', ...);
 testWidgets('telemetry choice has no default and blocks continue', ...);
 testWidgets('artist step likes picks and enables continue at 3', ...);
-testWidgets('top 50 shows a podium then outlined ranks', ...);
-testWidgets('history keeps the day header pinned while scrolling', ...);
-testWidgets('appearance preview updates on every choice', ...);
-testWidgets('downloads show the storage bar and a ring per running item', ...);
 testWidgets('artist step is skipped without browse or offline', ...);
 testWidgets('onboarding_offline_explains_and_continues', ...);
-testWidgets('adding a feed requires seeing fingerprint and domains', ...);
+testWidgets('downloads show the storage bar and a ring per running item', ...);
 testWidgets('report never puts data in the issue URL', ...);  // URL ouverte == URL fixe
 ```
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
 - [ ] **Step 3 : implémenter.**
-- [ ] **Step 4 : vérifier** → PASS.
+- [ ] **Step 4 : vérifier** : `flutter test` puis `flutter analyze` → PASS.
 - [ ] **Step 5 : commit** : `feat(app): bibliothèque, réglages, sources, premier lancement`.
+- [ ] **Step 6 : point de contrôle utilisateur (bloquant).** Lancer l'app en debug sur le
+  téléphone Android de référence et sur macOS (le premier lancement depuis une base vide).
+  Captures à taille réelle dans `task-7-screenshots/`, chacune à côté de sa maquette :
+  - le Top 50 (podium, rangs en contour, split button) ↔
+    `59588-1792794291/content/app-formes.html` ;
+  - le premier lancement, dont « Choisis au moins 3 artistes » ↔ `app-formes.html` ;
+  - le Top 50 et la Bibliothèque à 1280 dp ↔ `desktop-2.html` ;
+  - la Bibliothèque (tuiles, FAB menu « Nouvelle »), les Réglages › Apparence et les Sources
+    (FAB étendu) en captures seules, jugées sur la spec UI §6.3 et §6.7 (pas de maquette
+    dédiée).
 
-### Task 8 : tests de démarrage par coque, accessibilité, CI, nettoyage
+  Le rapport liste les écarts ; le relecteur compte tout écart visuel comme Important. Les
+  retours sont corrigés, tests verts, puis commités. La tâche 10 ne commence qu'après
+  l'accord, consigné dans le ledger (`Ruling (user): library and onboarding approved`).
+
+### Task 8 : tests de démarrage par coque, accessibilité, tests dorés, CI, nettoyage
 
 **Files :**
-- Create : `app/test/fakes/fake_api.dart`, `app/integration_test/startup_mobile_test.dart`,
+- Create : `app/integration_test/startup_mobile_test.dart`,
   `app/integration_test/startup_desktop_test.dart`, `app/test/a11y_test.dart`,
+  `app/test/goldens/screens_golden_test.dart` (et ses images sous `app/test/goldens/`),
   `.github/workflows/ci.yml`
+- Modify : `app/lib/debug/fake_api.dart` (le parcours de démarrage : recherche « halo »,
+  lecture)
 - Delete : `probes/` (remplacé par le socle, spec de l'étape 1)
 - Create : `TRADEMARK.md` (spec 12 : nom et logo réservés, les forks prennent un autre nom)
 - Test : les fichiers ci-dessus
 
 **Interfaces :**
-- Produces : `class FakeApi extends Fake implements RustLibApi` (méthodes générées par
-  flutter_rust_bridge, données fictives : 3 titres, 1 album, un fil d'accueil de 12 étagères,
-  2 catégories vedettes et 6 catégories, flux de commandes simulés),
-  branché par `RustLib.initMock(api: FakeApi())`.
+- Consumes : `FakeApi` (`lib/debug/fake_api.dart`, Task 3, étendue par chaque tâche),
+  branché par `RustLib.initMock(api: FakeApi())` ; `lib/debug/library.dart`.
 
 **Ajouts — tests dorés (spec UI §2.8) :** chaque écran en clair et sombre, en largeurs
-compacte, moyenne et étendue, et avec le texte à 200 %, sur la bibliothèque de test (vraies
-données).
+compacte, moyenne et étendue, et avec le texte à 200 %, sur `lib/debug/library.dart` (vrais
+titres, métadonnées seules ; pochettes à l'aspect « pochette absente », aucune pochette
+commitée). Le fichier porte `@Tags(['golden'])` ; il tourne seulement dans le job macOS de la
+CI (rendu des polices stable).
 
 - [ ] **Step 1 : tests qui échouent**
 
 ```dart
 // startup_mobile_test.dart (taille 400×800) et startup_desktop_test.dart (1280×800)
-testWidgets('launch, search fake data, play', ...);   // l'accueil s'affiche, Explorer, recherche "halo" validée, tap → FakeApi a reçu play(...) et le mini-lecteur / la barre affiche le titre
-// a11y_test.dart, sur accueil, Explorer, lecteur plein écran, réglages, dans les deux coques :
+testWidgets('launch, search fake data, play', ...);   // l'accueil s'affiche, Explorer, recherche "halo" validée, tap → FakeApi a reçu play(...) et le mini-lecteur / la bande affiche le titre
+// a11y_test.dart, sur accueil, Explorer, mini-lecteur, lecteur plein écran, réglages, dans les deux coques :
 testWidgets('meets accessibility guidelines', ...);   // androidTapTargetGuideline, labeledTapTargetGuideline, textContrastGuideline
 testWidgets('no_overflow_at_text_scale_2', ...);       // MediaQuery textScaler 2.0 : aucune exception de débordement
+// screens_golden_test.dart
+testWidgets('screens match their goldens', ...);       // matrice clair/sombre × compact/medium/expanded × texte 1.0/2.0
 ```
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
 - [ ] **Step 3 : implémenter les corrections** que ces tests révèlent.
 - [ ] **Step 4 : CI** (`ci.yml`) : job Rust (`cargo test` + clippy du workspace `core/`, cible
-  `wasm32-wasip2` installée) ; job Android (`flutter test`, `flutter build apk --release
-  --target-platform android-arm64`, APK renommé `vehicoule-<version>-android-arm64-v8a.apk` +
-  `.sha256` en artefact) ; job macOS (`flutter test`, `flutter test integration_test -d macos`,
+  `wasm32-wasip2` installée) ; job Android (`flutter test --exclude-tags golden`,
+  `flutter build apk --release --target-platform android-arm64`, APK renommé
+  `vehicoule-<version>-android-arm64-v8a.apk` + `.sha256` en artefact) ; job macOS
+  (`flutter test`, goldens compris, `flutter test integration_test -d macos`,
   `flutter build macos`) ; compilation seule : `flutter build ios --no-codesign`,
   `flutter build windows`, `flutter build linux` (chacun sur son runner).
-- [ ] **Step 5 : vérifier** — `flutter test` → PASS ; `flutter test integration_test -d macos` → PASS ;
-  `git rm -r probes` et le README racine mis à jour (plus de mention des sondes).
-- [ ] **Step 6 : commit** — `test(app): démarrage par coque, accessibilité ; CI ; retrait des sondes`.
+- [ ] **Step 5 : vérifier** — `flutter test` → PASS ; `flutter analyze` → PASS ;
+  `flutter test integration_test -d macos` → PASS ; `git rm -r probes`.
+- [ ] **Step 6 : commit** — `test(app): démarrage par coque, accessibilité, tests dorés ; CI ; retrait des sondes`.
 
 ### Task 9 : validation finale sur appareils (manuelle, après le plan 6)
 
@@ -996,8 +1553,11 @@ testWidgets('no_overflow_at_text_scale_2', ...);       // MediaQuery textScaler 
   `diagnostics()` / `tapToFirstSoundMs` : médiane < 2 s (critère 2).
 - [ ] **Step 4 : téléchargement de 10 titres app en arrière-plan**, puis mode avion : ils
   se lisent, les autres sont sautés et signalés (spec 3.6).
-- [ ] **Step 5 : macOS** : raccourcis, touches média, barre de titre, une journée d'usage.
-- [ ] **Step 6 : rapport** (mesures, constructeur et modèle du téléphone, écarts), puis
+- [ ] **Step 5 : fluidité** (spec UI §8) : `flutter run --profile` sur le téléphone de
+  référence, défilement de l'accueil et d'Explorer ; noter les temps d'image (60 images/s
+  attendues).
+- [ ] **Step 6 : macOS** : raccourcis, touches média, barre de titre, une journée d'usage.
+- [ ] **Step 7 : rapport** (mesures, constructeur et modèle du téléphone, écarts), puis
   démarrage des deux semaines d'usage quotidien (critère 1). Commit —
   `docs: validation du socle sur appareils`.
 
@@ -1007,46 +1567,60 @@ testWidgets('no_overflow_at_text_scale_2', ...);       // MediaQuery textScaler 
 - Create :
   - `app/android/app/src/main/kotlin/app/vehicoule/widget/{NowPlayingWidget,NowPlayingWidgetReceiver}.kt` (Jetpack Glance) ;
   - `app/android/app/src/main/res/xml/now_playing_widget_{small,large}.xml` ;
-  - `app/macos/Runner/MenuBar/{MenuBarController,NowPlayingPopover}.swift` (SwiftUI) ;
+  - `app/macos/Runner/MenuBar/{MenuBarController,NowPlayingPopover,MenuBarState}.swift` (SwiftUI ;
+    `MenuBarState` décode l'état reçu, fonction pure) ;
+  - `app/macos/Runner/{en,fr}.lproj/Localizable.strings` (« Ouvrir Vehicoule », …) ;
+  - `app/macos/RunnerTests/MenuBarStateTests.swift` (XCTest) ;
   - `app/lib/platform/{home_widget,menu_bar}.dart`.
-- Modify : `app/pubspec.yaml` (`home_widget`, version figée), `AndroidManifest.xml`, `app/macos/Runner/AppDelegate.swift`, `app/lib/main.dart` (abonnements).
-- Test : `app/test/platform/{home_widget,menu_bar}_test.dart`, `app/android/app/src/androidTest/kotlin/app/vehicoule/widget/NowPlayingWidgetTest.kt`.
+- Modify : `app/pubspec.yaml` (`home_widget: 0.10.0`), `AndroidManifest.xml` (filtre
+  d'intent `vehicoule://now-playing`), `app/android/app/src/main/res/values{,-fr}/strings.xml`
+  (« Reprendre »), `app/macos/Runner/AppDelegate.swift`,
+  `app/macos/Runner.xcodeproj/project.pbxproj` (les fichiers Swift compilés),
+  `app/lib/main.dart` (abonnements), `app/lib/router.dart` (`links()` : `now-playing` ouvre
+  le lecteur), `features/music/settings/settings_page.dart` (`MenuBar.setVisible` après
+  `setUiPref("ui.menu_bar")`).
+- Test : `app/test/platform/{home_widget,menu_bar}_test.dart`, `app/android/app/src/androidTest/kotlin/app/vehicoule/widget/NowPlayingWidgetTest.kt`, `MenuBarStateTests.swift`.
 
 **Interfaces :**
-- Consumes : `nowPlaying` (avec `sleep`), `queueStates`, `artworkFile`, `uiPref` (`ui.menu_bar`) ; la session média d'`audio_service` (Task 4).
+- Consumes : `nowPlaying` (avec `sleep`), `queueStates`, `artworkFile`, `uiPref` (`ui.menu_bar`) ;
+  la session média d'`audio_service` et son action personnalisée `like` (Task 4) ;
+  `PlayerAdapter`, `ThemeController`, `links()`.
 - Produces :
   ```dart
-  class HomeWidgetPublisher { void start(Stream<NowPlaying> s); }  // publie title, artist, artworkPath, playing, resumable via home_widget, puis demande la mise à jour du widget
-  class MenuBar { void start(Stream<NowPlaying> s, PlayerAdapter p); }  // canal "vehicoule/menu_bar" : Dart → Swift `state` ; Swift → Dart `command` (prev, toggle, next, like, open)
+  class HomeWidgetPublisher { void start(Stream<NowPlaying> s, PlayerAdapter p, ThemeController t); } // publie title, artist, artworkPath, playing (p.playing), seed ARGB (t), resumable via home_widget, puis demande la mise à jour du widget
+  class MenuBar { void start(Stream<NowPlaying> s, PlayerAdapter p); void setVisible(bool visible); } // canal "vehicoule/menu_bar" : Dart → Swift `state` ; Swift → Dart `command` (prev, toggle, next, like, open)
   ```
 - Règles (spec UI §6.8) : ce sont deux interfaces natives, sans logique.
   - **Android** : deux tailles.
     - 2×2 : pochette cookie avec l'anneau, et ⏯.
     - 4×2 : pochette, titre, artiste, ⏮ ⏯ ⏭, like.
 
-    Couleurs dynamiques (Android 12+), repli sur la teinte publiée. Toucher la pochette ouvre
-    le lecteur (deep link `vehicoule://now-playing`). Les boutons envoient des intents à la
-    session média d'`audio_service` (`MediaButtonReceiver`), ce qui fonctionne sans interface
-    Flutter. Like passe par `home_widget` et une action en arrière-plan qui appelle
-    `setLiked`. Sans lecture, le widget affiche « Reprendre ».
+    Couleurs dynamiques (Android 12+), repli sur la graine publiée. Toucher la pochette ouvre
+    le lecteur (deep link `vehicoule://now-playing`, reçu par `links()`). Les boutons envoient
+    des intents à la session média d'`audio_service` (`MediaButtonReceiver`, déclaré à la
+    Task 4), ce qui fonctionne sans interface Flutter. Like envoie l'action personnalisée
+    `like` de la même session, comme la notification : pas d'isolat en arrière-plan ni de
+    second cœur. Sans lecture, le widget affiche « Reprendre ».
   - **macOS** :
     - `NSStatusItem` avec une note, animée pendant la lecture ;
     - popover SwiftUI : pochette cookie avec l'anneau, titre, artiste, ⏮ ⏯ ⏭, like,
       « Ouvrir Vehicoule » ;
-    - masqué si `ui.menu_bar == "false"` ;
+    - masqué si `ui.menu_bar == "false"` ; `setVisible` l'applique sans relance ;
     - vit tant que l'app tourne, fenêtre fermée comprise.
 
 - [ ] **Step 1 : tests qui échouent**
   ```dart
-  test('home widget publishes state on every NowPlaying', ...);
+  test('home widget publishes state on every NowPlaying', ...);        // playing et la graine compris
   test('menu bar sends state and maps commands to the player', ...);   // command "toggle" → PlayerAdapter.togglePlay
-  test('menu bar hides when ui.menu_bar is false', ...);
+  test('menu bar hides when ui.menu_bar is false and on setVisible(false)', ...);
+  test('now-playing link opens the player', ...);
   ```
   Côté Android, le test instrumenté `NowPlayingWidgetTest` vérifie que l'état publié est
-  rendu, et que ⏯ envoie `KEYCODE_MEDIA_PLAY_PAUSE` à la session.
+  rendu, et que ⏯ envoie `KEYCODE_MEDIA_PLAY_PAUSE` à la session. Côté macOS,
+  `MenuBarStateTests` vérifie le décodage de l'état reçu par le canal.
 - [ ] **Step 2 : vérifier l'échec** → FAIL.
 - [ ] **Step 3 : implémenter.**
-- [ ] **Step 4 : vérifier** : `flutter test test/platform`, puis le test instrumenté sur
-  l'émulateur. Ensuite, contrôle manuel : le widget posé sur l'écran d'accueil de l'émulateur,
-  et le popover sur macOS.
+- [ ] **Step 4 : vérifier** : `flutter test test/platform`, `flutter analyze`, puis le test
+  instrumenté sur l'émulateur et `xcodebuild test` du schéma Runner. Ensuite, contrôle
+  manuel : le widget posé sur l'écran d'accueil de l'émulateur, et le popover sur macOS.
 - [ ] **Step 5 : commit** : `feat(app): widget Android et mini-lecteur de la barre des menus macOS`.
