@@ -163,7 +163,12 @@ class VFabDock extends StatefulWidget {
     this.fab,
     this.fabItems = const [],
     this.player,
+    this.onTop,
   });
+
+  /// Where the dock's top is (FAB or mini player), in global coordinates, after each
+  /// layout: what must stay clear above it (snackbars, spec M3).
+  final ValueChanged<double>? onTop;
 
   /// The fade behind the mini player.
   static const protectionKey = ValueKey('vfabdock.protection');
@@ -185,6 +190,7 @@ class _VFabDockState extends State<VFabDock> {
   final _dock = GlobalKey(), _player = GlobalKey();
   bool _shown = true;
   double _height = 0, _playerHeight = 0;
+  double? _top;
 
   bool _onScroll(UserScrollNotification n) {
     final shown = switch (n.direction) {
@@ -200,6 +206,11 @@ class _VFabDockState extends State<VFabDock> {
   void _measure() {
     final box = _dock.currentContext?.findRenderObject() as RenderBox?;
     if (!mounted || box == null || !box.hasSize) return;
+    final top = box.localToGlobal(Offset.zero).dy;
+    if (top != _top) {
+      _top = top;
+      widget.onTop?.call(top);
+    }
     final h = box.size.height + VSpace.s16;
     final p = (_player.currentContext?.findRenderObject() as RenderBox?)?.size;
     final ph = p == null ? 0.0 : p.height + VSpace.s16;

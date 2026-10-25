@@ -216,7 +216,7 @@ void main() {
     await settle(tester);
     expect(r.last(#crateApiLibraryDownload)!.namedArguments[#ids], ['track:7']);
     // The pinned playlist is named (spoken, the rail being collapsed).
-    expect(label('Blue Hour'), findsWidgets);
+    expect(find.bySemanticsLabel(RegExp('^Blue Hour')), findsWidgets);
   }, variant: mac);
 
   testWidgets('title bar history buttons navigate back and forward', (

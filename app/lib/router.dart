@@ -84,7 +84,7 @@ GoRouter buildRouter() {
                 '/home',
                 (c, _) => PlaceholderScreen(
                   title: l(c).navHome,
-                  fab: VAction(l(c).fabLaunch, VIcons.play, soon),
+                  fab: VAction(l(c).fabLaunch, VIcons.launch, soon),
                   fabItems: [
                     VAction(l(c).launchShuffleLikes, VIcons.shuffle, soon),
                     VAction(l(c).launchRadio, VIcons.radio, soon),
@@ -368,12 +368,21 @@ class VehicouleAppState extends State<VehicouleApp> {
     super.dispose();
   }
 
-  /// A context under the root overlay, where snackbars go.
+  /// A context inside the root overlay (under an entry's), where snackbars go.
   BuildContext? get _overlay {
-    BuildContext? inside;
+    BuildContext? found;
+    void search(Element e, int depth) {
+      if (found != null || depth > 6) return;
+      if (Overlay.maybeOf(e, rootOverlay: true) != null) {
+        found = e;
+        return;
+      }
+      e.visitChildElements((c) => search(c, depth + 1));
+    }
+
     router.routerDelegate.navigatorKey.currentState?.overlay?.context
-        .visitChildElements((e) => inside = e);
-    return inside;
+        .visitChildElements((e) => search(e, 0));
+    return found;
   }
 
   void _onNotice(Notice n) {

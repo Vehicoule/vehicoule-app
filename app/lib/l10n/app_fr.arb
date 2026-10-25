@@ -241,5 +241,20 @@
         "type": "String"
       }
     }
+  },
+  "trayShow": "Afficher Vehicoule",
+  "trayQuit": "Quitter",
+  "pinnedDropHere": "déposer ici",
+  "pinnedKindTracks": "Titres",
+  "pinnedKindPlaylist": "Playlist",
+  "pinnedKindAlbum": "Album",
+  "pinnedKindArtist": "Artiste",
+  "shortcutSearchApple": "⌘F",
+  "shortcutSearchOther": "Ctrl+F",
+  "@shortcutSearchApple": {
+    "description": "The title bar search's key hint (macOS)."
+  },
+  "@trayShow": {
+    "description": "Windows/Linux tray menu: bring the window back."
   }
 }

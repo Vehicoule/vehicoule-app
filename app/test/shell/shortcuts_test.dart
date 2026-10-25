@@ -236,7 +236,18 @@ void main() {
       for (final MapEntry(:key, :value) in shortcuts.shortcuts.entries)
         if (key case final SingleActivator s) _key(s): value,
     };
-    expect(fromMenu, fromKeys);
+    // Every command is a menu item with the key's own intent; the menu shows only
+    // the ⌘ shortcuts (a bare key there could be taken from a text field by AppKit).
+    expect(items.where((i) => i.onSelectedIntent != null), hasLength(15));
+    expect(
+      {for (final i in items) i.onSelectedIntent}..remove(null),
+      fromKeys.values.toSet(),
+    );
+    expect(fromMenu.entries.every((e) => fromKeys[e.key] == e.value), isTrue);
+    expect([
+      for (final i in items)
+        if (i.shortcut case final SingleActivator s) s.meta || s.control,
+    ], everyElement(isTrue));
     expect(fromKeys, hasLength(ShellCommand.values.length));
     // A menu item runs the same action as its key.
     final refresh = items.firstWhere(

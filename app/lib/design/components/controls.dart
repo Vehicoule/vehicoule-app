@@ -429,7 +429,14 @@ class VVolume extends StatelessWidget {
       ),
       iconPosition: M3ESliderIconPosition.start,
     );
-    return vertical ? RotatedBox(quarterTurns: 3, child: slider) : slider;
+    // M3E centres the handle on the track's end: at 0 or 100 % half of it would stick
+    // out past the component (and into the pane's margin). Inset by that half.
+    final half = M3ETheme.of(context).sliderTheme.handleWidth / 2;
+    final inset = Padding(
+      padding: EdgeInsets.symmetric(horizontal: half),
+      child: slider,
+    );
+    return vertical ? RotatedBox(quarterTurns: 3, child: inset) : inset;
   }
 }
 

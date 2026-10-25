@@ -186,5 +186,14 @@
         "type": "String"
       }
     }
-  }
+  },
+  "trayShow": "Show Vehicoule",
+  "trayQuit": "Quit",
+  "pinnedDropHere": "drop here",
+  "pinnedKindTracks": "Tracks",
+  "pinnedKindPlaylist": "Playlist",
+  "pinnedKindAlbum": "Album",
+  "pinnedKindArtist": "Artist",
+  "shortcutSearchApple": "⌘F",
+  "shortcutSearchOther": "Ctrl+F"
 }

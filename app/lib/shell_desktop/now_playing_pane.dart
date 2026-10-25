@@ -36,49 +36,67 @@ class NowPlayingPane extends StatelessWidget {
             onChanged: player.setVolume,
           ),
         );
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            VSideSheet(
-              open: open,
-              child: VNowPlaying(
-                data: data,
-                position: player.position,
-                size: PlayerSize.medium,
-                style: scope.theme.playerStyle,
-                view: playback.view,
-                onView: (v) => playback.view = v,
-                actions: playback.actions(onCollapse: onToggle),
-                lyrics: lyricsView,
-                queue: queueView,
-                onImmersive: onImmersive,
-                volume: volume(),
+        // Cards, like the content beside them (desktop-2): the same gap, the same
+        // corners.
+        return Padding(
+          padding: const EdgeInsets.only(bottom: VSpace.s8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              VSideSheet(
+                card: true,
+                open: open,
+                child: VNowPlaying(
+                  data: data,
+                  position: player.position,
+                  size: PlayerSize.medium,
+                  style: scope.theme.playerStyle,
+                  view: playback.view,
+                  onView: (v) => playback.view = v,
+                  actions: playback.actions(onCollapse: onToggle),
+                  lyrics: lyricsView,
+                  queue: queueView,
+                  onImmersive: onImmersive,
+                  volume: volume(),
+                ),
               ),
-            ),
-            if (!open)
-              SizedBox(
-                width: VSize.strip,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(vertical: VSpace.s16),
-                  child: VNowPlaying(
-                    data: data,
-                    position: player.position,
-                    size: PlayerSize.compact,
-                    style: scope.theme.playerStyle,
-                    view: PlayerView.player,
-                    onView: (_) {},
-                    actions: playback.actions(onOpen: onToggle),
-                    lyrics: lyricsView,
-                    queue: queueView,
-                    axis: Axis.vertical,
-                    volume: SizedBox(
-                      height: VSize.stripVolume,
-                      child: volume(vertical: true),
+              if (!open)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(start: VSpace.s8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(VRadius.large),
+                    child: ColoredBox(
+                      color: vScreenSurface(Theme.of(context).colorScheme),
+                      child: SizedBox(
+                        width: VSize.strip,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: VSpace.s16,
+                          ),
+                          child: VNowPlaying(
+                            data: data,
+                            position: player.position,
+                            size: PlayerSize.compact,
+                            style: scope.theme.playerStyle,
+                            view: PlayerView.player,
+                            onView: (_) {},
+                            actions: playback.actions(onOpen: onToggle),
+                            lyrics: lyricsView,
+                            queue: queueView,
+                            axis: Axis.vertical,
+                            volume: SizedBox(
+                              height: VSize.stripVolume,
+                              child: volume(vertical: true),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         );
       },
     );

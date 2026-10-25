@@ -47,7 +47,10 @@ abstract final class VSize {
 
   /// The desktop's own title bar, the room it leaves for the macOS window buttons, and
   /// the widest its search bar gets (desktop-2).
-  static const titleBar = 52.0, windowButtons = 76.0, titleSearch = 420.0;
+  static const titleBar = 52.0, windowButtons = 76.0, titleSearch = 570.0;
+
+  /// A pinned collection's cover in the rail (desktop-2: 32, not a 24 glyph).
+  static const pinnedArt = 32.0;
 
   /// The upright volume in the desktop strip.
   static const stripVolume = 160.0;

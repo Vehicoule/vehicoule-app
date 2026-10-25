@@ -155,13 +155,14 @@ class _DesktopShellState extends State<DesktopShell> {
                 padding: const EdgeInsets.only(bottom: VSpace.s8),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(VRadius.large),
-                  // The content is a card on the window: its own surface, so
-                  // the pages' app bars blend in.
+                  // The content is a card on the window, like the pane and the
+                  // strip (desktop-2): its own surface, so the pages' app bars
+                  // blend in.
                   child: vOnSurface(
                     context,
-                    scheme.surfaceContainerLow,
+                    vScreenSurface(scheme),
                     Material(
-                      color: scheme.surfaceContainerLow,
+                      color: vScreenSurface(scheme),
                       child: Stack(
                         children: [
                           Positioned.fill(child: widget.shell),
@@ -187,6 +188,8 @@ class _DesktopShellState extends State<DesktopShell> {
     return DesktopShortcuts(
       player: scope.player,
       focusSearch: () {
+        // The search is hidden behind the immersive view.
+        if (_immersive) return;
         if (hasTitleBar) {
           _search.currentState?.open();
         } else {
@@ -199,28 +202,42 @@ class _DesktopShellState extends State<DesktopShell> {
         color: scheme.surface,
         child: Stack(
           children: [
-            FocusTraversalGroup(
-              policy: OrderedTraversalPolicy(),
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    if (hasTitleBar) _region(1, TitleBar(search: _search)),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Expanded(child: main),
-                          _region(
-                            4,
-                            NowPlayingPane(
-                              open: _paneOpen,
-                              onToggle: _togglePane,
-                              onImmersive: _toggleImmersive,
+            // Behind the immersive view the shell is out of reach: no focus, no
+            // screen-reader nodes (spec UI §4.4, §8).
+            ExcludeFocus(
+              excluding: _immersive,
+              child: ExcludeSemantics(
+                excluding: _immersive,
+                child: FocusTraversalGroup(
+                  policy: OrderedTraversalPolicy(),
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        if (hasTitleBar) _region(1, TitleBar(search: _search)),
+                        Expanded(
+                          child: Padding(
+                            // The cards' even gutter: content · pane · edge.
+                            padding: const EdgeInsetsDirectional.only(
+                              end: VSpace.s8,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(child: main),
+                                _region(
+                                  4,
+                                  NowPlayingPane(
+                                    open: _paneOpen,
+                                    onToggle: _togglePane,
+                                    onImmersive: _toggleImmersive,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

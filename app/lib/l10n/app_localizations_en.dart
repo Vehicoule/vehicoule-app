@@ -577,4 +577,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String trackSkipped(String title) {
     return 'Couldn\'t play “$title”, moving on.';
   }
+
+  @override
+  String get trayShow => 'Show Vehicoule';
+
+  @override
+  String get trayQuit => 'Quit';
+
+  @override
+  String get pinnedDropHere => 'drop here';
+
+  @override
+  String get pinnedKindTracks => 'Tracks';
+
+  @override
+  String get pinnedKindPlaylist => 'Playlist';
+
+  @override
+  String get pinnedKindAlbum => 'Album';
+
+  @override
+  String get pinnedKindArtist => 'Artist';
+
+  @override
+  String get shortcutSearchApple => '⌘F';
+
+  @override
+  String get shortcutSearchOther => 'Ctrl+F';
 }

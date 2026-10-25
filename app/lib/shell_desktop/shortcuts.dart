@@ -196,7 +196,10 @@ class DesktopShortcuts extends StatelessWidget {
         if (value.menu == m && value.run != null)
           PlatformMenuItem(
             label: value.label,
-            shortcut: value.keys,
+            // Only ⌘ shortcuts are shown to AppKit: a bare key (Space, ←, ⇧→) as a
+            // menu key equivalent could be taken from the search field while typing.
+            // The key itself still works, through the Shortcuts above.
+            shortcut: value.keys.meta || value.keys.control ? value.keys : null,
             onSelectedIntent: _Run(key),
           ),
     ];

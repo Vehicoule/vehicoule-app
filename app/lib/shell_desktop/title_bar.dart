@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../bridge/api/settings.dart';
@@ -61,6 +62,9 @@ class TitleBar extends StatelessWidget {
                   ),
                   child: VSearchBar(
                     key: search,
+                    shortcut: defaultTargetPlatform == TargetPlatform.macOS
+                        ? l.shortcutSearchApple
+                        : l.shortcutSearchOther,
                     // Task 6: suggestions_view.dart.
                     suggestions: (_, _) => const [],
                     onSubmitted: (q) => context.go(
@@ -92,13 +96,26 @@ class TitleBar extends StatelessWidget {
 }
 
 /// The window: its smallest size, its saved bounds (`ui.window_bounds`), and a close
-/// that only hides it.
-class WindowKeeper with WindowListener {
+/// that only hides it, the music going on. macOS brings it back from the Dock; Windows
+/// and Linux have no Dock, so a tray icon does (Lecture ou pause, Afficher, Quitter).
+class WindowKeeper with WindowListener, TrayListener {
+  WindowKeeper({this.onPlayPause});
+
   static const _key = 'ui.window_bounds';
+  static const trayPlay = 'play', trayShow = 'show', trayQuit = 'quit';
+
+  /// The tray's « Lecture ou pause ».
+  final VoidCallback? onPlayPause;
   Timer? _save;
 
+  /// Where a closed window lives on: the tray (Windows, Linux) or the Dock (macOS).
+  static bool get usesTray => switch (defaultTargetPlatform) {
+    TargetPlatform.windows || TargetPlatform.linux => true,
+    _ => false,
+  };
+
   /// Before the first frame shows: the title bar is ours, the bounds the last ones.
-  static Future<void> setUp() async {
+  static Future<void> setUp({VoidCallback? onPlayPause}) async {
     await windowManager.ensureInitialized();
     final saved = await uiPref(key: _key);
     await windowManager.waitUntilReadyToShow(
@@ -120,7 +137,40 @@ class WindowKeeper with WindowListener {
       },
     );
     await windowManager.setPreventClose(true);
-    windowManager.addListener(WindowKeeper());
+    final keeper = WindowKeeper(onPlayPause: onPlayPause);
+    windowManager.addListener(keeper);
+    if (usesTray) {
+      final dispatcher = WidgetsBinding.instance.platformDispatcher;
+      await keeper.startTray(
+        lookupAppLocalizations(
+          basicLocaleListResolution(
+            dispatcher.locales,
+            AppLocalizations.supportedLocales,
+          ),
+        ),
+      );
+    }
+  }
+
+  /// The tray icon and its menu.
+  Future<void> startTray(AppLocalizations l) async {
+    await trayManager.setIcon(
+      defaultTargetPlatform == TargetPlatform.windows
+          ? 'assets/brand/tray.ico'
+          : 'assets/brand/tray.png',
+    );
+    await trayManager.setToolTip(l.appName);
+    await trayManager.setContextMenu(
+      Menu(
+        items: [
+          MenuItem(key: trayPlay, label: l.actionPlayPause),
+          MenuItem(key: trayShow, label: l.trayShow),
+          MenuItem.separator(),
+          MenuItem(key: trayQuit, label: l.trayQuit),
+        ],
+      ),
+    );
+    trayManager.addListener(this);
   }
 
   static Future<void> restore() async {
@@ -147,9 +197,38 @@ class WindowKeeper with WindowListener {
   @override
   void onWindowMoved() => _later();
 
-  /// The music goes on; ⌘Q or the Dock's « Quitter » quits.
+  /// The music goes on; ⌘Q, the Dock's or the tray's « Quitter » quits.
   @override
   void onWindowClose() => windowManager.hide();
+
+  @override
+  void onTrayIconMouseDown() => _show();
+
+  @override
+  void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();
+
+  @override
+  void onTrayMenuItemClick(MenuItem menuItem) {
+    switch (menuItem.key) {
+      case trayPlay:
+        onPlayPause?.call();
+      case trayShow:
+        _show();
+      case trayQuit:
+        _quit();
+    }
+  }
+
+  Future<void> _show() async {
+    await windowManager.show();
+    await windowManager.focus();
+  }
+
+  Future<void> _quit() async {
+    await trayManager.destroy();
+    await windowManager.setPreventClose(false);
+    await windowManager.destroy();
+  }
 
   void _later() {
     _save?.cancel();

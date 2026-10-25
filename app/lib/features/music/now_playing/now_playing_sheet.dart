@@ -111,61 +111,70 @@ class NowPlayingSheetState extends State<NowPlayingSheet> {
             );
           },
         );
-        // Back closes the open player first (and tells the system so: predictive back).
-        return PopScope(
-          canPop: !_shown,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) close();
+        // Back closes the open player first, before any page under it: the listener
+        // takes the back button ahead of the router (which would pop the branch's
+        // page), and PopScope tells the system the app handles it (predictive back).
+        return BackButtonListener(
+          onBackButtonPressed: () async {
+            if (!_shown) return false;
+            close();
+            return true;
           },
-          child: Stack(
-            key: _stack,
-            children: [
-              DraggableScrollableSheet(
-                controller: controller,
-                initialChildSize: 0,
-                minChildSize: 0,
-                maxChildSize: 1,
-                snap: true,
-                builder: (context, scroll) => Offstage(
-                  // Laid out even closed: the flight knows where it lands.
-                  offstage: !_shown,
-                  child: ExcludeFocus(
-                    excluding: !_shown,
-                    child: CustomScrollView(
-                      controller: scroll,
-                      physics: const ClampingScrollPhysics(),
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: SizedBox(height: _height, child: player),
-                        ),
-                      ],
+          child: PopScope(
+            canPop: !_shown,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) close();
+            },
+            child: Stack(
+              key: _stack,
+              children: [
+                DraggableScrollableSheet(
+                  controller: controller,
+                  initialChildSize: 0,
+                  minChildSize: 0,
+                  maxChildSize: 1,
+                  snap: true,
+                  builder: (context, scroll) => Offstage(
+                    // Laid out even closed: the flight knows where it lands.
+                    offstage: !_shown,
+                    child: ExcludeFocus(
+                      excluding: !_shown,
+                      child: CustomScrollView(
+                        controller: scroll,
+                        physics: const ClampingScrollPhysics(),
+                        slivers: [
+                          SliverToBoxAdapter(
+                            child: SizedBox(height: _height, child: player),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              ValueListenableBuilder(
-                valueListenable: widget.extent,
-                builder: (context, e, _) {
-                  final from = _local(widget.from.value), to = _to;
-                  final track = playback.track;
-                  if (e <= 0 || e >= 1 || from == null || to == null) {
-                    return const SizedBox.shrink();
-                  }
-                  return VExtentFlight(
-                    extent: e,
-                    from: from,
-                    to: to.translate(0, _height * (1 - e)),
-                    builder: (context, side) => IgnorePointer(
-                      child: VArtwork(
-                        itemId: track?.id ?? '',
-                        size: side,
-                        playing: playback.playing,
+                ValueListenableBuilder(
+                  valueListenable: widget.extent,
+                  builder: (context, e, _) {
+                    final from = _local(widget.from.value), to = _to;
+                    final track = playback.track;
+                    if (e <= 0 || e >= 1 || from == null || to == null) {
+                      return const SizedBox.shrink();
+                    }
+                    return VExtentFlight(
+                      extent: e,
+                      from: from,
+                      to: to.translate(0, _height * (1 - e)),
+                      builder: (context, side) => IgnorePointer(
+                        child: VArtwork(
+                          itemId: track?.id ?? '',
+                          size: side,
+                          playing: playback.playing,
+                        ),
                       ),
-                    ),
-                  );
-                },
-              ),
-            ],
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -207,6 +216,12 @@ class _QueueState extends State<_Queue> {
                   onTap: () => playback.jumpTo(u.entry),
                   onPlayNext: () => queueOp(op: QueueOp.move(entry: u.entry)),
                   onRemove: () => queueOp(op: QueueOp.remove(u.entry)),
+                  // The desktop drags rows (to a pinned item); a phone swipes them.
+                  dragIds:
+                      windowClassOf(MediaQuery.sizeOf(context).width) ==
+                          WindowClass.expanded
+                      ? [u.track.id]
+                      : null,
                   onSelect: () => setState(() {
                     if (!_selected.remove(u.entry)) _selected.add(u.entry);
                   }),

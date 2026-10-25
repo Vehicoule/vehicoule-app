@@ -52,6 +52,7 @@ class VTrackRow extends StatefulWidget {
     required this.onPlayNext,
     this.onRemove,
     this.onSelect,
+    this.dragIds,
     required this.quick,
     required this.groups,
     this.debugSwipe = 0,
@@ -68,6 +69,10 @@ class VTrackRow extends StatefulWidget {
   final VoidCallback onPlayNext;
   final VoidCallback? onRemove;
   final VoidCallback? onSelect;
+
+  /// The desktop (spec UI §4.2): the row drags these track ids (its selection) to a
+  /// pinned item, a playlist or the queue; it has no swipes then.
+  final List<String>? dragIds;
   final List<VAction> quick;
   final List<List<VAction>> groups;
 
@@ -389,7 +394,7 @@ class _VTrackRowState extends State<VTrackRow>
         child: _content(context),
       ),
     );
-    return VFocusRing(
+    final ring = VFocusRing(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(VRadius.small),
       ),
@@ -415,8 +420,8 @@ class _VTrackRowState extends State<VTrackRow>
             onSecondaryTapUp: (d) => _menu(
               Rect.fromLTWH(d.globalPosition.dx, d.globalPosition.dy, 0, 0),
             ),
-            onHorizontalDragUpdate: _drag,
-            onHorizontalDragEnd: _release,
+            onHorizontalDragUpdate: widget.dragIds == null ? _drag : null,
+            onHorizontalDragEnd: widget.dragIds == null ? _release : null,
             child: AnimatedBuilder(
               animation: _dx,
               builder: (context, child) => Stack(
@@ -467,6 +472,32 @@ class _VTrackRowState extends State<VTrackRow>
           ),
         ),
       ),
+    );
+    final ids = widget.dragIds;
+    if (ids == null) return ring;
+    final theme = Theme.of(context);
+    // What follows the pointer: the cover and the title, on a small card.
+    return Draggable<List<String>>(
+      data: ids,
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: Material(
+        color: scheme.surfaceContainerHigh,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(VRadius.small),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(VSpace.s8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              VArtwork(itemId: t.id, size: VSize.trackArt),
+              const SizedBox(width: VSpace.s12),
+              Text(t.title, style: theme.textTheme.titleSmall),
+            ],
+          ),
+        ),
+      ),
+      child: ring,
     );
   }
 }

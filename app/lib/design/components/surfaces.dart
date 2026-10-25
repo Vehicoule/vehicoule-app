@@ -8,6 +8,7 @@ import '../symbols.dart';
 import '../tokens.dart';
 import 'artwork.dart';
 import 'controls.dart';
+import 'focus_ring.dart';
 import 'kit.dart';
 import 'menu.dart';
 
@@ -61,10 +62,14 @@ class VPinned {
     this.label, {
     this.kind = ArtKind.item,
     this.droppable = false,
+    this.subtitle,
   });
 
   final String itemId, label;
   final ArtKind kind;
+
+  /// Under the title when the rail is expanded (« Playlist », « Titres »).
+  final String? subtitle;
 
   /// Takes dropped tracks (Likés, Téléchargés, a playlist of the user's).
   final bool droppable;
@@ -156,7 +161,10 @@ class VNavigationRail extends StatelessWidget {
         ],
       ],
     );
-    return M3ENavigationRail(
+    // « Épinglés » is ours, not an M3E section: 32 dp covers with a subtitle, a whole
+    // row as drop target, the header on the items' column (desktop-2).
+    final destinationCount = destinations.length;
+    final railed = M3ENavigationRail(
       type: expanded
           ? M3ENavigationRailType.alwaysExpand
           : M3ENavigationRailType.alwaysCollapse,
@@ -166,7 +174,18 @@ class VNavigationRail extends StatelessWidget {
           ? M3ENavigationRailLabelBehavior.alwaysShow
           : M3ENavigationRailLabelBehavior.alwaysHide,
       leading: SizedBox(width: double.infinity, child: header),
-      trailing: trailing,
+      trailing: pinned.isEmpty
+          ? null
+          : _PinnedList(
+              pinned: pinned,
+              expanded: expanded,
+              selected: selected - destinationCount,
+              onSelected: (i) => onSelected(destinationCount + i),
+              onDrop: onDrop,
+              // Room under the last item for the domain.
+              bottom: trailing == null ? 0 : VSize.menuTarget + VSpace.s16,
+            ),
+      trailingAtBottom: false,
       selectedIndex: selected,
       onDestinationSelected: onSelected,
       sections: [
@@ -181,41 +200,303 @@ class VNavigationRail extends StatelessWidget {
               ),
           ],
         ),
-        if (pinned.isNotEmpty)
-          M3ENavigationRailSection(
-            header: Text(l.railPinned),
-            destinations: [
-              for (final (i, p) in pinned.indexed)
-                M3ENavigationRailDestination(
-                  // A drop target: hovered by a drag, the artwork turns to the
-                  // selected cookie with its check.
-                  icon: DragTarget<List<String>>(
-                    onWillAcceptWithDetails: (_) =>
-                        onDrop != null && p.droppable,
-                    onAcceptWithDetails: (d) => onDrop?.call(i, d.data),
-                    builder: (context, hovered, _) => VArtwork(
-                      itemId: p.itemId,
-                      size: VSize.icon,
-                      kind: p.kind,
-                      selected: hovered.isNotEmpty,
-                    ),
-                  ),
-                  label: p.label,
-                ),
-            ],
+      ],
+    );
+    final bottom = trailing;
+    if (bottom == null) return railed;
+    // The domain stays at the rail's bottom, over the end of a long list.
+    return Stack(
+      children: [
+        railed,
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: VSpace.s8,
+          child: Padding(
+            padding: EdgeInsetsDirectional.only(
+              start: expanded ? rail.expandedItemInset : 0,
+            ),
+            child: Align(
+              alignment: expanded
+                  ? AlignmentDirectional.centerStart
+                  : Alignment.center,
+              child: bottom,
+            ),
           ),
+        ),
       ],
     );
   }
 }
 
+/// The pinned collections under the destinations: cover (and, expanded, title and
+/// subtitle), selectable, each row a drop target outlined while a selection hovers it.
+class _PinnedList extends StatelessWidget {
+  const _PinnedList({
+    required this.pinned,
+    required this.expanded,
+    required this.selected,
+    required this.onSelected,
+    required this.onDrop,
+    required this.bottom,
+  });
+
+  final List<VPinned> pinned;
+  final bool expanded;
+  final int selected;
+  final ValueChanged<int> onSelected;
+  final void Function(int pinned, List<String> ids)? onDrop;
+  final double bottom;
+
+  /// M3E pads the rail's trailing slot by this much on each side.
+  static const _slotInset = 16.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final rail = M3ETheme.of(context).navigationRailTheme;
+    // The covers' and the header's start: the destinations' glyph column, minus the
+    // cover's extra width.
+    final start =
+        rail.expandedItemInset +
+        rail.indicatorLeading -
+        (VSize.pinnedArt - VSize.icon) / 2 -
+        _slotInset;
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (expanded)
+            Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: start,
+                top: VSpace.s16,
+                bottom: VSpace.s8,
+              ),
+              child: Semantics(
+                header: true,
+                child: Text(
+                  l.railPinned,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            )
+          else
+            const SizedBox(height: VSpace.s16),
+          for (final (i, p) in pinned.indexed)
+            DragTarget<List<String>>(
+              onWillAcceptWithDetails: (_) => onDrop != null && p.droppable,
+              onAcceptWithDetails: (d) => onDrop?.call(i, d.data),
+              builder: (context, hovered, _) => _PinnedRow(
+                item: p,
+                expanded: expanded,
+                selected: i == selected,
+                dropping: hovered.isNotEmpty,
+                start: start,
+                onTap: () => onSelected(i),
+              ),
+            ),
+          SizedBox(height: bottom),
+        ],
+      ),
+    );
+  }
+}
+
+class _PinnedRow extends StatelessWidget {
+  const _PinnedRow({
+    required this.item,
+    required this.expanded,
+    required this.selected,
+    required this.dropping,
+    required this.start,
+    required this.onTap,
+  });
+
+  final VPinned item;
+  final bool expanded, selected, dropping;
+  final double start;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(VRadius.small),
+    );
+    final subtitle = [
+      ?item.subtitle,
+      if (dropping) l.pinnedDropHere,
+    ].join(' · ');
+    final cover = VArtwork(
+      itemId: item.itemId,
+      size: VSize.pinnedArt,
+      kind: item.kind,
+    );
+    Widget content(bool wide) => wide
+        ? Row(
+            children: [
+              cover,
+              const SizedBox(width: VSpace.s12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    if (subtitle.isNotEmpty)
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          )
+        : Center(child: cover);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: [item.label, if (subtitle.isNotEmpty) subtitle].join(', '),
+      excludeSemantics: true,
+      onTap: onTap,
+      child: VFocusRing(
+        shape: shape,
+        child: Material(
+          color: dropping
+              ? scheme.surfaceContainerHighest
+              : selected
+              ? scheme.secondaryContainer
+              : scheme.surface.withValues(alpha: 0),
+          shape: shape,
+          child: InkWell(
+            customBorder: shape,
+            onTap: onTap,
+            child: CustomPaint(
+              foregroundPainter: dropping
+                  ? _DashedOutline(color: scheme.primary, shape: shape)
+                  : null,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: VSize.menuTarget),
+                child: Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    start: expanded ? start : 0,
+                    end: expanded ? VSpace.s8 : 0,
+                    top: VSpace.s4,
+                    bottom: VSpace.s4,
+                  ),
+                  // Title and subtitle once the rail is wide enough (not while it
+                  // grows from collapsed).
+                  child: LayoutBuilder(
+                    builder: (context, box) => content(
+                      expanded && box.maxWidth >= VSize.railFabExtended - start,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A key's name in a small outlined cap (the search bar's « ⌘F »).
+class _Keycap extends StatelessWidget {
+  const _Keycap({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: scheme.outlineVariant),
+          borderRadius: BorderRadius.circular(VSpace.s8),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: VSpace.s8,
+          vertical: VSpace.s4,
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A dashed outline along [shape] (« déposer ici », desktop-2).
+class _DashedOutline extends CustomPainter {
+  _DashedOutline({required this.color, required this.shape});
+
+  final Color color;
+  final ShapeBorder shape;
+
+  static const _dash = 6.0, _gap = 4.0, _stroke = 2.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = shape.getOuterPath((Offset.zero & size).deflate(_stroke / 2));
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke;
+    for (final metric in path.computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += _dash + _gap) {
+        canvas.drawPath(metric.extractPath(d, d + _dash), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedOutline old) =>
+      old.color != color || old.shape != shape;
+}
+
 /// The search bar; typing opens its suggestions (spec UI §6.2, §4.2). [suggestions]
 /// builds them for the current text.
 class VSearchBar extends StatefulWidget {
-  const VSearchBar({super.key, required this.suggestions, this.onSubmitted});
+  const VSearchBar({
+    super.key,
+    required this.suggestions,
+    this.onSubmitted,
+    this.shortcut,
+  });
 
   final List<Widget> Function(BuildContext context, String text) suggestions;
   final ValueChanged<String>? onSubmitted;
+
+  /// The key that opens it (« ⌘F »), shown as a keycap at the bar's end.
+  final String? shortcut;
 
   @override
   State<VSearchBar> createState() => VSearchBarState();
@@ -240,6 +521,10 @@ class VSearchBarState extends State<VSearchBar> {
     searchController: _controller,
     barHintText: AppLocalizations.of(context).searchHint,
     barLeading: const VSymbol(VIcons.search),
+    barTrailing: [
+      if (widget.shortcut case final key?)
+        ExcludeSemantics(child: _Keycap(label: key)),
+    ],
     viewHintText: AppLocalizations.of(context).searchHint,
     onSubmitted: widget.onSubmitted,
     // The docked view is as tall as its suggestions: no empty panel.

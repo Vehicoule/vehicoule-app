@@ -1177,6 +1177,60 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'« {title} » n\'a pas pu être lu, on continue.'**
   String trackSkipped(String title);
+
+  /// Windows/Linux tray menu: bring the window back.
+  ///
+  /// In fr, this message translates to:
+  /// **'Afficher Vehicoule'**
+  String get trayShow;
+
+  /// No description provided for @trayQuit.
+  ///
+  /// In fr, this message translates to:
+  /// **'Quitter'**
+  String get trayQuit;
+
+  /// No description provided for @pinnedDropHere.
+  ///
+  /// In fr, this message translates to:
+  /// **'déposer ici'**
+  String get pinnedDropHere;
+
+  /// No description provided for @pinnedKindTracks.
+  ///
+  /// In fr, this message translates to:
+  /// **'Titres'**
+  String get pinnedKindTracks;
+
+  /// No description provided for @pinnedKindPlaylist.
+  ///
+  /// In fr, this message translates to:
+  /// **'Playlist'**
+  String get pinnedKindPlaylist;
+
+  /// No description provided for @pinnedKindAlbum.
+  ///
+  /// In fr, this message translates to:
+  /// **'Album'**
+  String get pinnedKindAlbum;
+
+  /// No description provided for @pinnedKindArtist.
+  ///
+  /// In fr, this message translates to:
+  /// **'Artiste'**
+  String get pinnedKindArtist;
+
+  /// The title bar search's key hint (macOS).
+  ///
+  /// In fr, this message translates to:
+  /// **'⌘F'**
+  String get shortcutSearchApple;
+
+  /// No description provided for @shortcutSearchOther.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ctrl+F'**
+  String get shortcutSearchOther;
 }
 
 class _AppLocalizationsDelegate

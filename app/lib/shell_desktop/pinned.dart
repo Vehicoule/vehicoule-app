@@ -58,6 +58,15 @@ class Pinned extends ChangeNotifier {
         },
         kind: id.startsWith('artist:') ? ArtKind.artist : ArtKind.item,
         droppable: _droppable(id),
+        // What it is (desktop-2: « Playlist », « Artiste »). Track counts need a
+        // count from the core: plan 5b.
+        subtitle: switch (id.split(':').first) {
+          liked || downloaded => l.pinnedKindTracks,
+          'playlist' => l.pinnedKindPlaylist,
+          'album' => l.pinnedKindAlbum,
+          'artist' => l.pinnedKindArtist,
+          _ => null,
+        },
       ),
   ];
 

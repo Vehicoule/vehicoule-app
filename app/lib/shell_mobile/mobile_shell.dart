@@ -1,6 +1,8 @@
 // The phone shell (spec UI §4.1): the navigation bar, ☰ and its modal rail, the mini
 // player with the screen's FAB above its ⏯, and the player sheet over everything.
 // Medium width (spec UI §4.3): the collapsed rail at the left instead of the bar.
+import 'dart:math' as math;
+
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -33,21 +35,27 @@ class MobileShellState extends State<MobileShell> {
   final _sheet = GlobalKey<NowPlayingSheetState>();
   final _extent = ValueNotifier(0.0);
   final _miniArt = ValueNotifier<Rect?>(null);
-  final _bar = GlobalKey(), _mini = GlobalKey();
+  final _bar = GlobalKey();
 
-  /// Snackbars go above the mini player, else above the bar.
+  /// The top of the corner's dock (screen FAB, mini player), from `VFabDock`.
+  double? _dockTop;
+
+  /// Snackbars go above everything in the bottom corner: the screen FAB, the mini
+  /// player and the bar (M3: never over a FAB or the navigation).
   void _liftSnacks() {
     if (!mounted) return;
-    final box =
-        (_mini.currentContext ?? _bar.currentContext)?.findRenderObject()
-            as RenderBox?;
+    final bar = _bar.currentContext?.findRenderObject() as RenderBox?;
     final mq = MediaQuery.of(context);
-    vSnackLift.value = box == null || !box.hasSize
+    final tops = [
+      ?_dockTop,
+      if (bar != null && bar.hasSize) bar.localToGlobal(Offset.zero).dy,
+    ];
+    vSnackLift.value = tops.isEmpty
         ? 0
-        : (mq.size.height -
-                  box.localToGlobal(Offset.zero).dy -
-                  mq.padding.bottom)
-              .clamp(0, mq.size.height);
+        : (mq.size.height - tops.reduce(math.min) - mq.padding.bottom).clamp(
+            0,
+            mq.size.height,
+          );
   }
 
   /// ☰: the modal rail.
@@ -72,9 +80,11 @@ class MobileShellState extends State<MobileShell> {
       builder: (context, action, items, bar) => ListenableBuilder(
         listenable: playback,
         builder: (context, _) {
-          // The mini player comes and goes with what plays.
-          WidgetsBinding.instance.addPostFrameCallback((_) => _liftSnacks());
           return VFabDock(
+            onTop: (top) {
+              _dockTop = top;
+              _liftSnacks();
+            },
             body: widget.shell,
             fab: action,
             fabItems: items,
@@ -84,7 +94,6 @@ class MobileShellState extends State<MobileShell> {
                 (playback.track == null
                     ? null
                     : MiniPlayer(
-                        key: _mini,
                         extent: _extent,
                         onArtworkRect: (r) => _miniArt.value = r,
                         onOpen: () => _sheet.currentState?.open(),
@@ -100,35 +109,44 @@ class MobileShellState extends State<MobileShell> {
         policy: SkipEmptyScopes(),
         child: Stack(
           children: [
-            Scaffold(
-              key: _scaffold,
-              drawer: const DomainRail(),
-              body: widget.medium
-                  ? Row(
-                      children: [
-                        SafeArea(
-                          right: false,
-                          child: VNavigationRail(
-                            destinations: shellDestinations(l),
-                            pinned: const [],
-                            selected: widget.shell.currentIndex,
-                            onSelected: _go,
-                            expanded: false,
-                            onExpanded: (_) => openMenu(),
+            // Behind the open player the shell is out of reach: no focus, no
+            // screen-reader nodes (spec UI §4.4, §8).
+            ValueListenableBuilder(
+              valueListenable: _extent,
+              builder: (context, extent, shell) => ExcludeFocus(
+                excluding: extent >= 1,
+                child: ExcludeSemantics(excluding: extent >= 1, child: shell),
+              ),
+              child: Scaffold(
+                key: _scaffold,
+                drawer: const DomainRail(),
+                body: widget.medium
+                    ? Row(
+                        children: [
+                          SafeArea(
+                            right: false,
+                            child: VNavigationRail(
+                              destinations: shellDestinations(l),
+                              pinned: const [],
+                              selected: widget.shell.currentIndex,
+                              onSelected: _go,
+                              expanded: false,
+                              onExpanded: (_) => openMenu(),
+                            ),
                           ),
-                        ),
-                        Expanded(child: body),
-                      ],
-                    )
-                  : body,
-              bottomNavigationBar: widget.medium
-                  ? null
-                  : VNavigationBar(
-                      key: _bar,
-                      destinations: shellDestinations(l),
-                      selected: widget.shell.currentIndex,
-                      onSelected: _go,
-                    ),
+                          Expanded(child: body),
+                        ],
+                      )
+                    : body,
+                bottomNavigationBar: widget.medium
+                    ? null
+                    : VNavigationBar(
+                        key: _bar,
+                        destinations: shellDestinations(l),
+                        selected: widget.shell.currentIndex,
+                        onSelected: _go,
+                      ),
+              ),
             ),
             Positioned.fill(
               child: ListenableBuilder(

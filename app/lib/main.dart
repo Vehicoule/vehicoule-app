@@ -39,7 +39,11 @@ Future<void> main() async {
   await initApp(cfg: await appConfig());
   final player = PlayerAdapter(MediaKitBackend())..start();
   await initLockScreen(player);
-  if (hasTitleBar) await WindowKeeper.setUp();
+  late final NowPlayingModel playback;
+  if (hasTitleBar) {
+    // The tray's « Lecture ou pause » (Windows, Linux).
+    await WindowKeeper.setUp(onPlayPause: () => playback.playPause());
+  }
   vRegisterFontLicenses();
 
   // 2. Every subscription, before the core starts.
@@ -48,7 +52,7 @@ Future<void> main() async {
   final theme = ThemeController();
   await theme.load();
   theme.start();
-  final playback = NowPlayingModel(player)..start();
+  playback = NowPlayingModel(player)..start();
   await _keepVolume(player);
 
   // 3. The core: the queue comes back and downloads resume on streams already heard.

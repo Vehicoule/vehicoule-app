@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../motion.dart';
+import '../theme.dart';
 import '../tokens.dart';
 
 /// The standard side sheet, on the same plane as the content (it pushes it): the
@@ -12,11 +13,16 @@ class VSideSheet extends StatelessWidget {
     required this.open,
     required this.child,
     this.width = VSize.sideSheet,
+    this.card = false,
   });
 
   final bool open;
   final Widget child;
   final double width;
+
+  /// Detached (desktop-2): a rounded card [VSpace.s8] from what's before it, on the
+  /// player's surface, instead of a flush sheet with a border. The gap folds with it.
+  final bool card;
 
   @override
   Widget build(BuildContext context) {
@@ -35,15 +41,26 @@ class VSideSheet extends StatelessWidget {
           ),
         ),
       ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          border: BorderDirectional(
-            start: BorderSide(color: scheme.outlineVariant),
-          ),
-        ),
-        child: SizedBox(width: width, child: child),
-      ),
+      child: card
+          ? Padding(
+              padding: const EdgeInsetsDirectional.only(start: VSpace.s8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(VRadius.large),
+                child: ColoredBox(
+                  color: vScreenSurface(scheme),
+                  child: SizedBox(width: width, child: child),
+                ),
+              ),
+            )
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                border: BorderDirectional(
+                  start: BorderSide(color: scheme.outlineVariant),
+                ),
+              ),
+              child: SizedBox(width: width, child: child),
+            ),
     );
   }
 }
