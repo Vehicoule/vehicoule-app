@@ -289,12 +289,15 @@ class VControls extends StatelessWidget {
               semanticLabel: label,
               minWidth: unit,
             );
-        // Shuffle and repeat are plain icons until they are on (the mockup).
+        // Shuffle and repeat are M3 standard icon toggles: no container, the icon in
+        // onSurfaceVariant, in primary with a filled glyph when on. ⏯ alone is the
+        // filled primary, so it dominates.
+        final clear = scheme.surface.withValues(alpha: 0);
         final quiet = M3EButtonDecoration.styleFrom(
-          backgroundColor: scheme.surface.withValues(alpha: 0),
-          selectedBackgroundColor: scheme.primary,
+          backgroundColor: clear,
+          selectedBackgroundColor: clear,
           foregroundColor: scheme.onSurfaceVariant,
-          selectedForegroundColor: scheme.onPrimary,
+          selectedForegroundColor: scheme.primary,
         );
         M3EButtonGroupAction toggle(Widget icon, String label) =>
             M3EButtonGroupAction(

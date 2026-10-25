@@ -5,12 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_3_expressive/material_3_expressive.dart'
-    show
-        M3ETheme,
-        M3EListItem,
-        M3EMenuItem,
-        M3EButtonGroup,
-        M3EButtonDecoration;
+    show M3ETheme, M3EListItem, M3EMenuItem, M3EButtonGroup, M3EButtonStyle;
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/bridge/queue.dart';
 import 'package:vehicoule/debug/library.dart';
@@ -535,33 +530,69 @@ void main() {
             value: 0,
             onChanged: (_) {},
           ),
-          VControls(
-            playing: true,
-            loading: false,
-            shuffle: true,
-            repeat: Repeat.all,
-            onPlayPause: () {},
-            onNext: () {},
-            onPrevious: () {},
-            onShuffle: () {},
-            onRepeat: () {},
-          ),
         ],
       ),
     );
-    final s = Theme.of(tester.element(find.byType(VControls))).colorScheme;
+    final s = Theme.of(tester.element(find.byType(VChoiceGroup<int>)))
+        .colorScheme;
     const selected = {WidgetState.selected};
     for (final g in tester.widgetList<M3EButtonGroup>(
       find.byType(M3EButtonGroup),
     )) {
-      final decorations = [
-        g.decoration,
-        for (final a in g.actions) a.decoration,
-      ].whereType<M3EButtonDecoration>();
-      expect(decorations, isNotEmpty);
-      for (final d in decorations) {
-        expect(d.backgroundColor?.resolve(selected), s.primary);
+      expect(g.decoration?.backgroundColor?.resolve(selected), s.primary);
+    }
+  });
+
+  testWidgets('shuffle and repeat are standard icon toggles; ⏯ dominates', (
+    tester,
+  ) async {
+    await show(
+      tester,
+      VControls(
+        playing: true,
+        loading: false,
+        shuffle: true,
+        repeat: Repeat.one,
+        onPlayPause: () {},
+        onNext: () {},
+        onPrevious: () {},
+        onShuffle: () {},
+        onRepeat: () {},
+      ),
+    );
+    final s = Theme.of(tester.element(find.byType(VControls))).colorScheme;
+    final g = tester.widget<M3EButtonGroup>(find.byType(M3EButtonGroup));
+    const on = {WidgetState.selected}, off = <WidgetState>{};
+    for (final i in [0, 4]) {
+      final d = g.actions[i].decoration!;
+      for (final state in [on, off]) {
+        expect(
+          d.backgroundColor?.resolve(state)?.a,
+          0,
+          reason: 'no container, $i $state',
+        );
       }
+      expect(d.foregroundColor?.resolve(on), s.primary, reason: 'on: primary');
+      expect(
+        d.foregroundColor?.resolve(off),
+        s.onSurfaceVariant,
+        reason: 'off',
+      );
+    }
+    // ⏯: the filled primary, the widest; ⏮ and ⏭ keep the group's tonal look.
+    expect(g.actions[2].decoration!.backgroundColor?.resolve(off), s.primary);
+    expect(g.actions[1].decoration, isNull);
+    expect(g.actions[3].decoration, isNull);
+    expect(g.style, M3EButtonStyle.tonal);
+    // On: filled glyph; repeat one has its own.
+    final glyphs = tester.widgetList<VSymbol>(find.byType(VSymbol)).toList();
+    expect(glyphs.firstWhere((v) => v.icon == VIcons.shuffle).filled, isTrue);
+    expect(glyphs.firstWhere((v) => v.icon == VIcons.repeatOne).filled, isTrue);
+    // 48 targets at least.
+    for (final l in ['Lecture aléatoire', 'Répéter']) {
+      final r = tester.getSize(find.bySemanticsLabel(l).first);
+      expect(r.width, greaterThanOrEqualTo(VSize.menuTarget));
+      expect(r.height, greaterThanOrEqualTo(VSize.menuTarget));
     }
   });
 }
