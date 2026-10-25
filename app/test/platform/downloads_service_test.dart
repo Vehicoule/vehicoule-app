@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vehicoule/bridge/downloads.dart';
@@ -90,5 +91,44 @@ void main() {
     api.libraryEvents.add(const LibraryChanged.downloads());
     await settle();
     expect(native.map((c) => c.method), ['start', 'stop']);
+  });
+
+  test('a download done at once starts then stops the service, in order', () async {
+    final a = sampleTracks[0];
+    DownloadsService().start();
+    // Running then Done back to back (a tiny file): stop never overtakes start.
+    api.downloadEvents.add(
+      _p(a.id, DownloadStateView.running, done: 1, total: 2),
+    );
+    api.downloadEvents.add(_p(a.id, DownloadStateView.done, done: 2, total: 2));
+    await settle();
+    await settle();
+    expect(native.map((c) => c.method), ['start', 'stop']);
+  });
+
+  test('a service the system refuses is reported as an error', () async {
+    DownloadsService().start();
+    final reported = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = previous);
+
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          channel.name,
+          channel.codec.encodeMethodCall(
+            const MethodCall(
+              'failed',
+              'ForegroundServiceStartNotAllowedException: dataSync',
+            ),
+          ),
+          (_) {},
+        );
+    expect(reported, hasLength(1));
+    expect(reported.single.library, 'downloads');
+    expect(
+      reported.single.exception.toString(),
+      contains('ForegroundServiceStartNotAllowedException'),
+    );
   });
 }

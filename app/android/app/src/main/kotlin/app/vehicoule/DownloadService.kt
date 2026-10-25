@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import io.flutter.plugin.common.MethodChannel
 
 /**
  * Keeps downloads going with the app in the background: a foreground service, only while
@@ -22,28 +23,61 @@ class DownloadService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val n = notification(this, progress ?: Progress("", 0, -1, 1))
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            startForeground(ID, n)
+        // Called after startForegroundService: startForeground must come first, even when
+        // a stop already came (a download done at once), or the system kills the app.
+        try {
+            val n = notification(this, progress ?: Progress("", 0, -1, 1))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            } else {
+                startForeground(ID, n)
+            }
+        } catch (e: RuntimeException) {
+            // Android 14+: ForegroundServiceStartNotAllowedException (an IllegalStateException)
+            // or a SecurityException (Android 15's data sync time is used up). The download
+            // goes on in the app; the notification alone shows it.
+            failed(e)
+            progress?.let { update(this, it) }
+            stopSelf()
+            return START_NOT_STICKY
         }
+        running = this
+        if (progress == null) finish()
         // Killed with the app: the core resumes pending downloads at the next start.
         return START_NOT_STICKY
     }
 
-    /** Android 15's limit for data sync (6 h a day): the download goes on in the app. */
-    override fun onTimeout(startId: Int, fgsType: Int) = stopSelf()
+    /** Android 15's limit for data sync (6 h a day): the download goes on in the app, Dart
+     *  keeps sending updates (the notification alone) until its stop. */
+    override fun onTimeout(startId: Int, fgsType: Int) = finish()
+
+    override fun onDestroy() {
+        if (running === this) running = null
+        super.onDestroy()
+    }
+
+    private fun finish() {
+        if (running === this) running = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
 
     companion object {
         private const val CHANNEL = "downloads"
         private const val ID = 2001
 
-        /** The latest progress, for the service's first notification. */
+        /** The latest progress, for the service's first notification; null once stopped. */
         @Volatile private var progress: Progress? = null
+
+        /** The service, while in the foreground (main thread only). */
+        private var running: DownloadService? = null
+
+        /** Dart's downloads channel (MainActivity), for the refusals. */
+        var channel: MethodChannel? = null
 
         fun start(context: Context, p: Progress) {
             progress = p
+            if (running != null) return update(context, p)
             val intent = Intent(context, DownloadService::class.java)
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -54,6 +88,7 @@ class DownloadService : Service() {
             } catch (e: IllegalStateException) {
                 // Android 12+ with the app in the background (a download resumed by the
                 // network coming back): no service, the notification alone.
+                failed(e)
                 update(context, p)
             }
         }
@@ -63,10 +98,16 @@ class DownloadService : Service() {
             context.getSystemService(NotificationManager::class.java).notify(ID, notification(context, p))
         }
 
+        /** Idempotent, and safe before the service is up: onStartCommand sees no progress
+         *  and leaves the foreground at once. */
         fun stop(context: Context) {
             progress = null
-            context.stopService(Intent(context, DownloadService::class.java))
+            running?.finish()
             context.getSystemService(NotificationManager::class.java).cancel(ID)
+        }
+
+        private fun failed(e: Exception) {
+            channel?.invokeMethod("failed", "${e.javaClass.simpleName}: ${e.message}")
         }
 
         private fun notification(context: Context, p: Progress): Notification {

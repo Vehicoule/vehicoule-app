@@ -46,7 +46,9 @@ class MainActivity : AudioServiceActivity() {
             }
         }
 
-        MethodChannel(messenger, "app.vehicoule/downloads").setMethodCallHandler { call, result ->
+        val downloads = MethodChannel(messenger, "app.vehicoule/downloads")
+        DownloadService.channel = downloads
+        downloads.setMethodCallHandler { call, result ->
             when (call.method) {
                 "start", "update" -> {
                     val progress = DownloadService.Progress(

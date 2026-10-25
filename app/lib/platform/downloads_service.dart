@@ -24,6 +24,20 @@ class DownloadsService {
   /// Android only: elsewhere the app itself keeps running.
   void start() {
     if (defaultTargetPlatform != TargetPlatform.android) return;
+    // The system refused the foreground service (Android 14+): the download goes on in
+    // the app, the refusal goes to the error hooks.
+    _channel.setMethodCallHandler((c) async {
+      if (c.method != 'failed') return;
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: PlatformException(
+            code: 'service',
+            message: '${c.arguments}',
+          ),
+          library: 'downloads',
+        ),
+      );
+    });
     downloadProgress().listen(
       (p) => _then(() async {
         if (p.state == DownloadStateView.running) {
