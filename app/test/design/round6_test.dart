@@ -276,7 +276,7 @@ void main() {
         final t = Color.alphaBlend(p.track, bg);
         expect(contrast(t, bg), greaterThanOrEqualTo(1.8), reason: '$b $black');
       }
-      expect(p.stop, isTrue, reason: 'the M3E stop indicator');
+      // No stop indicator on a closed ring (ring_test: no played dot before 12).
     }
     tester.view.reset();
   });
