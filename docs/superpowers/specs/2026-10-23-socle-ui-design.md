@@ -46,8 +46,11 @@ pochette mise en avant, sélection) ; le reste est calme.
   pochette. Le thème passe à la nouvelle couleur en fondu (environ 400 ms) au changement de titre
   seulement, et sans animation quand « réduire les animations » est actif. Aucune extraction par
   carte ou par ligne.
-- Dégradés : seulement le haut des écrans (`surfaceContainer` → `surface`) et le fond du
-  lecteur (un dégradé radial teinté derrière la pochette). Les deux viennent du schéma.
+- Dégradés : seulement le haut des écrans (`surfaceContainer` → `surface`), qui vient du
+  schéma. Le lecteur est sur une surface unie, sans dégradé.
+- **Pochette sans couleur** (noir et blanc, ou chroma trop faible pour une graine) : le thème
+  prend la graine de repli, celle de la source Système, ou le préréglage choisi. Il ne garde
+  jamais la couleur du titre précédent.
 
 - **Thème clair** : mêmes graines, schéma clair. Surfaces aux tons 98 à 92, légèrement
   teintées, jamais `#FFFFFF`. `primary` au ton 40, conteneurs au ton 90. Les tuiles de genre
@@ -377,7 +380,10 @@ file, like), puis des groupes séparés par des espaces. Même menu sur mobile e
 principale. Un FAB menu regroupe plusieurs lancements ou créations d'un même écran. Un split
 button, c'est une action principale et ses variantes. Les groupes de boutons connectés servent
 aux bascules indépendantes (like / playlist / télécharger) et aux choix ; jamais à une action
-principale.
+principale. Le FAB ⏯ du mini-lecteur appartient au lecteur, pas à l'écran : sur téléphone, le
+FAB d'écran se place au-dessus de lui, aligné à droite avec 16 dp d'écart, se masque au
+défilement vers le bas et revient vers le haut. Un split button d'en-tête qui se réduit au
+défilement devient ce FAB d'écran.
 
 ### 5.5 Le lecteur : un seul widget `NowPlaying`, trois tailles
 
