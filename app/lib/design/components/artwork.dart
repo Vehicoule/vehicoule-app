@@ -190,6 +190,19 @@ class _Turn extends InheritedWidget {
   bool updateShouldNotify(_Turn old) => old.angle != angle;
 }
 
+/// Hides the missing-cover icon (the equalizer takes its place).
+class _QuietCover extends InheritedWidget {
+  const _QuietCover({required this.quiet, required super.child});
+
+  final bool quiet;
+
+  static bool of(BuildContext c) =>
+      c.dependOnInheritedWidgetOfExactType<_QuietCover>()?.quiet ?? false;
+
+  @override
+  bool updateShouldNotify(_QuietCover old) => old.quiet != quiet;
+}
+
 /// Undoes the cookie's turn for what must stay upright.
 class _Upright extends StatelessWidget {
   const _Upright({required this.child});
@@ -308,6 +321,9 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     } else if (!spin && _spin.isAnimating) {
       _spin.stop();
     }
+    // Paused, the morph back to the square brings it upright; a selected or still
+    // cookie stands upright at once.
+    if (!spin && (reduced || widget.selected)) _spin.value = 0;
   }
 
   Widget _picture(double art) {
@@ -348,7 +364,8 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     final inside = Stack(
       fit: StackFit.expand,
       children: [
-        _picture(art),
+        // Under the equalizer the missing-cover icon steps aside: one sign at a time.
+        _QuietCover(quiet: equalizer, child: _picture(art)),
         if (equalizer) VEqualizer(size: art / 2, onArtwork: true),
       ],
     );
@@ -490,15 +507,17 @@ class _Picture extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final placeholder = ColoredBox(
       color: scheme.surfaceContainerHighest,
-      child: Center(
-        child: _Upright(
-          child: VSymbol(
-            kind == ArtKind.artist ? VIcons.person : VIcons.musicNote,
-            size: size / 2,
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-      ),
+      child: _QuietCover.of(context)
+          ? null
+          : Center(
+              child: _Upright(
+                child: VSymbol(
+                  kind == ArtKind.artist ? VIcons.person : VIcons.musicNote,
+                  size: size / 2,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
     );
     final img = image;
     if (img == null) return placeholder;
@@ -611,7 +630,7 @@ class _VEqualizerState extends State<VEqualizer>
                     height: s * 0.7,
                     decoration: BoxDecoration(
                       color: widget.onArtwork
-                          ? scheme.onPrimary
+                          ? scheme.onSurfaceVariant
                           : scheme.primary,
                       borderRadius: BorderRadius.circular(s / 16),
                     ),
@@ -625,8 +644,10 @@ class _VEqualizerState extends State<VEqualizer>
     return Semantics(
       label: AppLocalizations.of(context).nowPlaying,
       child: widget.onArtwork
+          // The scrim is the missing-cover colour: invisible on a missing cover, a soft
+          // veil on a real one; the bars read on both.
           ? ColoredBox(
-              color: scheme.scrim.withValues(alpha: 0.32),
+              color: scheme.surfaceContainerHighest.withValues(alpha: 0.72),
               child: Center(child: _Upright(child: bars)),
             )
           : bars,
