@@ -63,6 +63,8 @@ void main() {
           VSkeleton,
           VRefresh,
           VAsyncList<String>,
+          VSlider,
+          VExtentFlight,
         ]) {
           expect(
             find.byType(type, skipOffstage: false),

@@ -219,12 +219,19 @@ void main() {
     final active = tester.getSize(find.bySemanticsLabel('Lecteur').first).width;
     final idle = tester.getSize(find.bySemanticsLabel('Paroles').first).width;
     expect(active, greaterThan(idle));
-    expect(find.text('Lecteur'), findsOneWidget);
+    // (M3E measures each button's selected and unselected widths offstage.)
+    expect(find.text('Lecteur').hitTestable(), findsOneWidget);
     expect(
-      find.text('Paroles'),
+      find.text('Paroles').hitTestable(),
       findsNothing,
       reason: 'only the active one shows its label',
     );
+    // Paroles · Lecteur · File: Lecteur in the middle.
+    final lyrics = tester.getCenter(find.bySemanticsLabel('Paroles').first);
+    final queue = tester.getCenter(find.bySemanticsLabel('File').first);
+    final player = tester.getCenter(find.bySemanticsLabel('Lecteur').first);
+    expect(lyrics.dx, lessThan(player.dx));
+    expect(player.dx, lessThan(queue.dx));
     await tester.tap(find.bySemanticsLabel('Paroles'));
     expect(views, [PlayerView.lyrics]);
   });

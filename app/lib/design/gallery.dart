@@ -753,6 +753,7 @@ class _MiniSectionState extends State<_MiniSection> {
     }
 
     return _wrap([
+      const _FlightDemo(),
       phone(_data(), hint: true),
       phone(_data(playing: false)),
       phone(_data(playing: false, loading: true)),
@@ -797,6 +798,116 @@ class _MiniSectionState extends State<_MiniSection> {
         ),
       ),
     ]);
+  }
+}
+
+/// The mini player → player flight driven by a sheet's extent (here a slider): both
+/// players hide their own artwork, [VExtentFlight] draws it between the rects they report.
+class _FlightDemo extends StatefulWidget {
+  const _FlightDemo();
+
+  @override
+  State<_FlightDemo> createState() => _FlightDemoState();
+}
+
+class _FlightDemoState extends State<_FlightDemo> {
+  final _stack = GlobalKey();
+  double _extent = 0;
+  Rect? _from, _to;
+
+  /// A global rect, in the frame's coordinates.
+  Rect? _local(Rect? global) {
+    final box = _stack.currentContext?.findRenderObject() as RenderBox?;
+    if (global == null || box == null || !box.hasSize) return null;
+    return box.globalToLocal(global.topLeft) & global.size;
+  }
+
+  void _set(Rect r, {required bool mini}) {
+    if (mini ? r == _from : r == _to) return;
+    setState(() => mini ? _from = r : _to = r);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final from = _local(_from), to = _local(_to);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _screen(
+          VSize.sideSheet,
+          VSize.sideSheet * 1.8,
+          Stack(
+            key: _stack,
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: _extent < 1,
+                  child: Opacity(
+                    opacity: _extent,
+                    child: VNowPlaying(
+                      position: _fixedPosition,
+                      data: _data(),
+                      size: PlayerSize.large,
+                      style: PlayerStyle.disc,
+                      view: PlayerView.player,
+                      onView: (_) {},
+                      actions: _actions,
+                      lyrics: _lyrics,
+                      queue: _queue,
+                      artworkVisible: false,
+                      onArtworkRect: (r) => _set(r, mini: false),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: VSpace.s16,
+                right: VSpace.s16,
+                bottom: VSpace.s16,
+                child: Opacity(
+                  opacity: 1 - _extent,
+                  child: VNowPlaying(
+                    position: _fixedPosition,
+                    data: _data(),
+                    size: PlayerSize.compact,
+                    style: PlayerStyle.disc,
+                    view: PlayerView.player,
+                    onView: (_) {},
+                    actions: _actions,
+                    lyrics: _lyrics,
+                    queue: _queue,
+                    artworkVisible: false,
+                    onArtworkRect: (r) => _set(r, mini: true),
+                  ),
+                ),
+              ),
+              if (from != null && to != null)
+                VExtentFlight(
+                  extent: _extent,
+                  from: from,
+                  to: to,
+                  builder: (context, side) => VArtwork(
+                    itemId: _track.id,
+                    size: side,
+                    playing: true,
+                    progress: 0.37,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: VSpace.s8),
+        SizedBox(
+          width: VSize.sideSheet,
+          child: VSlider(
+            value: _extent,
+            label: l.actionOpenPlayer,
+            onChanged: (v) => setState(() => _extent = v),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -902,13 +1013,13 @@ class _PlayerSectionState extends State<_PlayerSection> {
         const SizedBox(height: VSpace.s24),
         for (final style in PlayerStyle.values) ...[
           _wrap([
-            for (final view in PlayerView.values)
+            for (final view in VViewSelector.order)
               _screen(
                 large.width,
                 large.height,
                 player(PlayerSize.large, style, view),
               ),
-            for (final view in PlayerView.values)
+            for (final view in VViewSelector.order)
               _screen(
                 medium.width,
                 medium.height,

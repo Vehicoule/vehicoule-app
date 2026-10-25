@@ -5,7 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_3_expressive/material_3_expressive.dart'
-    show M3ETheme, M3EListItem;
+    show M3ETheme, M3EListItem, M3EMenuItem;
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/bridge/queue.dart';
 import 'package:vehicoule/debug/library.dart';
@@ -353,12 +353,8 @@ void main() {
           .map((p) => p.painter)
           .whereType<VRingPainter>()
           .single;
-      // The player's background: the radial tint over the surface.
-      final tint = Color.alphaBlend(
-        s.primaryContainer.withValues(alpha: 0.6),
-        s.surface,
-      );
-      for (final bg in [tint, s.surface]) {
+      // The player's background (a plain surfaceContainer) and the screens' surface.
+      for (final bg in [s.surfaceContainer, s.surface]) {
         final track = Color.alphaBlend(painter.track, bg);
         expect(
           contrast(track, bg),
@@ -372,5 +368,105 @@ void main() {
         );
       }
     }
+  });
+
+  testWidgets('menu: the M3E vertical menu, its quick row the first section', (
+    tester,
+  ) async {
+    late BuildContext ctx;
+    await show(
+      tester,
+      Builder(
+        builder: (c) {
+          ctx = c;
+          return const SizedBox.expand();
+        },
+      ),
+    );
+    VAction a(String l) => VAction(l, VIcons.album, () {});
+    showVMenu(
+      ctx,
+      anchor: const Rect.fromLTWH(300, 100, 48, 48),
+      quick: [a('Lire ensuite'), a('Ajouter à la file')],
+      groups: [
+        [a('Ajouter à une playlist'), a('Télécharger')],
+        [a('Retirer')],
+      ],
+    );
+    await tester.pump();
+    await tester.pump();
+    final panel = tester.getRect(find.byKey(VMenu.panelKey));
+    final quick = tester.getRect(find.byKey(VMenu.quickKey));
+    expect(quick.top, closeTo(panel.top, 0.5), reason: 'first section');
+    expect(quick.width, closeTo(panel.width, 0.5), reason: 'inside the menu');
+    final m = M3ETheme.of(tester.element(find.byKey(VMenu.panelKey))).menuTheme;
+    final surfaces = tester
+        .widgetList<DecoratedBox>(
+          find.descendant(
+            of: find.byKey(VMenu.panelKey),
+            matching: find.byType(DecoratedBox),
+          ),
+        )
+        .where((d) => d.decoration is ShapeDecoration)
+        .toList();
+    expect(surfaces, hasLength(3), reason: 'quick row + 2 groups');
+    final rects = [for (final d in surfaces) tester.getRect(find.byWidget(d))]
+      ..sort((x, y) => x.top.compareTo(y.top));
+    for (var i = 1; i < rects.length; i++) {
+      expect(rects[i].top - rects[i - 1].bottom, closeTo(m.sectionGap, 0.5));
+    }
+    // M3 menu items: 48 high.
+    expect(
+      tester.getSize(find.byType(M3EMenuItem).first).height,
+      greaterThanOrEqualTo(44),
+    );
+  });
+
+  testWidgets('the player sits on a plain surface, no gradient', (
+    tester,
+  ) async {
+    await show(tester, player());
+    final s = Theme.of(tester.element(find.byType(VNowPlaying))).colorScheme;
+    expect(
+      find.descendant(
+        of: find.byType(VNowPlaying),
+        matching: find.byWidgetPredicate(
+          (w) => w is ColoredBox && w.color == s.surfaceContainer,
+        ),
+      ),
+      findsWidgets,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(VNowPlaying),
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is DecoratedBox &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).gradient != null,
+        ),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('a small ring is thinner and closer', (tester) async {
+    await show(
+      tester,
+      const Center(
+        child: VArtwork(
+          itemId: 'a',
+          size: VSize.compactArt,
+          playing: true,
+          progress: 0.3,
+        ),
+      ),
+    );
+    final painter = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((p) => p.painter)
+        .whereType<VRingPainter>()
+        .single;
+    expect(painter.stroke, VSize.ringStrokeSmall);
   });
 }

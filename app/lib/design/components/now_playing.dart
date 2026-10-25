@@ -293,21 +293,9 @@ class _VNowPlayingState extends State<VNowPlaying>
     if (widget.size == PlayerSize.compact) {
       return widget.axis == Axis.vertical ? _strip(context) : _mini(context);
     }
-    final scheme = Theme.of(context).colorScheme;
-    return DecoratedBox(
-      // The player's one gradient: a tint behind the artwork (spec UI §2.2).
-      decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: widget.wide || widget.immersive
-              ? const Alignment(-0.5, 0)
-              : const Alignment(0, -0.45),
-          radius: 0.9,
-          colors: [
-            scheme.primaryContainer.withValues(alpha: 0.6),
-            scheme.surface,
-          ],
-        ),
-      ),
+    // A plain surface, no gradient (spec UI §6.6, user ruling).
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surfaceContainer,
       child: SafeArea(
         child: widget.immersive ? _immersive(context) : _column(context),
       ),
@@ -353,16 +341,18 @@ class _VNowPlayingState extends State<VNowPlaying>
         ),
       Padding(
         padding: const EdgeInsets.only(top: VSpace.s8, bottom: VSpace.s16),
-        child: _selector(PlayerView.values, widget.view),
+        child: _selector(VViewSelector.order, widget.view),
       ),
     ],
   );
 
-  Widget _selector(List<PlayerView> views, PlayerView value) => VViewSelector(
-    key: VNowPlaying.selectorKey,
-    value: value,
-    views: views,
-    onChanged: widget.onView,
+  Widget _selector(List<PlayerView> views, PlayerView value) => Center(
+    child: VViewSelector(
+      key: VNowPlaying.selectorKey,
+      value: value,
+      views: views,
+      onChanged: widget.onView,
+    ),
   );
 
   double get _seekStep => data.durationMs <= 0

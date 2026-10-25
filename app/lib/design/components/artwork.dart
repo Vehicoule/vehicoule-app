@@ -327,6 +327,10 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     if (!spin && (reduced || widget.selected)) _spin.value = 0;
   }
 
+  bool get _smallRing => widget.size <= VSize.ringSmallUpTo;
+  double get _stroke => _smallRing ? VSize.ringStrokeSmall : VSize.ringStroke;
+  double get _gap => _smallRing ? VSize.ringGapSmall : VSize.ringGap;
+
   VRingGeometry? _ring;
   (double, double, bool)? _ringFor;
 
@@ -334,9 +338,9 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
   VRingGeometry _ringGeometry(double art, bool circle) {
     final key = (circle ? 1.0 : _morph.value, widget.size, circle);
     if (_ringFor != key || _ring == null) {
-      final s = VSize.ringStroke;
+      final s = _stroke;
       final box = Rect.fromLTWH(s / 2, s / 2, widget.size - s, widget.size - s);
-      final share = (_cornerFor(art) + VSize.ringGap + s / 2) / box.width;
+      final share = (_cornerFor(art) + _gap + s / 2) / box.width;
       _ringFor = key;
       _ring = VRingGeometry(
         circle
@@ -376,7 +380,7 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     final playing = _playing;
     final shape = _shape;
     final ring = widget.progress != null;
-    final inset = ring ? VSize.ringStroke + VSize.ringGap : 0.0;
+    final inset = ring ? _stroke + _gap : 0.0;
     final art = widget.size - 2 * inset;
     // The turning cookie is the playing sign on its own (spec UI §5.3, the
     // shape-language mockup); an artist keeps its circle, so it has the equalizer.
@@ -453,6 +457,7 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
                   return CustomPaint(
                     size: Size.square(widget.size),
                     painter: VRingPainter(
+                      stroke: _stroke,
                       geometry: _ringGeometry(art, circle),
                       shape: shape,
                       turn: circle

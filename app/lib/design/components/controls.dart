@@ -410,3 +410,25 @@ class VVolume extends StatelessWidget {
     return vertical ? RotatedBox(quarterTurns: 3, child: slider) : slider;
   }
 }
+
+/// A plain M3E slider with its spoken label (a sheet's extent in the gallery, settings).
+class VSlider extends StatelessWidget {
+  const VSlider({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    required this.label,
+  });
+
+  final double value;
+  final ValueChanged<double>? onChanged;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => M3ESlider(
+    value: value,
+    onChanged: onChanged,
+    size: M3ESliderSize.xs,
+    semanticLabel: label,
+  );
+}

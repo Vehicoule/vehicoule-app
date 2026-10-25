@@ -162,7 +162,10 @@ class VRingPainter extends CustomPainter {
     required this.progress,
     required this.played,
     required this.track,
+    this.stroke = VSize.ringStroke,
   });
+
+  final double stroke;
 
   final VRingGeometry geometry;
 
@@ -176,18 +179,18 @@ class VRingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
+    final pen = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = VSize.ringStroke
+      ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(
-      _line(geometry.rest(progress, turn: turn, gap: VSize.ringStroke)),
-      stroke..color = track,
+      _line(geometry.rest(progress, turn: turn, gap: stroke)),
+      pen..color = track,
     );
     canvas.drawPath(
       _line(geometry.played(progress, turn: turn)),
-      stroke..color = played,
+      pen..color = played,
     );
   }
 
@@ -197,5 +200,6 @@ class VRingPainter extends CustomPainter {
       old.turn != turn ||
       old.progress != progress ||
       old.played != played ||
-      old.track != track;
+      old.track != track ||
+      old.stroke != stroke;
 }

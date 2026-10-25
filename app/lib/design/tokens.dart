@@ -45,6 +45,10 @@ abstract final class VSize {
   /// The regular FAB (the mini player's ⏯) and the floating toolbar beside it.
   static const fab = 56.0, toolbar = 64.0;
 
+  /// The narrowest segment of the player's view selector (icon only); the active one
+  /// widens with its label.
+  static const selectorSegment = 64.0;
+
   /// The header row of the player.
   static const playerHeader = 56.0;
 
@@ -65,6 +69,10 @@ abstract final class VSize {
   /// The wavy progress stroke and its gap to the artwork.
   static const ringStroke = 4.0, ringGap = 4.0;
 
+  /// The ring around a small artwork (the mini player, the strip, ≤ [ringSmallUpTo]):
+  /// thinner and closer, so the picture keeps its size.
+  static const ringStrokeSmall = 3.0, ringGapSmall = 2.0, ringSmallUpTo = 96.0;
+
   /// How far a row slides before a swipe acts.
   static const swipe = 96.0;
 
@@ -74,8 +82,9 @@ abstract final class VSize {
   /// Hero card width in a carousel.
   static const heroCard = 280.0;
 
-  /// The veil under a carousel item's text.
-  static const carouselScrim = 0.4;
+  /// The band under a carousel item's text: how dark at the bottom, how high, and the
+  /// narrowest item that carries text (M3E shows the title from 200).
+  static const carouselScrim = 0.6, carouselBand = 0.5, carouselText = 200.0;
 
   /// The thin stroke of small progress icons (download).
   static const iconStroke = 3.0;

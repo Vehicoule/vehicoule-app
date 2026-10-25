@@ -110,69 +110,94 @@ class _MenuRoute extends PopupRoute<void> {
     Animation<double> s,
   ) {
     final scheme = Theme.of(context).colorScheme;
+    final m3e = M3ETheme.of(context);
+    final menu = m3e.menuTheme;
     void run(VAction action) {
       Navigator.of(context).pop();
       action.onSelected();
     }
 
-    Widget surface(Widget child) => Material(
-      color: scheme.surfaceContainer,
-      elevation: 3,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(VRadius.medium),
+    // The M3 Expressive vertical menu with gaps: each section is a surface of the menu
+    // container colour, 16 corners, level-2 elevation, 2 apart (m3.material.io menus,
+    // specs).
+    Widget surface(Widget child, {Key? key}) => DecoratedBox(
+      key: key,
+      decoration: ShapeDecoration(
+        color: menu.colors(m3e.colorScheme).container,
+        shape: menu.containerShape,
+        shadows: M3EElevation.shadows(
+          menu.elevation,
+          shadowColor: m3e.colorScheme.shadow,
+        ),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: child,
+      child: ClipPath(
+        clipper: ShapeBorderClipper(shape: menu.containerShape),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: menu.verticalPadding),
+          child: child,
+        ),
+      ),
     );
 
+    final sections = <Widget>[
+      // The quick row (spec UI §5.2) is the menu's first section: a connected group.
+      if (quick.isNotEmpty)
+        surface(
+          key: VMenu.quickKey,
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: VSpace.s8,
+              vertical: VSpace.s4,
+            ),
+            child: VConnectedGroup(
+              // With no groups below, the quick row takes the keyboard.
+              autofocusFirst: groups.isEmpty,
+              actions: [
+                for (final q in quick)
+                  VAction(
+                    q.label,
+                    q.icon,
+                    () => run(q),
+                    selected: q.selected,
+                    leading: q.leading,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      for (final (gi, group) in groups.indexed)
+        surface(
+          M3EMenuContent(
+            closeOnSelect: true,
+            // The menu takes the keyboard: its first item has focus, ↑/↓ move.
+            autofocusFirst: gi == 0,
+            applyGroupShapes: false,
+            onSelect: (_) {},
+            nodes: [
+              for (final e in group)
+                M3EMenuEntry(
+                  label: e.label,
+                  leading: e.leading ?? VSymbol(e.icon),
+                  onPressed: () => run(e),
+                ),
+            ],
+          ),
+        ),
+    ];
     final panel = ConstrainedBox(
       key: VMenu.panelKey,
-      constraints: const BoxConstraints(maxWidth: VSize.menu),
+      constraints: BoxConstraints(
+        minWidth: menu.minWidth,
+        maxWidth: VSize.menu,
+      ),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (quick.isNotEmpty)
-              Center(
-                key: VMenu.quickKey,
-                child: VConnectedGroup(
-                  // With no groups below, the quick row takes the keyboard.
-                  autofocusFirst: groups.isEmpty,
-                  actions: [
-                    for (final q in quick)
-                      VAction(
-                        q.label,
-                        q.icon,
-                        () => run(q),
-                        selected: q.selected,
-                        leading: q.leading,
-                      ),
-                  ],
-                ),
-              ),
-            for (final (gi, group) in groups.indexed) ...[
-              const SizedBox(height: VSpace.s8),
-              surface(
-                M3EMenuContent(
-                  closeOnSelect: true,
-                  // The menu takes the keyboard: its first item has focus, ↑/↓ move.
-                  autofocusFirst: gi == 0,
-                  onSelect: (_) {},
-                  nodes: [
-                    M3EMenuGroup.entries(
-                      entries: [
-                        for (final e in group)
-                          M3EMenuEntry(
-                            label: e.label,
-                            leading: e.leading ?? VSymbol(e.icon),
-                            onPressed: () => run(e),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+            for (final (i, w) in sections.indexed) ...[
+              if (i > 0) SizedBox(height: menu.sectionGap),
+              w,
             ],
           ],
         ),

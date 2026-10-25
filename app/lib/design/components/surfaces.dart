@@ -189,11 +189,10 @@ class VCarousel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Text over a cover: a flat veil of the scrim colour (no extra gradient, spec UI
-    // §2.8) and light text, readable on any cover.
-    final onScrim = theme.colorScheme.surface.withValues(alpha: 1);
+    final scrim = theme.colorScheme.scrim;
+    // Light text on the band below; the same in both themes (it sits on a cover).
     final light = theme.brightness == Brightness.light
-        ? onScrim
+        ? theme.colorScheme.surface
         : theme.colorScheme.onSurface;
     return M3ECarousel(
       height: height,
@@ -206,20 +205,52 @@ class VCarousel extends StatelessWidget {
       children: [
         for (final i in items)
           M3ECarouselItem(
-            image: VArtworkPicture(itemId: i.itemId, size: height),
-            title: Text(
-              i.title,
-              style: theme.textTheme.titleMedium?.copyWith(color: light),
+            // The cover stays vivid: a band under the text only, and only on an item
+            // wide enough to show text (M3E shows the title on large slots only).
+            image: LayoutBuilder(
+              builder: (context, box) => Stack(
+                fit: StackFit.expand,
+                children: [
+                  VArtworkPicture(itemId: i.itemId, size: height),
+                  if (box.maxWidth >= VSize.carouselText)
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: FractionallySizedBox(
+                        heightFactor: VSize.carouselBand,
+                        widthFactor: 1,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                scrim.withValues(alpha: 0),
+                                scrim.withValues(alpha: VSize.carouselScrim),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-            subtitle: i.subtitle == null
-                ? null
-                : Text(
-                    i.subtitle!,
+            // Title and artist together: shown on large slots only, none on the narrow
+            // ones (no 6 px captions).
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  i.title,
+                  style: theme.textTheme.titleMedium?.copyWith(color: light),
+                ),
+                if (i.subtitle case final sub?)
+                  Text(
+                    sub,
                     style: theme.textTheme.bodyMedium?.copyWith(color: light),
                   ),
-            showScrim: M3ECarouselScrim(
-              color: theme.colorScheme.scrim,
-              opacity: VSize.carouselScrim,
+              ],
             ),
             semanticLabel: i.title,
             onTap: i.onTap,
