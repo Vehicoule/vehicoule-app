@@ -157,5 +157,34 @@
   "galleryFabCollection": "Album",
   "galleryFabArtist": "Artist",
   "galleryFabPhone": "Phone, with the mini player",
-  "splitShuffle": "Shuffle"
+  "splitShuffle": "Shuffle",
+  "appName": "Vehicoule",
+  "actionOpenMenu": "Open the menu",
+  "domainMusic": "Music",
+  "actionHistoryBack": "Previous page",
+  "actionHistoryForward": "Next page",
+  "actionSearch": "Search",
+  "actionPlayPause": "Play or pause",
+  "actionSeekBack": "Back 10 s",
+  "actionSeekForward": "Forward 10 s",
+  "actionVolumeUp": "Volume up",
+  "actionVolumeDown": "Volume down",
+  "actionRefreshHome": "Refresh home",
+  "actionTogglePane": "Now playing pane",
+  "menuPlayback": "Playback",
+  "menuGo": "Go",
+  "menuWindow": "Window",
+  "downloadedTracks": "Downloaded tracks",
+  "topTracks": "Top 50",
+  "historyTitle": "History",
+  "settingsDiagnostics": "Diagnostics",
+  "onboardingTitle": "Welcome",
+  "trackSkipped": "Couldn't play “{title}”, moving on.",
+  "@trackSkipped": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  }
 }

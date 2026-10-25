@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vehicoule/bridge/api/library.dart' show refreshHome;
+import 'package:vehicoule/bridge/api/library.dart' show topTracks;
 import 'package:vehicoule/bridge/api/playback.dart';
 import 'package:vehicoule/bridge/frb_generated.dart';
 import 'package:vehicoule/bridge/player.dart';
@@ -28,12 +28,12 @@ void main() {
 
     // Anything else is recorded, then refused by name.
     expect(
-      refreshHome,
+      topTracks,
       throwsA(
         isA<UnimplementedError>().having(
           (e) => e.message,
           'message',
-          'crateApiLibraryRefreshHome',
+          'crateApiLibraryTopTracks',
         ),
       ),
     );
@@ -42,7 +42,7 @@ void main() {
       #crateApiPlaybackPlayerEvent,
       #crateApiPlaybackNowPlaying,
       #crateApiPlaybackQueueStates,
-      #crateApiLibraryRefreshHome,
+      #crateApiLibraryTopTracks,
     ]);
     expect(
       api.calls[1].namedArguments[#e],

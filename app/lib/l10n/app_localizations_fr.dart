@@ -512,4 +512,72 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get splitShuffle => 'Aléatoire';
+
+  @override
+  String get appName => 'Vehicoule';
+
+  @override
+  String get actionOpenMenu => 'Ouvrir le menu';
+
+  @override
+  String get domainMusic => 'Musique';
+
+  @override
+  String get actionHistoryBack => 'Page précédente';
+
+  @override
+  String get actionHistoryForward => 'Page suivante';
+
+  @override
+  String get actionSearch => 'Rechercher';
+
+  @override
+  String get actionPlayPause => 'Lecture ou pause';
+
+  @override
+  String get actionSeekBack => 'Reculer de 10 s';
+
+  @override
+  String get actionSeekForward => 'Avancer de 10 s';
+
+  @override
+  String get actionVolumeUp => 'Monter le volume';
+
+  @override
+  String get actionVolumeDown => 'Baisser le volume';
+
+  @override
+  String get actionRefreshHome => 'Rafraîchir l\'accueil';
+
+  @override
+  String get actionTogglePane => 'Panneau en lecture';
+
+  @override
+  String get menuPlayback => 'Lecture';
+
+  @override
+  String get menuGo => 'Aller';
+
+  @override
+  String get menuWindow => 'Fenêtre';
+
+  @override
+  String get downloadedTracks => 'Titres téléchargés';
+
+  @override
+  String get topTracks => 'Top 50';
+
+  @override
+  String get historyTitle => 'Historique';
+
+  @override
+  String get settingsDiagnostics => 'Diagnostics';
+
+  @override
+  String get onboardingTitle => 'Bienvenue';
+
+  @override
+  String trackSkipped(String title) {
+    return '« $title » n\'a pas pu être lu, on continue.';
+  }
 }

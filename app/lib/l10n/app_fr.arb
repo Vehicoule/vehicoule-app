@@ -205,5 +205,41 @@
   "splitShuffle": "Aléatoire",
   "@splitShuffle": {
     "description": "The artist's split button and its FAB (spec UI §5.4)."
+  },
+  "appName": "Vehicoule",
+  "@appName": {
+    "description": "The app's name: the macOS application menu."
+  },
+  "actionOpenMenu": "Ouvrir le menu",
+  "domainMusic": "Musique",
+  "actionHistoryBack": "Page précédente",
+  "actionHistoryForward": "Page suivante",
+  "actionSearch": "Rechercher",
+  "actionPlayPause": "Lecture ou pause",
+  "actionSeekBack": "Reculer de 10 s",
+  "actionSeekForward": "Avancer de 10 s",
+  "actionVolumeUp": "Monter le volume",
+  "actionVolumeDown": "Baisser le volume",
+  "actionRefreshHome": "Rafraîchir l'accueil",
+  "actionTogglePane": "Panneau en lecture",
+  "@actionTogglePane": {
+    "description": "⌘⌥B and the Fenêtre menu: fold or unfold the desktop pane."
+  },
+  "menuPlayback": "Lecture",
+  "menuGo": "Aller",
+  "menuWindow": "Fenêtre",
+  "downloadedTracks": "Titres téléchargés",
+  "topTracks": "Top 50",
+  "historyTitle": "Historique",
+  "settingsDiagnostics": "Diagnostics",
+  "onboardingTitle": "Bienvenue",
+  "trackSkipped": "« {title} » n'a pas pu être lu, on continue.",
+  "@trackSkipped": {
+    "description": "Notice.skipped (spec UI §2.9).",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
   }
 }

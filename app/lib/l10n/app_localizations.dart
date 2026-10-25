@@ -1045,6 +1045,138 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Aléatoire'**
   String get splitShuffle;
+
+  /// The app's name: the macOS application menu.
+  ///
+  /// In fr, this message translates to:
+  /// **'Vehicoule'**
+  String get appName;
+
+  /// No description provided for @actionOpenMenu.
+  ///
+  /// In fr, this message translates to:
+  /// **'Ouvrir le menu'**
+  String get actionOpenMenu;
+
+  /// No description provided for @domainMusic.
+  ///
+  /// In fr, this message translates to:
+  /// **'Musique'**
+  String get domainMusic;
+
+  /// No description provided for @actionHistoryBack.
+  ///
+  /// In fr, this message translates to:
+  /// **'Page précédente'**
+  String get actionHistoryBack;
+
+  /// No description provided for @actionHistoryForward.
+  ///
+  /// In fr, this message translates to:
+  /// **'Page suivante'**
+  String get actionHistoryForward;
+
+  /// No description provided for @actionSearch.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rechercher'**
+  String get actionSearch;
+
+  /// No description provided for @actionPlayPause.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lecture ou pause'**
+  String get actionPlayPause;
+
+  /// No description provided for @actionSeekBack.
+  ///
+  /// In fr, this message translates to:
+  /// **'Reculer de 10 s'**
+  String get actionSeekBack;
+
+  /// No description provided for @actionSeekForward.
+  ///
+  /// In fr, this message translates to:
+  /// **'Avancer de 10 s'**
+  String get actionSeekForward;
+
+  /// No description provided for @actionVolumeUp.
+  ///
+  /// In fr, this message translates to:
+  /// **'Monter le volume'**
+  String get actionVolumeUp;
+
+  /// No description provided for @actionVolumeDown.
+  ///
+  /// In fr, this message translates to:
+  /// **'Baisser le volume'**
+  String get actionVolumeDown;
+
+  /// No description provided for @actionRefreshHome.
+  ///
+  /// In fr, this message translates to:
+  /// **'Rafraîchir l\'accueil'**
+  String get actionRefreshHome;
+
+  /// ⌘⌥B and the Fenêtre menu: fold or unfold the desktop pane.
+  ///
+  /// In fr, this message translates to:
+  /// **'Panneau en lecture'**
+  String get actionTogglePane;
+
+  /// No description provided for @menuPlayback.
+  ///
+  /// In fr, this message translates to:
+  /// **'Lecture'**
+  String get menuPlayback;
+
+  /// No description provided for @menuGo.
+  ///
+  /// In fr, this message translates to:
+  /// **'Aller'**
+  String get menuGo;
+
+  /// No description provided for @menuWindow.
+  ///
+  /// In fr, this message translates to:
+  /// **'Fenêtre'**
+  String get menuWindow;
+
+  /// No description provided for @downloadedTracks.
+  ///
+  /// In fr, this message translates to:
+  /// **'Titres téléchargés'**
+  String get downloadedTracks;
+
+  /// No description provided for @topTracks.
+  ///
+  /// In fr, this message translates to:
+  /// **'Top 50'**
+  String get topTracks;
+
+  /// No description provided for @historyTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Historique'**
+  String get historyTitle;
+
+  /// No description provided for @settingsDiagnostics.
+  ///
+  /// In fr, this message translates to:
+  /// **'Diagnostics'**
+  String get settingsDiagnostics;
+
+  /// No description provided for @onboardingTitle.
+  ///
+  /// In fr, this message translates to:
+  /// **'Bienvenue'**
+  String get onboardingTitle;
+
+  /// Notice.skipped (spec UI §2.9).
+  ///
+  /// In fr, this message translates to:
+  /// **'« {title} » n\'a pas pu être lu, on continue.'**
+  String trackSkipped(String title);
 }
 
 class _AppLocalizationsDelegate

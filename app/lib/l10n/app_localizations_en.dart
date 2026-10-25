@@ -509,4 +509,72 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get splitShuffle => 'Shuffle';
+
+  @override
+  String get appName => 'Vehicoule';
+
+  @override
+  String get actionOpenMenu => 'Open the menu';
+
+  @override
+  String get domainMusic => 'Music';
+
+  @override
+  String get actionHistoryBack => 'Previous page';
+
+  @override
+  String get actionHistoryForward => 'Next page';
+
+  @override
+  String get actionSearch => 'Search';
+
+  @override
+  String get actionPlayPause => 'Play or pause';
+
+  @override
+  String get actionSeekBack => 'Back 10 s';
+
+  @override
+  String get actionSeekForward => 'Forward 10 s';
+
+  @override
+  String get actionVolumeUp => 'Volume up';
+
+  @override
+  String get actionVolumeDown => 'Volume down';
+
+  @override
+  String get actionRefreshHome => 'Refresh home';
+
+  @override
+  String get actionTogglePane => 'Now playing pane';
+
+  @override
+  String get menuPlayback => 'Playback';
+
+  @override
+  String get menuGo => 'Go';
+
+  @override
+  String get menuWindow => 'Window';
+
+  @override
+  String get downloadedTracks => 'Downloaded tracks';
+
+  @override
+  String get topTracks => 'Top 50';
+
+  @override
+  String get historyTitle => 'History';
+
+  @override
+  String get settingsDiagnostics => 'Diagnostics';
+
+  @override
+  String get onboardingTitle => 'Welcome';
+
+  @override
+  String trackSkipped(String title) {
+    return 'Couldn\'t play “$title”, moving on.';
+  }
 }

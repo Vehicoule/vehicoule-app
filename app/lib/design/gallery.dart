@@ -22,6 +22,7 @@ import '../bridge/downloads.dart';
 import '../bridge/frb_generated.dart';
 import '../bridge/error.dart';
 import '../bridge/queue.dart';
+import '../debug/dev_feed.dart';
 import '../debug/library.dart';
 import '../l10n/app_localizations.dart';
 import 'design.dart';
@@ -64,15 +65,8 @@ class GalleryCovers {
       );
       await core.start();
       await core.setOnline(online: true);
-      // Debug only: a local feed, `--dart-define=VEHICOULE_DEV_FEED=<url> --dart-define=
-      // VEHICOULE_DEV_FEED_KEY=<public key>` (debug builds of the core accept http).
-      const devFeed = String.fromEnvironment('VEHICOULE_DEV_FEED');
-      if (devFeed.isNotEmpty) {
-        await core.addFeed(
-          url: devFeed,
-          publicKey: const String.fromEnvironment('VEHICOULE_DEV_FEED_KEY'),
-        );
-      }
+      // Debug only: a local feed (lib/debug/dev_feed.dart).
+      await addDevFeed();
       await core.refreshFeeds();
       return GalleryCovers._();
     } on Object catch (e) {
