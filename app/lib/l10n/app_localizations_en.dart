@@ -503,4 +503,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get galleryFabArtist => 'Artist';
+
+  @override
+  String get galleryFabPhone => 'Phone, with the mini player';
+
+  @override
+  String get splitShuffle => 'Shuffle';
 }

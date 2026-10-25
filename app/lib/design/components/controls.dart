@@ -7,7 +7,6 @@ import '../haptics.dart';
 import '../motion.dart';
 import '../symbols.dart';
 import '../tokens.dart';
-import 'kit.dart';
 import 'loading.dart';
 import 'menu.dart';
 
@@ -177,57 +176,6 @@ class VSplitButton extends StatelessWidget {
       onSelected: (i) => items[i].onSelected(),
     ),
   );
-}
-
-/// A collection's main action (spec UI §5.4): the split button « Lire | ▾ » or
-/// « Aléatoire | ▾ » while its header shows, the FAB of the same action once the list
-/// has scrolled ([collapsed], set by the screen).
-class VSplitFab extends StatelessWidget {
-  const VSplitFab({
-    super.key,
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-    required this.items,
-    required this.collapsed,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onPressed;
-  final List<VAction> items;
-  final bool collapsed;
-
-  @override
-  Widget build(BuildContext context) {
-    final reduced = reduceMotion(context);
-    return AnimatedSwitcher(
-      duration: reduced ? VDurations.reduced : VDurations.medium,
-      switchInCurve: VCurves.emphasizedDecelerate,
-      switchOutCurve: VCurves.emphasizedAccelerate,
-      transitionBuilder: (child, a) => reduced
-          ? FadeTransition(opacity: a, child: child)
-          : ScaleTransition(
-              scale: a,
-              alignment: Alignment.bottomRight,
-              child: FadeTransition(opacity: a, child: child),
-            ),
-      child: collapsed
-          ? VFab(
-              key: const ValueKey('fab'),
-              icon: icon,
-              label: label,
-              onPressed: onPressed,
-            )
-          : VSplitButton(
-              key: const ValueKey('split'),
-              label: label,
-              icon: icon,
-              onPressed: onPressed,
-              items: items,
-            ),
-    );
-  }
 }
 
 /// Play ↔ pause, morphing.

@@ -200,5 +200,10 @@
   "galleryFabHome": "Accueil",
   "galleryFabSources": "Sources",
   "galleryFabCollection": "Album",
-  "galleryFabArtist": "Artiste"
+  "galleryFabArtist": "Artiste",
+  "galleryFabPhone": "Téléphone, avec le mini-lecteur",
+  "splitShuffle": "Aléatoire",
+  "@splitShuffle": {
+    "description": "The artist's split button and its FAB (spec UI §5.4)."
+  }
 }

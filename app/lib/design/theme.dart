@@ -66,6 +66,11 @@ ThemeData vTheme({
   );
 }
 
+/// What a full-screen surface paints (the player, spec UI §6.6): `surfaceContainer`,
+/// but black in pure black (§2.2: surfaces at 0; only floating containers step up).
+Color vScreenSurface(ColorScheme cs) =>
+    cs.surface == _black ? _black : cs.surfaceContainer;
+
 /// Every delegate the app needs: our strings, and material_ui's own Material, Cupertino
 /// and widgets localizations (flutter_localizations' Material ones are another type).
 const vLocalizationsDelegates = <LocalizationsDelegate<dynamic>>[
@@ -117,6 +122,11 @@ class _M3EScope extends StatelessWidget {
       toolbarTheme: base.toolbarTheme.copyWith(
         labelSpring: _instant,
         expandSpring: _instant,
+      ),
+      fabMenuTheme: base.fabMenuTheme.copyWith(
+        expandSpring: _instant,
+        fabShapeSpring: _instant,
+        expandStagger: Duration.zero,
       ),
     );
   }

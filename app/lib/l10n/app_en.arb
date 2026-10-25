@@ -155,5 +155,7 @@
   "galleryFabHome": "Home",
   "galleryFabSources": "Sources",
   "galleryFabCollection": "Album",
-  "galleryFabArtist": "Artist"
+  "galleryFabArtist": "Artist",
+  "galleryFabPhone": "Phone, with the mini player",
+  "splitShuffle": "Shuffle"
 }

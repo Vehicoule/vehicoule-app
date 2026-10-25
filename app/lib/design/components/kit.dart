@@ -1,11 +1,13 @@
 // The rest of the M3 set the app uses (spec UI §4, §5.4, §5.8, §6), each in its Vehicoule
 // configuration: our icons, our labels, our tokens. Built on material_3_expressive;
 // screens use these, never the package (guarded in test/design).
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../haptics.dart';
+import '../motion.dart';
 import '../symbols.dart';
 import '../tokens.dart';
 import 'artwork.dart';
@@ -65,20 +67,112 @@ class VExtendedFab extends StatelessWidget {
   final bool extended;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: label,
-    onTap: onPressed,
-    excludeSemantics: true,
-    child: M3EExtendedFab(
+  Widget build(BuildContext context) {
+    Widget fab(bool extended, [Key? key]) => M3EExtendedFab(
+      key: key,
       icon: VSymbol(icon, filled: true),
       label: label,
       extended: extended,
       onPressed: onPressed,
       // M3 Expressive's default extended FAB is the small one (56).
       size: M3EExtendedFabSize.small,
-    ),
-  );
+    );
+    return Semantics(
+      button: true,
+      label: label,
+      onTap: onPressed,
+      excludeSemantics: true,
+      // M3E springs the width with a fixed motion: with reduce motion, the two states
+      // cross-fade instead (spec UI §2.6).
+      child: reduceMotion(context)
+          ? AnimatedSwitcher(
+              duration: VDurations.reduced,
+              child: fab(extended, ValueKey(extended)),
+            )
+          : fab(extended),
+    );
+  }
+}
+
+/// A phone screen's bottom corner (spec UI §5.4): the mini player, and the screen's FAB
+/// above its ⏯, right-aligned, 16 dp apart. The FAB hides while [body] scrolls down and
+/// comes back when it scrolls up. A header split button that has scrolled away becomes
+/// [fab] (the screen passes it once its header is gone).
+class VFabDock extends StatefulWidget {
+  const VFabDock({super.key, required this.body, this.fab, this.player});
+
+  final Widget body;
+  final Widget? fab;
+
+  /// The mini player; without it (desktop, nothing playing) the FAB has the corner.
+  final Widget? player;
+
+  @override
+  State<VFabDock> createState() => _VFabDockState();
+}
+
+class _VFabDockState extends State<VFabDock> {
+  bool _shown = true;
+
+  bool _onScroll(UserScrollNotification n) {
+    final shown = switch (n.direction) {
+      ScrollDirection.reverse => false,
+      ScrollDirection.forward => true,
+      ScrollDirection.idle => _shown,
+    };
+    if (shown != _shown) setState(() => _shown = shown);
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fab = _shown ? widget.fab : null;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: NotificationListener<UserScrollNotification>(
+            onNotification: _onScroll,
+            child: widget.body,
+          ),
+        ),
+        PositionedDirectional(
+          start: VSpace.s16,
+          end: VSpace.s16,
+          bottom: VSpace.s16,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              AnimatedSwitcher(
+                duration: vMotion(context, VDurations.short),
+                transitionBuilder: (child, a) => ScaleTransition(
+                  scale: a,
+                  alignment: AlignmentDirectional.bottomEnd.resolve(
+                    Directionality.of(context),
+                  ),
+                  child: FadeTransition(opacity: a, child: child),
+                ),
+                child: fab == null
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        key: const ValueKey('fab'),
+                        // 16 dp to the ⏯ itself, which sits centred beside the
+                        // taller toolbar.
+                        padding: EdgeInsets.only(
+                          bottom: widget.player == null
+                              ? 0
+                              : VSpace.s16 - (VSize.toolbar - VSize.fab) / 2,
+                        ),
+                        child: fab,
+                      ),
+              ),
+              ?widget.player,
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// The FAB menu (Bibliothèque: nouvelle playlist, importer un lien).

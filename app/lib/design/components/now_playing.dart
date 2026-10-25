@@ -14,6 +14,7 @@ import '../../l10n/app_localizations.dart';
 import '../haptics.dart';
 import '../motion.dart';
 import '../symbols.dart';
+import '../theme.dart';
 import '../tokens.dart';
 import 'artwork.dart';
 import 'controls.dart';
@@ -180,6 +181,7 @@ class VNowPlaying extends StatefulWidget {
       progressKey = ValueKey('np.progress'),
       controlsKey = ValueKey('np.controls'),
       selectorKey = ValueKey('np.selector'),
+      scrimKey = ValueKey('np.scrim'),
       compactKey = ValueKey('np.compact'),
       compactArtKey = ValueKey('np.compact.art');
 
@@ -256,23 +258,21 @@ class _VNowPlayingState extends State<VNowPlaying>
     super.dispose();
   }
 
-  /// Text over the Vague's cover: on a veil of the surface, so it reads on any cover.
-  Widget _onArt(BuildContext context, Widget child) {
-    if (!_bleed) return child;
-    return Center(
-      child: DecoratedBox(
-        decoration: ShapeDecoration(
-          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.72),
-          shape: const StadiumBorder(),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: VSpace.s12,
-            vertical: VSpace.s4,
-          ),
-          child: child,
-        ),
-      ),
+  double _headerBottom(BuildContext context) =>
+      MediaQuery.paddingOf(context).top + _headerHeight;
+
+  double _scrimHeight(BuildContext context) =>
+      _headerBottom(context) + VSpace.s24;
+
+  /// Solid under the header, fading out below it.
+  LinearGradient _scrim(BuildContext context) {
+    final surface = Theme.of(context).colorScheme.surface;
+    final solid = surface.withValues(alpha: VSize.headerScrim);
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [solid, solid, surface.withValues(alpha: 0)],
+      stops: [0, _headerBottom(context) / _scrimHeight(context), 1],
     );
   }
 
@@ -295,7 +295,7 @@ class _VNowPlayingState extends State<VNowPlaying>
     }
     // A plain surface, no gradient (spec UI §6.6, user ruling).
     return ColoredBox(
-      color: Theme.of(context).colorScheme.surfaceContainer,
+      color: vScreenSurface(Theme.of(context).colorScheme),
       // The Vague's cover runs under the status bar: no top inset for the column, the
       // header takes it instead.
       child: SafeArea(
@@ -313,6 +313,20 @@ class _VNowPlayingState extends State<VNowPlaying>
           child: Stack(
             children: [
               Positioned.fill(child: _body(context)),
+              // Under the header, a scrim of the surface: its icons and text read on
+              // any cover (≥ 3:1), then it fades into the artwork.
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: _scrimHeight(context),
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    key: VNowPlaying.scrimKey,
+                    decoration: BoxDecoration(gradient: _scrim(context)),
+                  ),
+                ),
+              ),
               Positioned(
                 top: 0,
                 left: 0,
@@ -408,6 +422,7 @@ class _VNowPlayingState extends State<VNowPlaying>
       disc: _disc,
       bleed: _bleed,
       margin: tall ? VSpace.s16 : VSpace.s24,
+      controlsGap: _controlsGap(tall),
       cap: widget.size == PlayerSize.large
           ? VSize.playerArtLarge
           : VSize.playerArtMedium,
@@ -424,6 +439,18 @@ class _VNowPlayingState extends State<VNowPlaying>
             child: Opacity(
               opacity: 1 - t,
               child: _blocks(context, tall: tall),
+            ),
+          ),
+        ),
+      if (t < 1 && !widget.wide)
+        LayoutId(
+          key: const ValueKey('np.layer.controls'),
+          id: _Part.controls,
+          child: IgnorePointer(
+            ignoring: t > 0,
+            child: Opacity(
+              opacity: 1 - t,
+              child: _controls(tall: tall),
             ),
           ),
         ),
@@ -537,25 +564,22 @@ class _VNowPlayingState extends State<VNowPlaying>
               ),
             const SizedBox(width: VSpace.s4),
             Expanded(
-              child: _onArt(
-                context,
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      l.playingFromLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: small,
-                    ),
-                    Text(
-                      data.sourceTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall,
-                    ),
-                  ],
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    l.playingFromLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: small,
+                  ),
+                  Text(
+                    data.sourceTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: VSpace.s4),
@@ -736,11 +760,17 @@ class _VNowPlayingState extends State<VNowPlaying>
         if (!_disc) ...[const SizedBox(height: VSpace.s12), _times(context)],
         SizedBox(height: gap),
         _actions(context),
-        SizedBox(height: tall ? VSpace.s32 : VSpace.s24),
-        _controls(tall: tall),
+        // In the column the controls are their own part: the spare height goes
+        // between the two groups.
+        if (widget.wide) ...[
+          SizedBox(height: _controlsGap(tall)),
+          _controls(tall: tall),
+        ],
       ],
     );
   }
+
+  static double _controlsGap(bool tall) => tall ? VSpace.s32 : VSpace.s24;
 
   /// Lyrics or queue under the compact header, whose artwork slot the flying artwork fills.
   Widget _sideView(BuildContext context) => Column(
@@ -1066,7 +1096,7 @@ class _VNowPlayingState extends State<VNowPlaying>
   }
 }
 
-enum _Part { blocks, times, side, art }
+enum _Part { blocks, controls, times, side, art }
 
 /// One column, centred in the height it gets: the artwork as large as the width allows
 /// (a margin of 24, full width for the Wave) and the blocks under it; [wide] puts the
@@ -1083,10 +1113,11 @@ class _PlayerLayout extends MultiChildLayoutDelegate {
     required this.bleed,
     required this.margin,
     required this.cap,
+    required this.controlsGap,
   });
 
   final GlobalKey slotKey, sideKey;
-  final double t, cap, margin;
+  final double t, cap, margin, controlsGap;
   final bool reduced, wide, disc;
 
   /// The Vague: the artwork at full width from the very top, under the header.
@@ -1140,13 +1171,19 @@ class _PlayerLayout extends MultiChildLayoutDelegate {
       );
     } else {
       final w = size.width - 2 * VSpace.s24;
-      var blocksH = 0.0;
-      if (hasChild(_Part.blocks)) {
-        blocksH = layoutChild(
-          _Part.blocks,
-          BoxConstraints(minWidth: w, maxWidth: w, maxHeight: size.height),
-        ).height;
-      }
+      final loose = BoxConstraints(
+        minWidth: w,
+        maxWidth: w,
+        maxHeight: size.height,
+      );
+      // Title and actions, then the controls group.
+      final titleH = hasChild(_Part.blocks)
+          ? layoutChild(_Part.blocks, loose).height
+          : 0.0;
+      final controlsH = hasChild(_Part.controls)
+          ? layoutChild(_Part.controls, loose).height
+          : 0.0;
+      final blocksH = titleH + (controlsH > 0 ? controlsGap + controlsH : 0);
       // The Disc's times: under the ring, as wide as it (lecteur-v3).
       var times = Size.zero;
       final timesW = math.min(size.width - 2 * margin, cap);
@@ -1185,10 +1222,17 @@ class _PlayerLayout extends MultiChildLayoutDelegate {
           Offset((size.width - timesW) / 2, big.bottom + VSpace.s4),
         );
       }
+      // The Disc's title follows its times (no band between them): the spare height
+      // goes between the title group and the controls, and under the controls. The
+      // Vague keeps its gap under the wave (lecteur-v3 C).
+      final y = top + height + under + (disc ? 0 : share);
       if (hasChild(_Part.blocks)) {
+        positionChild(_Part.blocks, Offset(VSpace.s24, y));
+      }
+      if (hasChild(_Part.controls)) {
         positionChild(
-          _Part.blocks,
-          Offset(VSpace.s24, top + height + under + share),
+          _Part.controls,
+          Offset(VSpace.s24, y + titleH + controlsGap + (disc ? share : 0)),
         );
       }
     }
@@ -1210,6 +1254,7 @@ class _PlayerLayout extends MultiChildLayoutDelegate {
       old.disc != disc ||
       old.bleed != bleed ||
       old.margin != margin ||
+      old.controlsGap != controlsGap ||
       old.cap != cap;
 }
 

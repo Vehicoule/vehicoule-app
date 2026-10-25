@@ -6,7 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_3_expressive/material_3_expressive.dart'
-    show M3EProgressIndicator, M3ESlider, M3EButton;
+    show M3EProgressIndicator, M3ESlider, M3EButton, M3ETheme, M3EExtendedFab;
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/bridge/downloads.dart';
 import 'package:vehicoule/bridge/queue.dart';
@@ -418,6 +418,159 @@ void main() {
     expect(
       (VCurves.spring.transform(0.3) - VCurves.standard.transform(0.3)).abs(),
       greaterThan(0.01),
+    );
+  });
+
+  // Polish review fixes.
+
+  testWidgets('I-1: no band between the times and the title (Disc)', (
+    tester,
+  ) async {
+    for (final (size, screen) in [
+      (PlayerSize.large, const Size(412, 892)),
+      (PlayerSize.medium, const Size(360, 800)),
+    ]) {
+      await show(tester, player(size: size), size: screen);
+      final times = tester.getRect(find.byKey(VNowPlaying.progressKey));
+      final title = tester.getRect(find.byKey(VNowPlaying.titleKey));
+      expect(
+        title.top - times.bottom,
+        lessThanOrEqualTo(VSpace.s24),
+        reason: '$size: the title follows the times',
+      );
+    }
+  });
+
+  testWidgets('I-2: the Vague header reads on any cover (scrim ≥ 3:1)', (
+    tester,
+  ) async {
+    for (final b in Brightness.values) {
+      await tester.pumpWidget(
+        harness(player(style: PlayerStyle.wave), reduce: true, brightness: b),
+      );
+      await tester.pump();
+      final scrim = tester.widget<DecoratedBox>(
+        find.byKey(VNowPlaying.scrimKey),
+      );
+      final g = (scrim.decoration as BoxDecoration).gradient! as LinearGradient;
+      final cs = Theme.of(tester.element(find.byType(VNowPlaying))).colorScheme;
+      expect(g.colors.first.withValues(alpha: 1), cs.surface);
+      // The header's icons sit within the scrim's solid part.
+      final box = tester.getRect(find.byKey(VNowPlaying.scrimKey));
+      final icons = tester.getRect(find.bySemanticsLabel('Réduire'));
+      expect(
+        icons.bottom,
+        lessThanOrEqualTo(box.top + box.height * g.stops![1]),
+      );
+      for (final cover in [const Color(0xFF000000), const Color(0xFFFFFFFF)]) {
+        final under = Color.alphaBlend(g.colors.first, cover);
+        expect(
+          contrast(cs.onSurfaceVariant, under),
+          greaterThanOrEqualTo(3),
+          reason: '$b over $cover',
+        );
+      }
+    }
+  });
+
+  testWidgets('I-3: pure black keeps the full-screen player at 0', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        player(),
+        reduce: true,
+        brightness: Brightness.dark,
+        pureBlack: true,
+      ),
+    );
+    await tester.pump();
+    final bg = tester
+        .widget<ColoredBox>(
+          find
+              .descendant(
+                of: find.byType(VNowPlaying),
+                matching: find.byType(ColoredBox),
+              )
+              .first,
+        )
+        .color;
+    expect(bg, const Color(0xFF000000));
+  });
+
+  testWidgets('I-4: a colourless cover gives the fallback seed, not the last', (
+    tester,
+  ) async {
+    late String red, grey;
+    await tester.runAsync(() async {
+      red = await swatch(const Color(0xFFD32F2F), 'red4');
+      grey = await swatch(const Color(0xFF808080), 'grey4');
+    });
+    const fallback = Color(0xFF6F8F72);
+    Color? s;
+    await tester.runAsync(() async {
+      s = await seedForArtwork(grey, fallback: fallback);
+    });
+    expect(s, fallback);
+    // In the gallery: red, then grey → the preset's theme, not red's.
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      GalleryApp(seedFile: (id) async => id == sampleTracks[1].id ? red : grey),
+    );
+    Future<Color> primary() async {
+      for (var i = 0; i < 12; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+      return Theme.of(tester.element(find.byType(Scaffold).first))
+          .colorScheme
+          .primary;
+    }
+
+    final preset = vTheme(
+      brightness: Brightness.light,
+      seed: VPresets.seeds.first,
+    ).colorScheme.primary;
+    expect(await primary(), isNot(preset), reason: 'red first');
+    final l = lookupAppLocalizations(const Locale('fr'));
+    await tester.tap(find.widgetWithText(VButton, l.actionNext).first);
+    expect(await primary(), preset, reason: 'grey falls back');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('I-5: reduce motion makes the FAB menu instant', (tester) async {
+    await show(tester, const SizedBox());
+    final t = M3ETheme.of(tester.element(find.byType(SizedBox).last))
+        .fabMenuTheme;
+    expect(t.expandSpring.stiffness, greaterThanOrEqualTo(10000));
+    expect(t.fabShapeSpring.stiffness, greaterThanOrEqualTo(10000));
+    expect(t.expandStagger, Duration.zero);
+  });
+
+  testWidgets('I-5: reduce motion swaps the extended FAB without a morph', (
+    tester,
+  ) async {
+    Widget fab(bool e) => Center(
+      child: VExtendedFab(
+        icon: VIcons.add,
+        label: 'Ajouter une source',
+        extended: e,
+        onPressed: noop,
+      ),
+    );
+    await show(tester, fab(true));
+    final wide = tester.getSize(find.byType(VExtendedFab)).width;
+    await tester.pumpWidget(harness(fab(false), reduce: true));
+    await tester.pump(const Duration(milliseconds: 16));
+    // One frame on, the newest FAB is already the collapsed one (it fades in).
+    expect(
+      tester.getSize(find.byType(M3EExtendedFab).last).width,
+      lessThan(wide / 2),
+      reason: 'no width spring',
     );
   });
 }

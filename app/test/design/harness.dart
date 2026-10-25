@@ -10,10 +10,15 @@ Widget harness(
   Widget child, {
   bool reduce = false,
   Brightness brightness = Brightness.light,
+  bool pureBlack = false,
   Locale locale = const Locale('fr'),
   ArtworkSource? resolve,
 }) => MaterialApp(
-  theme: vTheme(brightness: brightness, seed: VPresets.seeds.first),
+  theme: vTheme(
+    brightness: brightness,
+    seed: VPresets.seeds.first,
+    pureBlack: pureBlack,
+  ),
   locale: locale,
   localizationsDelegates: vLocalizationsDelegates,
   supportedLocales: AppLocalizations.supportedLocales,

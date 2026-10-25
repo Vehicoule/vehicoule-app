@@ -506,4 +506,10 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get galleryFabArtist => 'Artiste';
+
+  @override
+  String get galleryFabPhone => 'Téléphone, avec le mini-lecteur';
+
+  @override
+  String get splitShuffle => 'Aléatoire';
 }

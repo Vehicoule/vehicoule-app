@@ -33,6 +33,9 @@ abstract final class VSize {
   /// The expanded rail (M3: 220 to 360), wide enough for its FAB's label.
   static const railExpanded = 280.0;
 
+  /// The rail's width from which its FAB shows its label (while it grows, a plain FAB).
+  static const railFabExtended = 200.0;
+
   /// The standard side sheet that holds the desktop "now playing" pane.
   static const sideSheet = 360.0;
 
@@ -95,6 +98,9 @@ abstract final class VSize {
   /// The band under a carousel item's text: how dark at the bottom, how high, and the
   /// narrowest item that carries text (M3E shows the title from 200).
   static const carouselScrim = 0.6, carouselBand = 0.5, carouselText = 200.0;
+
+  /// The surface's opacity under the Vague's header: its icons read on any cover.
+  static const headerScrim = 0.88;
 
   /// The thin stroke of small progress icons (download).
   static const iconStroke = 3.0;

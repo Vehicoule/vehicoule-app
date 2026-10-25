@@ -168,7 +168,11 @@ class _GalleryAppState extends State<GalleryApp> {
     setState(() => _source = s);
     final playing = _playing;
     final seed = switch (s) {
-      _NowPlaying() => await _artSeed(sampleTracks[playing].id),
+      // A colourless cover falls back to the System seed, else the first preset.
+      _NowPlaying() => await seedForArtwork(
+        await _artPath(sampleTracks[playing].id),
+        fallback: await systemSeed() ?? VPresets.seeds.first,
+      ),
       _System() => await systemSeed(),
       _Preset(:final n) => VPresets.seeds[n - 1],
     };
@@ -177,13 +181,9 @@ class _GalleryAppState extends State<GalleryApp> {
     }
   }
 
-  /// The seed of a track's cover: its 112 px file, extracted once per cover
-  /// (`seedFromArtwork`, pastel, cached).
-  Future<Color?> _artSeed(String id) async {
-    final path =
-        await (widget.covers?.file(id, 112) ?? widget.seedFile?.call(id));
-    return path == null ? null : seedFromArtwork(path);
-  }
+  /// A track's 112 px cover file, for its seed (`seedForArtwork`, pastel, cached).
+  Future<String?> _artPath(String id) async =>
+      widget.covers?.file(id, 112) ?? widget.seedFile?.call(id);
 
   /// The next sample track plays: the players follow, and so does the theme.
   void _next() {
@@ -866,7 +866,7 @@ class _FlightDemo extends StatefulWidget {
 
 class _FlightDemoState extends State<_FlightDemo> {
   final _stack = GlobalKey();
-  double _extent = 0.35;
+  double _extent = 0;
   Rect? _from, _to;
 
   /// A global rect, in the frame's coordinates.
@@ -1201,7 +1201,10 @@ class _FabSection extends StatefulWidget {
 }
 
 class _FabSectionState extends State<_FabSection> {
-  bool _extended = true, _collection = false, _artist = false;
+  bool _extended = true, _collection = false, _artist = false, _phone = false;
+
+  /// The collection header's height: past it, its split button has scrolled away.
+  static const _header = VSpace.s16 * 3 + VSize.shelfCard + VSize.menuTarget;
 
   /// A demo screen: its frame, named for the test of the one-main-action rule.
   Widget _demo(String key, String title, Widget body) => Column(
@@ -1217,15 +1220,18 @@ class _FabSectionState extends State<_FabSection> {
     ],
   );
 
-  /// A scrolling list that reports whether it has left its top.
-  Widget _scrolling(ValueChanged<bool> scrolled, List<Widget> children) =>
-      NotificationListener<ScrollUpdateNotification>(
-        onNotification: (n) {
-          scrolled(n.metrics.pixels > VSpace.s8);
-          return false;
-        },
-        child: ListView(children: children),
-      );
+  /// A scrolling list that reports whether it has scrolled past [past].
+  Widget _scrolling(
+    ValueChanged<bool> scrolled,
+    List<Widget> children, {
+    double past = VSpace.s8,
+  }) => NotificationListener<ScrollUpdateNotification>(
+    onNotification: (n) {
+      scrolled(n.metrics.pixels > past);
+      return false;
+    },
+    child: ListView(children: children),
+  );
 
   Widget _rows() => Column(
     children: [
@@ -1247,63 +1253,62 @@ class _FabSectionState extends State<_FabSection> {
     final l = AppLocalizations.of(context);
     Widget corner(Widget fab) =>
         PositionedDirectional(end: VSpace.s16, bottom: VSpace.s16, child: fab);
-    // The split button sits in the collection's header, then shrinks into the FAB.
+    // The split button sits in the collection's header; once the header has scrolled
+    // away it becomes the screen's FAB (spec UI §5.4), above the mini player on a phone.
+    final play = [
+      VAction(l.actionShuffle, VIcons.shuffle, _noop),
+      VAction(l.actionPlayNext, VIcons.playNext, _noop),
+      VAction(l.actionAddToQueue, VIcons.addToQueue, _noop),
+    ];
     Widget collection(
       String key,
-      String title,
       String label,
       IconData icon,
       List<VAction> items,
-      bool collapsed,
-      ValueChanged<bool> onScrolled,
-    ) => _demo(
-      key,
-      title,
-      Stack(
-        children: [
-          _scrolling(onScrolled, [
-            Padding(
-              padding: const EdgeInsets.all(VSpace.s16),
-              child: Row(
-                children: [
-                  VArtwork(
-                    itemId: sampleCollections.first.$1,
-                    size: VSize.shelfCard,
-                    kind: key == 'artist' ? ArtKind.artist : ArtKind.item,
-                  ),
-                  const SizedBox(width: VSpace.s16),
-                  Expanded(
-                    child: Text(
-                      key == 'artist'
-                          ? 'Daft Punk'
-                          : sampleCollections.first.$2,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                ],
+      bool gone,
+      ValueChanged<bool> onGone, {
+      Widget? player,
+    }) => VFabDock(
+      body: _scrolling(onGone, past: _header, [
+        Padding(
+          padding: const EdgeInsets.all(VSpace.s16),
+          child: Row(
+            children: [
+              VArtwork(
+                itemId: sampleCollections.first.$1,
+                size: VSize.shelfCard,
+                kind: key == 'artist' ? ArtKind.artist : ArtKind.item,
               ),
-            ),
-            // The header's action row, where the split button sits.
-            const SizedBox(height: VSize.menuTarget + VSpace.s16),
-            _rows(),
-          ]),
-          AnimatedPositionedDirectional(
-            duration: vMotion(context, VDurations.medium),
-            curve: VCurves.emphasized,
+              const SizedBox(width: VSpace.s16),
+              Expanded(
+                child: Text(
+                  key == 'artist' ? 'Daft Punk' : sampleCollections.first.$2,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // The header's action row.
+        Padding(
+          padding: const EdgeInsetsDirectional.only(
             end: VSpace.s16,
-            top: collapsed
-                ? VSize.sideSheet * 1.2 - VSize.fab - VSpace.s16
-                : VSize.shelfCard + VSpace.s32,
-            child: VSplitFab(
+            bottom: VSpace.s16,
+          ),
+          child: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: VSplitButton(
               label: label,
               icon: icon,
               onPressed: _noop,
               items: items,
-              collapsed: collapsed,
             ),
           ),
-        ],
-      ),
+        ),
+        _rows(),
+      ]),
+      fab: gone ? VFab(icon: icon, label: label, onPressed: _noop) : null,
+      player: player,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1379,36 +1384,75 @@ class _FabSectionState extends State<_FabSection> {
               ],
             ),
           ),
-          collection(
+          _demo(
             'collection',
             l.galleryFabCollection,
-            l.actionPlay,
-            VIcons.play,
-            [
-              VAction(l.actionShuffle, VIcons.shuffle, _noop),
-              VAction(l.actionPlayNext, VIcons.playNext, _noop),
-              VAction(l.actionAddToQueue, VIcons.addToQueue, _noop),
-            ],
-            _collection,
-            (s) {
-              if (s != _collection) setState(() => _collection = s);
-            },
+            collection(
+              'collection',
+              l.actionPlay,
+              VIcons.play,
+              play,
+              _collection,
+              (s) {
+                if (s != _collection) setState(() => _collection = s);
+              },
+            ),
           ),
-          collection(
+          _demo(
             'artist',
             l.galleryFabArtist,
-            l.actionShuffle,
-            VIcons.shuffle,
-            [
-              VAction(l.actionPlayInOrder, VIcons.play, _noop),
-              VAction(l.actionRadio, VIcons.radio, _noop),
-              VAction(l.actionPlayNext, VIcons.playNext, _noop),
-              VAction(l.actionAddToQueue, VIcons.addToQueue, _noop),
-            ],
-            _artist,
-            (s) {
-              if (s != _artist) setState(() => _artist = s);
-            },
+            collection(
+              'artist',
+              l.splitShuffle,
+              VIcons.shuffle,
+              [
+                VAction(l.actionPlayInOrder, VIcons.play, _noop),
+                VAction(l.actionRadio, VIcons.radio, _noop),
+                VAction(l.actionPlayNext, VIcons.playNext, _noop),
+                VAction(l.actionAddToQueue, VIcons.addToQueue, _noop),
+              ],
+              _artist,
+              (s) {
+                if (s != _artist) setState(() => _artist = s);
+              },
+            ),
+          ),
+          // A phone: the screen's FAB above the mini player's ⏯.
+          _demo(
+            'phone',
+            l.galleryFabPhone,
+            Column(
+              children: [
+                Expanded(
+                  child: collection(
+                    'collection',
+                    l.actionPlay,
+                    VIcons.play,
+                    play,
+                    _phone,
+                    (s) {
+                      if (s != _phone) setState(() => _phone = s);
+                    },
+                    player: VNowPlaying(
+                      position: _fixedPosition,
+                      data: _data(),
+                      size: PlayerSize.compact,
+                      style: PlayerStyle.disc,
+                      view: PlayerView.player,
+                      onView: (_) {},
+                      actions: _actions,
+                      lyrics: _lyrics,
+                      queue: _queue,
+                    ),
+                  ),
+                ),
+                VNavigationBar(
+                  destinations: _destinations(l),
+                  selected: 2,
+                  onSelected: (_) {},
+                ),
+              ],
+            ),
           ),
         ]),
       ],
@@ -1797,7 +1841,8 @@ class _NavigationSection extends StatefulWidget {
 }
 
 class _NavigationSectionState extends State<_NavigationSection> {
-  int _tab = 1;
+  // Bibliothèque: the rail shows its FAB menu « Nouvelle ».
+  int _tab = 2;
 
   @override
   Widget build(BuildContext context) {
@@ -1817,8 +1862,23 @@ class _NavigationSectionState extends State<_NavigationSection> {
         onSelected: (i) => setState(() => _tab = i),
         expanded: expanded,
         onExpanded: (_) {},
-        // The destination's FAB at the top of the rail (here Sources).
-        fab: VAction(l.actionAddSource, VIcons.add, _noop),
+        // The selected destination's own FAB: Accueil launches, Bibliothèque creates.
+        fab: switch (_tab) {
+          0 => VAction(l.fabLaunch, VIcons.play, _noop),
+          2 => VAction(l.fabNew, VIcons.add, _noop),
+          _ => null,
+        },
+        fabItems: switch (_tab) {
+          0 => [
+            VAction(l.launchShuffleLikes, VIcons.shuffle, _noop),
+            VAction(l.launchRadio, VIcons.radio, _noop),
+            VAction(l.launchResume, VIcons.history, _noop),
+          ],
+          _ => [
+            VAction(l.actionNewPlaylist, VIcons.playlistAdd, _noop),
+            VAction(l.actionImportLink, VIcons.addLink, _noop),
+          ],
+        },
       ),
     );
     return _wrap([
@@ -2280,7 +2340,7 @@ class _TransitionsSectionState extends State<_TransitionsSection> {
 
   Widget _page(String title) => Builder(
     builder: (c) => ColoredBox(
-      color: Theme.of(c).colorScheme.surfaceContainer,
+      color: vScreenSurface(Theme.of(c).colorScheme),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

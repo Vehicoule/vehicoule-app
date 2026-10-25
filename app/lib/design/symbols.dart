@@ -38,6 +38,7 @@ abstract final class VIcons {
   static const library = IconData(0xe030, fontFamily: _f); // library_music
   static const lyrics = IconData(0xec0b, fontFamily: _f);
   static const menu = IconData(0xe5d2, fontFamily: _f);
+  static const menuOpen = IconData(0xe9bd, fontFamily: _f);
   static const more = IconData(0xe5d4, fontFamily: _f); // more_vert
   static const musicNote = IconData(0xe405, fontFamily: _f);
   static const musicOff = IconData(0xe440, fontFamily: _f);

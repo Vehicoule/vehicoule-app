@@ -1033,6 +1033,18 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Artiste'**
   String get galleryFabArtist;
+
+  /// No description provided for @galleryFabPhone.
+  ///
+  /// In fr, this message translates to:
+  /// **'Téléphone, avec le mini-lecteur'**
+  String get galleryFabPhone;
+
+  /// The artist's split button and its FAB (spec UI §5.4).
+  ///
+  /// In fr, this message translates to:
+  /// **'Aléatoire'**
+  String get splitShuffle;
 }
 
 class _AppLocalizationsDelegate

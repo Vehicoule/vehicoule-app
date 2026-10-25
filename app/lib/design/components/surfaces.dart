@@ -8,6 +8,7 @@ import '../symbols.dart';
 import '../tokens.dart';
 import 'artwork.dart';
 import 'controls.dart';
+import 'kit.dart';
 import 'menu.dart';
 
 /// A destination of the bar or the rail.
@@ -59,7 +60,7 @@ class VPinned {
 
 /// The rail (spec UI §4.2): the destinations, then « Épinglés »; collapsed (icons and
 /// artworks) or [expanded]. Indices run over the destinations, then the pinned items.
-class VNavigationRail extends StatefulWidget {
+class VNavigationRail extends StatelessWidget {
   const VNavigationRail({
     super.key,
     required this.destinations,
@@ -69,10 +70,16 @@ class VNavigationRail extends StatefulWidget {
     required this.expanded,
     required this.onExpanded,
     this.fab,
+    this.fabItems = const [],
   });
 
-  /// The destination's main action, in the rail's FAB slot at its top (spec UI §5.4).
+  /// The selected destination's own FAB (spec UI §5.4), under the menu button: a FAB
+  /// collapsed, an extended FAB expanded. Null where the destination has none.
   final VAction? fab;
+
+  /// A FAB menu's actions (Accueil « Lancer », Bibliothèque « Nouvelle »): the FAB opens
+  /// them in a menu under it, and [fab]'s own callback isn't used.
+  final List<VAction> fabItems;
 
   final List<VDestination> destinations;
   final List<VPinned> pinned;
@@ -82,44 +89,44 @@ class VNavigationRail extends StatefulWidget {
   final ValueChanged<bool> onExpanded;
 
   @override
-  State<VNavigationRail> createState() => _VNavigationRailState();
-}
-
-class _VNavigationRailState extends State<VNavigationRail> {
-  @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final destinations = widget.destinations, pinned = widget.pinned;
-    // Collapsed, the FAB (M3EFab). Expanded, M3E's rail would make it an extended FAB
-    // laid out while the rail opens from 0 wide, which overflows: the expanded rail
-    // keeps its destinations only until the package fixes it.
-    final expanded = widget.expanded, fab = expanded ? null : widget.fab;
+    // The menu button and the FAB are drawn here, not in M3E's slots: its slot lays an
+    // extended FAB out while the rail opens from 0 wide, which overflows.
+    final header = Column(
+      crossAxisAlignment: expanded
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.center,
+      children: [
+        VIconButton(
+          icon: expanded ? VIcons.menuOpen : VIcons.menu,
+          label: expanded ? l.actionCollapseMenu : l.actionExpandMenu,
+          onPressed: () => onExpanded(!expanded),
+        ),
+        if (fab case final fab?) ...[
+          const SizedBox(height: VSpace.s8),
+          _RailFab(fab: fab, items: fabItems, expanded: expanded),
+        ],
+      ],
+    );
     return M3ENavigationRail(
       type: expanded
-          ? M3ENavigationRailType.expanded
-          : M3ENavigationRailType.collapsed,
-      onTypeChanged: (t) =>
-          widget.onExpanded(t == M3ENavigationRailType.expanded),
-      // Room for the FAB's label (« Ajouter une source ») when expanded.
+          ? M3ENavigationRailType.alwaysExpand
+          : M3ENavigationRailType.alwaysCollapse,
       expandedWidth: VSize.railExpanded,
       // Collapsed: icons and artworks only (spec UI §4.2), the labels are spoken.
       labelBehavior: expanded
           ? M3ENavigationRailLabelBehavior.alwaysShow
           : M3ENavigationRailLabelBehavior.alwaysHide,
-      expandTooltip: l.actionExpandMenu,
-      collapseTooltip: l.actionCollapseMenu,
-      selectedIndex: widget.selected,
-      onDestinationSelected: widget.onSelected,
-      fab: switch (fab) {
-        final a? => M3ENavigationRailFabSlot(
-          icon: VSymbol(a.icon, filled: true),
-          label: a.label,
-          semanticLabel: a.label,
-          tooltip: a.label,
-          onPressed: a.onSelected,
+      leading: SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: EdgeInsetsDirectional.only(start: expanded ? VSpace.s16 : 0),
+          child: header,
         ),
-        null => null,
-      },
+      ),
+      selectedIndex: selected,
+      onDestinationSelected: onSelected,
       sections: [
         M3ENavigationRailSection(
           destinations: [
@@ -150,6 +157,43 @@ class _VNavigationRailState extends State<VNavigationRail> {
       ],
     );
   }
+}
+
+/// The rail's FAB: extended once the rail is wide enough for its label, a FAB menu's
+/// actions in a menu anchored under it.
+class _RailFab extends StatelessWidget {
+  const _RailFab({
+    required this.fab,
+    required this.items,
+    required this.expanded,
+  });
+
+  final VAction fab;
+  final List<VAction> items;
+  final bool expanded;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => Builder(
+      builder: (context) {
+        void press() {
+          if (items.isEmpty) return fab.onSelected();
+          final b = context.findRenderObject()! as RenderBox;
+          showVMenu(
+            context,
+            anchor: b.localToGlobal(Offset.zero) & b.size,
+            quick: const [],
+            groups: [items],
+          );
+        }
+
+        // While the rail grows, the plain FAB until the label fits.
+        return expanded && box.maxWidth >= VSize.railFabExtended
+            ? VExtendedFab(icon: fab.icon, label: fab.label, onPressed: press)
+            : VFab(icon: fab.icon, label: fab.label, onPressed: press);
+      },
+    ),
+  );
 }
 
 /// The search bar; typing opens its suggestions (spec UI §6.2, §4.2). [suggestions]

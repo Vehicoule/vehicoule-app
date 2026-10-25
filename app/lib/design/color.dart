@@ -8,7 +8,6 @@ import 'dart:ui' as ui;
 
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:material_color_utilities/material_color_utilities.dart';
 
 enum ColorSource { nowPlaying, system, preset }
@@ -57,6 +56,14 @@ Future<ui.Color?> seedFromArtwork(String path) {
   return seed;
 }
 
+/// The theme's seed while a track plays (spec UI §2.2): its artwork's, or [fallback]
+/// (the System seed, or the chosen preset) when the cover has no colour: the same
+/// answer for the same cover, never the previous track's colour.
+Future<ui.Color> seedForArtwork(
+  String? path, {
+  required ui.Color fallback,
+}) async => (path == null ? null : await seedFromArtwork(path)) ?? fallback;
+
 Future<ui.Color?> _extract(String path) async {
   try {
     final codec = await ui.instantiateImageCodec(
@@ -98,7 +105,8 @@ Future<ui.Color?> systemSeed() async {
     if (palette != null) return pastelSeed(ui.Color(palette.primary.get(40)));
     final accent = await DynamicColorPlugin.getAccentColor();
     return accent == null ? null : pastelSeed(accent);
-  } on PlatformException {
+  } on Exception {
+    // PlatformException, or no plugin at all (tests, an unsupported platform).
     return null;
   }
 }
