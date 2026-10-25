@@ -1283,6 +1283,8 @@ class _FabSectionState extends State<_FabSection> {
                 ],
               ),
             ),
+            // The header's action row, where the split button sits.
+            const SizedBox(height: VSize.menuTarget + VSpace.s16),
             _rows(),
           ]),
           AnimatedPositionedDirectional(

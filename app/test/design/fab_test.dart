@@ -58,6 +58,8 @@ void main() {
     ]) {
       expect(find.text(l), findsOneWidget, reason: l);
     }
+    // M3 menu items lead with their action's icon.
+    expect(find.byIcon(VIcons.album), findsNWidgets(4));
     await tester.tap(find.text('Radio'));
     await tester.pumpAndSettle();
     expect(picked, ['Radio']);

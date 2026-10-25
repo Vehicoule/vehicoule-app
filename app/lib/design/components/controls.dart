@@ -168,9 +168,11 @@ class VSplitButton extends StatelessWidget {
       leadingIcon: icon,
       onPressed: onPressed,
       trailingTooltip: AppLocalizations.of(context).actionMore,
-      items: [
+      // Menu entries lead with their action's icon, as M3's menus do.
+      items: null,
+      m3eMenuBuilder: (_) => [
         for (final (i, a) in items.indexed)
-          M3ESplitButtonItem(value: i, child: a.label),
+          M3EMenuSelectable(label: a.label, value: i, leading: Icon(a.icon)),
       ],
       onSelected: (i) => items[i].onSelected(),
     ),
