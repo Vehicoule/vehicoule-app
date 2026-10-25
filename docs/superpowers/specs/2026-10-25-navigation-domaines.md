@@ -249,8 +249,31 @@ contrat :
 |---|---|---|---|
 | Anime | une capture d'écran | trace.moe (API ouverte) | la série, l'épisode et l'instant : l'app l'ouvre à ce moment-là (`?t=`, §3.1) |
 | Livres | une page ou une case | SauceNAO (clé gratuite saisie par l'utilisateur dans les réglages de la source) | le livre et le chapitre |
-| Musique | 10 s capturées au micro | aucun fournisseur ouvert ne reconnaît fiablement un extrait bruité : la capacité existe, les fournisseurs viennent de feeds tiers ou d'une clé de l'utilisateur (AudD, ACRCloud) | le titre, liké ou lu en un toucher |
-| Musique (desktop) | le son de l'ordinateur, capturé proprement | AcoustID (empreinte calculée en local par `rusty-chromaprint`, en Rust) | idem |
+| Musique | jusqu'à 12 s capturées au micro | voir « Reconnaître un son » ci-dessous | la page du titre |
+| Musique (desktop) | le son de l'ordinateur, capturé proprement | AcoustID (empreinte calculée en local par `rusty-chromaprint`, en Rust) | la page du titre |
+
+**Reconnaître un son, comme Shazam.**
+
+- **Un geste** : le bouton micro de la search bar musique, une **tuile des réglages rapides**
+  Android, un raccourci d'icône (« C'est quel son ? »), le widget, le menu de la barre des menus
+  macOS. L'écoute démarre aussitôt : une grande forme M3E qui pulse avec le niveau du micro.
+- **Droit à la bonne page** : le résultat (titre, artiste, ISRC) est rattaché au catalogue
+  musique (Deezer par ISRC, sinon recherche), puis l'app ouvre la page du titre
+  (`vehicoule://t/…`, §3.1), avec ▶, like et « Ajouter à une playlist ». Rien trouvé après
+  12 s : « Je n'ai pas reconnu ce morceau. Rapproche-toi de la source du son. »
+- **« Reconnus »** : chaque reconnaissance est gardée, avec sa date, dans une tuile de la
+  Bibliothèque musique, même quand on ne lit pas le titre tout de suite.
+- **Fournisseur** : reconnaître un extrait bruité demande une base d'empreintes de dizaines de
+  millions de titres ; aucune n'est ouverte. La capacité `music.identify` reste donc un
+  plugin :
+  - feed officiel : AudD et ACRCloud, avec **la clé de l'utilisateur** (offres gratuites
+    limitées), saisie dans les réglages de la source ;
+  - feeds tiers : tout autre fournisseur, ajouté par un lien de source comme YouTube Music.
+  - Sans fournisseur installé, le bouton explique pourquoi et renvoie vers « Ajoute une
+    source ».
+- **Hors ligne** : l'extrait est gardé et reconnu au retour du réseau, avec une notification.
+- L'algorithme d'empreinte de Shazam (constellation de pics, publié en 2003) peut s'écrire en
+  Rust. Le blocage est la base de référence, pas le calcul.
 
 - **Entrées** : partager une image ou un son vers l'app ; un bouton dans la search bar de
   chaque domaine (appareil photo, micro) ; ⌘K « Identifier ».

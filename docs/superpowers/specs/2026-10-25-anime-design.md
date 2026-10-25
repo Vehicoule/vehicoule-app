@@ -343,7 +343,7 @@ change. Les plugins musique 1.0 restent chargés tels quels.
   la page » : une WebView dans une feuille, où **l'utilisateur passe lui-même** la
   vérification du site. Les cookies obtenus rejoignent la boîte du plugin, et le User-Agent
   de `session` est celui de la WebView. L'app ne résout jamais une vérification à la place de
-  l'utilisateur. Aniyomi a le même besoin (sites derrière une protection anti-robots) ; sans
+  l'utilisateur. WebView durcie : `2026-10-25-surface-attaque.md` §4. Aniyomi a le même besoin (sites derrière une protection anti-robots) ; sans
   ça, une grande partie des sources est inutilisable.
 - **Pas d'interface `js` dans l'hôte.** Beaucoup d'hébergeurs vidéo cachent l'URL derrière du
   JavaScript obscurci, mais ce JavaScript reste **dans le bac à sable du plugin** :
