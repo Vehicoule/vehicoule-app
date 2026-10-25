@@ -75,7 +75,8 @@ class VExtendedFab extends StatelessWidget {
       label: label,
       extended: extended,
       onPressed: onPressed,
-      size: M3EExtendedFabSize.medium,
+      // M3 Expressive's default extended FAB is the small one (56).
+      size: M3EExtendedFabSize.small,
     ),
   );
 }
@@ -208,7 +209,7 @@ class VChip extends StatelessWidget {
     label: label,
     type: filter ? M3EChipType.filter : M3EChipType.assist,
     selected: selected,
-    leading: icon == null ? null : VSymbol(icon!, size: VSize.iconSmall + 2),
+    leading: icon == null ? null : VSymbol(icon!, size: VSize.chipIcon),
     onPressed: onPressed,
   );
 }

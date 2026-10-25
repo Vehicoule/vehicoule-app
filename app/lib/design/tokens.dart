@@ -36,6 +36,9 @@ abstract final class VSize {
   /// Icon sizes: inline badge, list and button icon, empty-state icon.
   static const iconSmall = 16.0, icon = 24.0, iconLarge = 48.0;
 
+  /// A chip's leading icon (M3 chips: 18).
+  static const chipIcon = 18.0;
+
   /// The loading indicator inside ⏯.
   static const playIcon = 32.0;
 
