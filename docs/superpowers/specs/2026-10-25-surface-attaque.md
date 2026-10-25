@@ -58,7 +58,11 @@ configuré ne peut pas ouvrir `file://`, `tcp://` ni un autre hôte.
   recompile avec une **liste blanche** :
   - conteneurs : HLS, MPEG-TS, MP4 / fMP4, Matroska / WebM, Ogg, MP3, FLAC, WAV ;
   - audio : AAC, MP3, FLAC, Opus, Vorbis ;
-  - vidéo : H.264, HEVC, AV1, VP9 ;
+  - vidéo : H.264, HEVC, AV1, VP9. **AV2** entre dans la liste quand un décodeur stable
+    existe dans FFmpeg : en octobre 2026, la spec est encore en brouillon, le seul décodeur
+    libre (dav2d, VideoLAN, BSD) est en 0.0.1, il n'y a aucun décodeur matériel, et le
+    décodage logiciel coûte environ cinq fois celui de l'AV1, hors de portée d'un téléphone.
+    Aucune source ne sert d'AV2 aujourd'hui ;
   - sous-titres : ASS / SSA, SRT, WebVTT ;
   - protocoles : `http` seulement (le TLS est fait par le proxy, d'où mbedTLS retiré de
     FFmpeg).
@@ -118,7 +122,7 @@ Du code C ou C++ est marqué **(C)**.
 | Lecture | media_kit 1.2.6, libmpv + FFmpeg + libass **(C)**, mbedTLS **(C, retiré par §3)** ; audio_service |
 | Flutter | moteur Flutter **(C++)** ; go_router, intl, material_ui, material_3_expressive, material_color_utilities, dynamic_color, freezed_annotation |
 | Plateforme | connectivity_plus, path_provider, url_launcher, app_links, package_info_plus, device_info_plus, window_manager |
-| Prévues | media_kit_video et libs vidéo, workmanager, home_widget, sentry_flutter, webview_flutter, stockage sécurisé des jetons, capture du micro, rusty-chromaprint, Boa (si le spike l'exige) |
+| Prévues | prost (sauvegardes Aniyomi), chacha20poly1305 + argon2 (sauvegarde chiffrée), media_kit_video et libs vidéo, workmanager, home_widget, sentry_flutter, webview_flutter, stockage sécurisé des jetons, capture du micro, rusty-chromaprint, Boa (si le spike l'exige) |
 
 ### 7.2 Règles
 

@@ -106,6 +106,27 @@ de la première est cherché dans la suivante. « Changer de source » sur la pa
 réordonne ; la progression, les catégories et le tracker ne bougent pas, parce qu'ils
 pointent vers les items.
 
+### 3.5 Importer depuis Aniyomi (et Mihon)
+
+Pour qui vient d'Aniyomi, c'est ce qui décide du changement d'app.
+
+- Entrée : Réglages › Sauvegarde › « Importer depuis une autre app », et l'étape du premier
+  passage dans le domaine (§5.6). Le fichier vient du sélecteur système.
+- Format : la sauvegarde d'Aniyomi (`.tachibk`, protobuf compressé), lue en Rust (`prost`).
+  Fichier non fiable : taille plafonnée avant décompression, décodage borné, aucune URL du
+  fichier ouverte.
+- Ce qui est repris : séries de la bibliothèque, catégories, épisodes vus et position,
+  favoris, historique, et les trackers liés.
+- **Rattachement au catalogue** : d'abord par les ids de tracker de la sauvegarde (AniList,
+  MyAnimeList : rattachement direct, sans recherche), sinon par la correspondance du §3.3 sur
+  le titre. Les épisodes s'apparient par numéro.
+- Les sources d'Aniyomi (extensions Kotlin) n'ont pas d'équivalent : chaque série importée
+  cherche ses sources parmi celles installées (§3.3), et affiche « Choisir une source » sinon.
+- Fin : un résumé (« 142 séries importées, 3 à vérifier ») ; les séries à vérifier
+  s'ouvrent dans une liste.
+- La partie manga de ces sauvegardes (et celles de Mihon) est reprise par la spec livres, avec
+  le même lecteur de fichier.
+
 ## 4. Contrat
 
 ### 4.1 `vehicoule:anime@1.0.0`

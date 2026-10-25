@@ -328,6 +328,34 @@ et les états vides, qui ont déjà leurs grandes formes de décor.
   et le widget Android 4×2 proposent les cartes Reprendre (« Épisode 8 de X », « Ta file
   musique »).
 
+## 7 bis. Sauvegarde
+
+Pas de synchro en v1 : sans sauvegarde, perdre son téléphone, c'est perdre ses likes, ses
+playlists, sa progression et sa bibliothèque.
+
+- **Contenu** : toutes les données de l'utilisateur, pour tous les domaines : items
+  référencés, `external_refs`, likes, playlists, `plays`, bibliothèque, catégories,
+  progression, favoris, sources rattachées, relations, `settings_shared`, et la liste des
+  sources ajoutées (URL du feed et clé publique). **Pas** les caches, les téléchargements ni
+  les jetons des trackers (ils restent dans le trousseau : on se reconnecte).
+- **Format** : un fichier `.vehicoule`, ces lignes telles quelles avec leurs colonnes de
+  synchro (HLC, `device_id`, `deleted_at`), compressé. C'est le format que la synchro
+  réutilisera.
+- **Chiffrement** : par une phrase de passe au choix de l'utilisateur, XChaCha20-Poly1305
+  avec une clé dérivée par Argon2id (RustCrypto, Rust pur). Sans phrase, le fichier est
+  seulement compressé, et l'écran le dit.
+- **Restaurer** = **fusionner** par HLC, comme le fera la synchro : restaurer sur un appareil
+  déjà utilisé ne perd rien de récent. Les doublons se rejoignent par `merged_into`.
+- **Automatique** : chaque semaine (réglable : jour, semaine, jamais), dans l'espace de l'app,
+  en gardant les 4 dernières ; option « Copier aussi dans un dossier » choisi par le
+  sélecteur système (le fichier passe par Dart, Rust ne fait que le produire).
+- **Écran** : Réglages › Sauvegarde : « Sauvegarder maintenant », « Restaurer », la date de la
+  dernière sauvegarde. Le premier lancement propose « Restaurer une sauvegarde » en plus de
+  « Commencer ».
+- **Importer depuis une autre app** : Aniyomi et Mihon (spec anime §3.5) ; les playlists
+  Deezer et YouTube Music s'importent déjà par lien (socle §3.2).
+- Livrée dès la v1 musique.
+
 ## 8. Identité par domaine
 
 Chaque domaine a **une forme de décor fixe** (spec UI §2.3), utilisée pour son icône dans le
