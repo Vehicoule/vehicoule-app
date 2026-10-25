@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/bridge/catalog.dart';
@@ -143,10 +146,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(c.menu, 2);
 
-    // ⋮ too.
+    // ⋮ too: the menu is right-aligned to the button, just under it (kept 8 inside the
+    // window, which the row's ⋮ nearly touches).
+    final more = tester.getRect(find.bySemanticsLabel(fr().actionMore));
     await tester.tap(find.bySemanticsLabel(fr().actionMore));
     await tester.pumpAndSettle();
     expect(find.text("Aller à l'album"), findsOneWidget);
+    final panel = tester.getRect(find.byKey(VMenu.panelKey));
+    expect(panel.right, closeTo(math.min(more.right, 800 - VSpace.s8), 0.5));
+    expect(panel.top - more.bottom, inInclusiveRange(0, VSpace.s8));
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    // A right click opens it at the pointer.
+    final at = tester.getCenter(find.text(track.title));
+    await tester.tapAt(at, buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.byKey(VMenu.panelKey)), at);
   });
 
   testWidgets('VTrackRow exposes a semantic label', (tester) async {

@@ -112,14 +112,18 @@ class _VTrackRowState extends State<VTrackRow>
     }
   }
 
-  void _menu() {
+  /// The menu next to its trigger: [at] is ⋮'s rect or the pointer (a zero-size rect);
+  /// otherwise (long press, keyboard) beside the row. The row itself lifts in place.
+  void _menu([Rect? at]) {
     final box = context.findRenderObject()! as RenderBox;
+    final row = box.localToGlobal(Offset.zero) & box.size;
     showVMenu(
       context,
-      anchor: box.localToGlobal(Offset.zero) & box.size,
+      anchor: at ?? row,
       quick: widget.quick,
       groups: widget.groups,
       origin: IgnorePointer(child: _content(context, lifted: true)),
+      originRect: row,
     );
   }
 
@@ -180,10 +184,15 @@ class _VTrackRowState extends State<VTrackRow>
       color: scheme.onSurfaceVariant,
     );
     final showMore = !widget.wide || _hover || _focus || lifted;
-    final more = VIconButton(
-      icon: VIcons.more,
-      label: l.actionMore,
-      onPressed: _menu,
+    final more = Builder(
+      builder: (b) => VIconButton(
+        icon: VIcons.more,
+        label: l.actionMore,
+        onPressed: () {
+          final box = b.findRenderObject()! as RenderBox;
+          _menu(box.localToGlobal(Offset.zero) & box.size);
+        },
+      ),
     );
     return SizedBox(
       height: VSize.trackRow,
@@ -298,7 +307,7 @@ class _VTrackRowState extends State<VTrackRow>
     if (k == LogicalKeyboardKey.contextMenu ||
         (k == LogicalKeyboardKey.f10 &&
             HardwareKeyboard.instance.isShiftPressed)) {
-      _menu();
+      _menu(null);
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -324,7 +333,7 @@ class _VTrackRowState extends State<VTrackRow>
         if (widget.offline) l.offlineChip,
       ].join(', '),
       onTap: _tap,
-      onLongPress: _menu,
+      onLongPress: () => _menu(),
       customSemanticsActions: {
         CustomSemanticsAction(label: l.actionPlayNext): widget.onPlayNext,
         if (widget.onRemove != null)
@@ -351,8 +360,10 @@ class _VTrackRowState extends State<VTrackRow>
             onDoubleTap: widget.wide && !widget.offline
                 ? widget.onDoubleTap
                 : null,
-            onLongPress: _menu,
-            onSecondaryTap: _menu,
+            onLongPress: () => _menu(),
+            onSecondaryTapUp: (d) => _menu(
+              Rect.fromLTWH(d.globalPosition.dx, d.globalPosition.dy, 0, 0),
+            ),
             onHorizontalDragUpdate: _drag,
             onHorizontalDragEnd: _release,
             child: AnimatedBuilder(

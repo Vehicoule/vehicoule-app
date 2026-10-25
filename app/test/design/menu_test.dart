@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_3_expressive/material_3_expressive.dart'
+    show M3EMenuItem;
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/design/design.dart';
 
@@ -148,23 +150,110 @@ void main() {
     expect(FocusManager.instance.primaryFocus?.context, isNot(focused));
   });
 
-  testWidgets('a menu with only its quick row still takes the keyboard', (tester) async {
-    await tester.pumpWidget(harness(Builder(
-      builder: (context) => GestureDetector(
-        onTap: () => showVMenu(
-          context,
-          anchor: const Rect.fromLTWH(20, 20, 200, 56),
-          quick: [VAction('Lire ensuite', VIcons.playNext, () {})],
-          groups: const [],
+  testWidgets('a menu with only its quick row still takes the keyboard', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        Builder(
+          builder: (context) => GestureDetector(
+            onTap: () => showVMenu(
+              context,
+              anchor: const Rect.fromLTWH(20, 20, 200, 56),
+              quick: [VAction('Lire ensuite', VIcons.playNext, () {})],
+              groups: const [],
+            ),
+            child: const Text('open'),
+          ),
         ),
-        child: const Text('open'),
+        reduce: true,
       ),
-    ), reduce: true));
+    );
     await tester.tap(find.text('open'));
     await tester.pump();
     await tester.pump();
     final focused = FocusManager.instance.primaryFocus?.context;
     expect(focused, isNotNull);
-    expect(find.ancestor(of: find.byWidget(focused!.widget), matching: find.byKey(VMenu.panelKey)), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byWidget(focused!.widget),
+        matching: find.byKey(VMenu.panelKey),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the menu opens next to its trigger and stays in the window', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    late BuildContext ctx;
+    await tester.pumpWidget(
+      harness(
+        Builder(
+          builder: (c) {
+            ctx = c;
+            return const SizedBox.expand();
+          },
+        ),
+        reduce: true,
+      ),
+    );
+    VAction a(String l) => VAction(l, VIcons.album, () {});
+    Future<Rect> open(Rect anchor, {Rect? originRect}) async {
+      showVMenu(
+        ctx,
+        anchor: anchor,
+        originRect: originRect,
+        origin: originRect == null ? null : const Text('row'),
+        quick: [a('Lire ensuite'), a('Ajouter à la file'), a("J'aime")],
+        groups: [
+          [a('Ajouter à une playlist'), a('Télécharger')],
+          [a('Retirer')],
+        ],
+      );
+      await tester.pump();
+      await tester.pump();
+      final r = tester.getRect(find.byKey(VMenu.panelKey));
+      expect(r.left, greaterThanOrEqualTo(0));
+      expect(r.top, greaterThanOrEqualTo(0));
+      expect(r.right, lessThanOrEqualTo(400));
+      expect(r.bottom, lessThanOrEqualTo(800));
+      // Every entry is a labelled item: no blank slot.
+      for (final l in ['Ajouter à une playlist', 'Télécharger', 'Retirer']) {
+        expect(find.text(l), findsOneWidget, reason: l);
+      }
+      final items = tester
+          .widgetList<M3EMenuItem>(find.byType(M3EMenuItem))
+          .length;
+      expect(items, 3, reason: 'one item per action, nothing else');
+      Navigator.of(ctx).pop();
+      await tester.pump();
+      return r;
+    }
+
+    // From ⋮ near the right edge: right-aligned to the button, just under it.
+    const more = Rect.fromLTWH(340, 100, 48, 48);
+    var r = await open(more);
+    expect(r.right, closeTo(more.right, 0.5));
+    expect(r.top - more.bottom, inInclusiveRange(0, VSpace.s8));
+    // Near the bottom: it flips above.
+    const low = Rect.fromLTWH(340, 740, 48, 48);
+    r = await open(low);
+    expect(r.right, closeTo(low.right, 0.5));
+    expect(low.top - r.bottom, inInclusiveRange(0, VSpace.s8));
+    // Right click: at the pointer.
+    r = await open(const Rect.fromLTWH(60, 200, 0, 0));
+    expect(r.topLeft, const Offset(60, 200));
+    // Right click near the right edge: it opens to the left of the pointer.
+    r = await open(const Rect.fromLTWH(390, 200, 0, 0));
+    expect(r.right, closeTo(390, 0.5));
+    // Long press: beside the lifted row, which keeps its own place.
+    const row = Rect.fromLTWH(0, 300, 400, 56);
+    r = await open(row, originRect: row);
+    expect(r.top - row.bottom, inInclusiveRange(0, VSpace.s8));
+    expect(r.right, lessThanOrEqualTo(row.right));
   });
 }

@@ -33,20 +33,25 @@ abstract final class VMenu {
 }
 
 /// The expressive menu (spec UI §5.2), the same on mobile and desktop: the [quick] row as
-/// a connected group, then [groups] separated by a gap. [origin] (the row or card it
-/// comes from) is drawn lifted at [anchor], in global coordinates.
+/// a connected group, then [groups] separated by a gap. It opens next to its trigger
+/// ([anchor], global coordinates): right-aligned under a ⋮ button, at the pointer for a
+/// zero-size rect (right click), beside the row for a long press; above when there is no
+/// room below, always inside the window. [origin] (the row or card it comes from) is
+/// drawn lifted at [originRect] (default [anchor]).
 Future<void> showVMenu(
   BuildContext c, {
   required Rect anchor,
   required List<VAction> quick,
   required List<List<VAction>> groups,
   Widget? origin,
+  Rect? originRect,
 }) => Navigator.of(c, rootNavigator: true).push(
   _MenuRoute(
     anchor: anchor,
     quick: quick,
     groups: groups,
     origin: origin,
+    originRect: originRect ?? anchor,
     barrierLabel: MaterialLocalizations.of(c).modalBarrierDismissLabel,
   ),
 );
@@ -57,10 +62,11 @@ class _MenuRoute extends PopupRoute<void> {
     required this.quick,
     required this.groups,
     required this.origin,
+    required this.originRect,
     required this.barrierLabel,
   });
 
-  final Rect anchor;
+  final Rect anchor, originRect;
   final List<VAction> quick;
   final List<List<VAction>> groups;
   final Widget? origin;
@@ -177,7 +183,7 @@ class _MenuRoute extends PopupRoute<void> {
       children: [
         if (origin != null)
           Positioned.fromRect(
-            rect: anchor,
+            rect: originRect,
             child: IgnorePointer(
               child: Material(
                 color: scheme.surfaceContainerHigh,
@@ -196,27 +202,35 @@ class _MenuRoute extends PopupRoute<void> {
   }
 }
 
-/// Below the anchor, start-aligned with it; above when there is no room; always on screen.
+/// Next to the trigger: a point (right click) is the menu's top-left corner, or its
+/// top-right when there is no room on the right; a rect (⋮, a lifted row) has the menu
+/// under it, right-aligned. Above when there is no room below; always on screen.
 class _MenuPlacement extends SingleChildLayoutDelegate {
   const _MenuPlacement(this.anchor);
 
   final Rect anchor;
 
+  static const _edge = VSpace.s8, _gap = VSpace.s4;
+
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints c) =>
-      BoxConstraints.loose(c.biggest).deflate(const EdgeInsets.all(VSpace.s8));
+      BoxConstraints.loose(c.biggest).deflate(const EdgeInsets.all(_edge));
 
   @override
   Offset getPositionForChild(Size size, Size child) {
-    final below = anchor.bottom + VSpace.s8;
-    final y = below + child.height <= size.height - VSpace.s8
-        ? below
-        : (anchor.top - VSpace.s8 - child.height).clamp(VSpace.s8, size.height);
-    final x = anchor.left.clamp(
-      VSpace.s8,
-      size.width - child.width - VSpace.s8,
+    final point = anchor.isEmpty;
+    final gap = point ? 0.0 : _gap;
+    final maxX = size.width - child.width - _edge;
+    final maxY = size.height - child.height - _edge;
+    final x = point
+        ? (anchor.left <= maxX ? anchor.left : anchor.left - child.width)
+        : anchor.right - child.width;
+    final below = anchor.bottom + gap;
+    final y = below <= maxY ? below : anchor.top - gap - child.height;
+    return Offset(
+      x.clamp(_edge, maxX < _edge ? _edge : maxX),
+      y.clamp(_edge, maxY < _edge ? _edge : maxY),
     );
-    return Offset(x.toDouble(), y.toDouble());
   }
 
   @override
