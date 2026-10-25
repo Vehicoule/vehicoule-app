@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="playback_channel">Lecture</string>
+    <string name="notif_like">J\'aime</string>
+    <string name="notif_unlike">Je n\'aime plus</string>
+    <string name="notif_stop">Arrêter la lecture</string>
+    <string name="downloads_channel">Téléchargements</string>
+    <string name="downloads_title">Téléchargement en cours</string>
+    <plurals name="downloads_running">
+        <item quantity="one">%d téléchargement en cours</item>
+        <item quantity="many">%d téléchargements en cours</item>
+        <item quantity="other">%d téléchargements en cours</item>
+    </plurals>
+</resources>

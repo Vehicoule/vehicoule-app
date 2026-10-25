@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native texts (the system shows them, not Flutter): docs/voice.md, French in values-fr. -->
+<resources>
+    <!-- Media notification (lock screen). -->
+    <string name="playback_channel">Playback</string>
+    <string name="notif_like">Like</string>
+    <string name="notif_unlike">Unlike</string>
+    <string name="notif_stop">Stop playback</string>
+    <!-- Downloads in the background. -->
+    <string name="downloads_channel">Downloads</string>
+    <string name="downloads_title">Downloading</string>
+    <plurals name="downloads_running">
+        <item quantity="one">%d download in progress</item>
+        <item quantity="other">%d downloads in progress</item>
+    </plurals>
+</resources>

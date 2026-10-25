@@ -35,6 +35,11 @@ abstract final class VDurations {
 
   /// One turn of the playing cookie (spec UI §5.5).
   static const spin = Duration(seconds: 20);
+
+  /// The whole splash: the Mochi lands and bounces, the note comes out, then the home
+  /// fades in over [splashFade] (spec UI §6.10, 900 ms at most).
+  static const splash = Duration(milliseconds: 900);
+  static const splashFade = Duration(milliseconds: 200);
 }
 
 abstract final class VCurves {

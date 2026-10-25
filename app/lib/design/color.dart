@@ -23,6 +23,12 @@ abstract final class VPresets {
   ];
 }
 
+/// The Mochi icon's colours (branding/icon/mochi_master.svg).
+abstract final class VBrand {
+  /// The icon's background, and the splash's (spec UI §6.10).
+  static const background = ui.Color(0xFFFFF6EE);
+}
+
 const _maxChroma = 48.0;
 
 /// Always pastel: the hue is kept, the chroma capped. Contrast comes from the scheme's

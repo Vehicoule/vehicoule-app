@@ -5,6 +5,9 @@ library;
 
 import 'dart:async';
 
+import '../bridge/app.dart';
+import '../bridge/catalog.dart';
+import '../bridge/downloads.dart';
 import '../bridge/events.dart';
 import '../bridge/frb_generated.dart';
 import '../bridge/player.dart';
@@ -21,6 +24,20 @@ class FakeApi implements RustLibApi {
   /// What `playerCommands()` streams.
   final StreamController<PlayerCommand> commands =
       StreamController<PlayerCommand>.broadcast();
+
+  /// What `downloadProgress()` streams.
+  final StreamController<DownloadProgress> downloadEvents =
+      StreamController<DownloadProgress>.broadcast(sync: true);
+
+  /// What `libraryChanges()` streams.
+  final StreamController<LibraryChanged> libraryEvents =
+      StreamController<LibraryChanged>.broadcast(sync: true);
+
+  /// What `downloads()` answers.
+  List<DownloadProgress> downloadRows = [];
+
+  /// The UI preferences (`uiPref` / `setUiPref`).
+  final Map<String, String?> prefs = {};
 
   T _record<T>(Symbol name, Map<Symbol, Object?> args, T result) {
     calls.add(Invocation.method(name, const [], args));
@@ -73,6 +90,80 @@ class FakeApi implements RustLibApi {
   }) => _record(#crateApiSystemReportPerf, {
     #metric: metric,
     #valueMs: valueMs,
+  }, Future.value());
+
+  @override
+  Future<void> crateApiAppInitApp({required AppConfig cfg}) =>
+      _record(#crateApiAppInitApp, {#cfg: cfg}, Future.value());
+
+  @override
+  Future<void> crateApiAppSetOnline({required bool online}) =>
+      _record(#crateApiAppSetOnline, {#online: online}, Future.value());
+
+  @override
+  Future<void> crateApiPlaybackSkipNext() =>
+      _record(#crateApiPlaybackSkipNext, const {}, Future.value());
+
+  @override
+  Future<void> crateApiPlaybackPrevious({required BigInt positionMs}) =>
+      _record(#crateApiPlaybackPrevious, {
+        #positionMs: positionMs,
+      }, Future.value());
+
+  @override
+  Future<void> crateApiPlaybackStop() =>
+      _record(#crateApiPlaybackStop, const {}, Future.value());
+
+  @override
+  Future<void> crateApiLibrarySetLiked({
+    required String id,
+    required bool liked,
+  }) => _record(#crateApiLibrarySetLiked, {
+    #id: id,
+    #liked: liked,
+  }, Future.value());
+
+  @override
+  Future<List<TrackView>> crateApiLibraryTracks({required List<String> ids}) =>
+      _record(#crateApiLibraryTracks, {
+        #ids: ids,
+      }, Future.value([...sampleTracks.where((t) => ids.contains(t.id))]));
+
+  @override
+  Stream<DownloadProgress> crateApiLibraryDownloadProgress() => _record(
+    #crateApiLibraryDownloadProgress,
+    const {},
+    downloadEvents.stream,
+  );
+
+  @override
+  Future<List<DownloadProgress>> crateApiLibraryDownloads() =>
+      _record(#crateApiLibraryDownloads, const {}, Future.value(downloadRows));
+
+  @override
+  Stream<LibraryChanged> crateApiLibraryLibraryChanges() =>
+      _record(#crateApiLibraryLibraryChanges, const {}, libraryEvents.stream);
+
+  @override
+  Future<String?> crateApiSettingsUiPref({required String key}) =>
+      _record(#crateApiSettingsUiPref, {#key: key}, Future.value(prefs[key]));
+
+  @override
+  Future<void> crateApiSettingsSetUiPref({required String key, String? value}) {
+    prefs[key] = value;
+    return _record(#crateApiSettingsSetUiPref, {
+      #key: key,
+      #value: value,
+    }, Future.value());
+  }
+
+  @override
+  Future<void> crateApiSystemReportDartError({
+    required String kind,
+    required String stack,
+  }) => _record(#crateApiSystemReportDartError, {
+    #kind: kind,
+    #stack: stack,
   }, Future.value());
 
   @override

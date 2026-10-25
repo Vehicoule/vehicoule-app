@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ splash (spec UI §6.10): the user's Mochi (branding/icon/mochi_master.svg,
+     same paths and colours) lands and bounces once, squash then stretch, and the note comes
+     out, in 700 ms; MainActivity then fades the splash out (200 ms).
+     VectorDrawable has no masks: the master's two masks (the band's gap around the face and
+     the cups, the face's gap around the cups) are painted over in the background colour,
+     which the splash sits on. 720 units = 288 dp: the art fits the 192 dp circle the system
+     shows; its enclosing circle (253.25, 228.75), as in export.sh, is centred. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector android:width="288dp" android:height="288dp" android:viewportWidth="720" android:viewportHeight="720">
+            <group android:translateX="106.75" android:translateY="131.25">
+                <group android:name="shadow" android:pivotX="256" android:pivotY="396" android:scaleX="0.6" android:scaleY="0.6">
+                    <path android:pathData="M 134 396 A 122 16 0 1 0 378 396 A 122 16 0 1 0 134 396 Z" android:fillColor="#F2DFD0" />
+                </group>
+                <group android:name="fall" android:translateY="-120">
+                    <group android:name="squash" android:pivotX="256" android:pivotY="400">
+                        <group android:pivotX="256" android:pivotY="284" android:rotation="-8" android:translateX="-8" android:translateY="-16">
+                            <group>
+                                <clip-path android:pathData="M 0 0 H 512 V 310 H 0 Z" />
+                                <path android:pathData="M 256 180 C 338 178, 398 228, 398 304 C 398 366, 342 396, 254 396 C 164 396, 110 364, 114 302 C 118 228, 174 182, 256 180 Z" android:strokeColor="#E64C76" android:strokeWidth="64" android:strokeLineJoin="round" />
+                                <path android:pathData="M 256 180 C 338 178, 398 228, 398 304 C 398 366, 342 396, 254 396 C 164 396, 110 364, 114 302 C 118 228, 174 182, 256 180 Z" android:fillColor="#FFF6EE" android:strokeColor="#FFF6EE" android:strokeWidth="24" android:strokeLineJoin="round" />
+                                <group android:translateX="101" android:translateY="291" android:rotation="-7">
+                                    <path android:pathData="M 0 -50 C 13 -50, 19 -40, 19 -22 L 19 22 C 19 40, 13 50, 0 50 C -22 50, -37 33, -37 0 C -37 -33, -22 -50, 0 -50 Z" android:fillColor="#FFF6EE" android:strokeColor="#FFF6EE" android:strokeWidth="24" android:strokeLineJoin="round" />
+                                </group>
+                                <group android:translateX="411" android:translateY="291" android:rotation="7" android:scaleX="-1">
+                                    <path android:pathData="M 0 -50 C 13 -50, 19 -40, 19 -22 L 19 22 C 19 40, 13 50, 0 50 C -22 50, -37 33, -37 0 C -37 -33, -22 -50, 0 -50 Z" android:fillColor="#FFF6EE" android:strokeColor="#FFF6EE" android:strokeWidth="24" android:strokeLineJoin="round" />
+                                </group>
+                            </group>
+                            <path android:pathData="M 256 180 C 338 178, 398 228, 398 304 C 398 366, 342 396, 254 396 C 164 396, 110 364, 114 302 C 118 228, 174 182, 256 180 Z" android:fillColor="#FFC4D6" />
+                            <group android:translateX="101" android:translateY="291" android:rotation="-7">
+                                <path android:pathData="M 0 -50 C 13 -50, 19 -40, 19 -22 L 19 22 C 19 40, 13 50, 0 50 C -22 50, -37 33, -37 0 C -37 -33, -22 -50, 0 -50 Z" android:fillColor="#FFF6EE" android:strokeColor="#FFF6EE" android:strokeWidth="24" android:strokeLineJoin="round" />
+                            </group>
+                            <group android:translateX="411" android:translateY="291" android:rotation="7" android:scaleX="-1">
+                                <path android:pathData="M 0 -50 C 13 -50, 19 -40, 19 -22 L 19 22 C 19 40, 13 50, 0 50 C -22 50, -37 33, -37 0 C -37 -33, -22 -50, 0 -50 Z" android:fillColor="#FFF6EE" android:strokeColor="#FFF6EE" android:strokeWidth="24" android:strokeLineJoin="round" />
+                            </group>
+                            <group android:translateX="101" android:translateY="291" android:rotation="-7">
+                                <path android:pathData="M -4 -50 L 2 -50 C 12 -50, 19 -41, 19 -28 L 19 28 C 19 41, 12 50, 2 50 L -4 50 C -8 50, -10 47, -10 42 L -10 -42 C -10 -47, -8 -50, -4 -50 Z" android:fillColor="#FF80A0" />
+                                <path android:pathData="M -23 -40 C -20 -40, -19 -37, -19 -32 L -19 32 C -19 37, -20 40, -23 40 C -32 35, -37 20, -37 0 C -37 -20, -32 -35, -23 -40 Z" android:fillColor="#E64C76" />
+                            </group>
+                            <group android:translateX="411" android:translateY="291" android:rotation="7" android:scaleX="-1">
+                                <path android:pathData="M -4 -50 L 2 -50 C 12 -50, 19 -41, 19 -28 L 19 28 C 19 41, 12 50, 2 50 L -4 50 C -8 50, -10 47, -10 42 L -10 -42 C -10 -47, -8 -50, -4 -50 Z" android:fillColor="#FF80A0" />
+                                <path android:pathData="M -23 -40 C -20 -40, -19 -37, -19 -32 L -19 32 C -19 37, -20 40, -23 40 C -32 35, -37 20, -37 0 C -37 -20, -32 -35, -23 -40 Z" android:fillColor="#E64C76" />
+                            </group>
+                            <path android:pathData="M 168 265 L 205 279 L 170 293" android:strokeColor="#4A1828" android:strokeWidth="13.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                            <path android:pathData="M 302 287 C 309 261, 337 261, 344 287" android:strokeColor="#4A1828" android:strokeWidth="13.5" android:strokeLineCap="round" />
+                            <path android:pathData="M 235 294 C 237 312, 253 312, 256 297 C 259 312, 275 312, 277 294" android:strokeColor="#4A1828" android:strokeWidth="12" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                            <path android:pathData="M 164 309 L 158 321 M 178 309 L 172 321 M 340 309 L 334 321 M 354 309 L 348 321" android:strokeColor="#EE5A82" android:strokeWidth="7.5" android:strokeLineCap="round" />
+                        </group>
+                    </group>
+                </group>
+                <group android:name="note" android:pivotX="400" android:pivotY="144" android:scaleX="0" android:scaleY="0" android:translateY="24">
+                    <group android:translateX="406" android:translateY="114" android:rotation="14">
+                        <path android:pathData="M 0 30 L 0 -12 C 14 -10, 24 -1, 21 12" android:strokeColor="#E64C76" android:strokeWidth="9.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <group android:pivotX="-6" android:pivotY="30" android:rotation="-18">
+                            <path android:pathData="M -17.5 30 A 11.5 9 0 1 0 5.5 30 A 11.5 9 0 1 0 -17.5 30 Z" android:fillColor="#E64C76" android:strokeColor="#E64C76" android:strokeWidth="1" />
+                        </group>
+                    </group>
+                </group>
+            </group>
+        </vector>
+    </aapt:attr>
+    <target android:name="shadow">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:duration="300" android:startOffset="0" android:interpolator="@android:interpolator/accelerate_quad">
+                <propertyValuesHolder android:propertyName="scaleX" android:valueFrom="0.6" android:valueTo="1" android:valueType="floatType" />
+                <propertyValuesHolder android:propertyName="scaleY" android:valueFrom="0.6" android:valueTo="1" android:valueType="floatType" />
+            </objectAnimator>
+        </aapt:attr>
+    </target>
+    <target android:name="fall">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:duration="300" android:startOffset="0" android:interpolator="@android:interpolator/accelerate_quad">
+                <propertyValuesHolder android:propertyName="translateY" android:valueFrom="-120" android:valueTo="0" android:valueType="floatType" />
+            </objectAnimator>
+        </aapt:attr>
+    </target>
+    <target android:name="squash">
+        <aapt:attr name="android:animation">
+            <set android:ordering="sequentially">
+                <objectAnimator android:duration="80" android:startOffset="300" android:interpolator="@android:interpolator/decelerate_quad">
+                    <propertyValuesHolder android:propertyName="scaleX" android:valueFrom="1" android:valueTo="1.1" android:valueType="floatType" />
+                    <propertyValuesHolder android:propertyName="scaleY" android:valueFrom="1" android:valueTo="0.86" android:valueType="floatType" />
+                </objectAnimator>
+                <objectAnimator android:duration="120" android:startOffset="0" android:interpolator="@android:interpolator/fast_out_slow_in">
+                    <propertyValuesHolder android:propertyName="scaleX" android:valueFrom="1.1" android:valueTo="0.96" android:valueType="floatType" />
+                    <propertyValuesHolder android:propertyName="scaleY" android:valueFrom="0.86" android:valueTo="1.06" android:valueType="floatType" />
+                </objectAnimator>
+                <objectAnimator android:duration="100" android:startOffset="0" android:interpolator="@android:interpolator/fast_out_slow_in">
+                    <propertyValuesHolder android:propertyName="scaleX" android:valueFrom="0.96" android:valueTo="1" android:valueType="floatType" />
+                    <propertyValuesHolder android:propertyName="scaleY" android:valueFrom="1.06" android:valueTo="1" android:valueType="floatType" />
+                </objectAnimator>
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="note">
+        <aapt:attr name="android:animation">
+            <objectAnimator android:duration="250" android:startOffset="450" android:interpolator="@android:interpolator/linear_out_slow_in">
+                <propertyValuesHolder android:propertyName="scaleX" android:valueFrom="0" android:valueTo="1" android:valueType="floatType" />
+                <propertyValuesHolder android:propertyName="scaleY" android:valueFrom="0" android:valueTo="1" android:valueType="floatType" />
+                <propertyValuesHolder android:propertyName="translateY" android:valueFrom="24" android:valueTo="0" android:valueType="floatType" />
+            </objectAnimator>
+        </aapt:attr>
+    </target>
+</animated-vector>

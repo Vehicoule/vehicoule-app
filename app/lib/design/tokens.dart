@@ -36,6 +36,9 @@ abstract final class VSize {
   /// The rail's width from which its FAB shows its label (while it grows, a plain FAB).
   static const railFabExtended = 200.0;
 
+  /// The splash's Mochi: Android 12's splash icon circle (192 dp), the same on desktop.
+  static const splashIcon = 192.0;
+
   /// The gallery's phone frame: tall enough for a list, the mini player and the bar.
   static const phoneDemo = 720.0;
 

@@ -44,6 +44,13 @@ dependencies:
   dynamic_color: 2.1.0
   media_kit: 1.2.6
   media_kit_libs_audio: 1.0.7
+  audio_service: 0.18.19
+  connectivity_plus: 7.3.2
+  path_provider: 2.1.6
+  url_launcher: 6.3.3
+  app_links: 7.2.2
+  package_info_plus: 10.2.2
+  device_info_plus: 13.3.0
 
 dev_dependencies:
   flutter_test:
@@ -78,6 +85,8 @@ flutter:
     - assets/fonts/google_sans_flex/OFL.txt
     - assets/fonts/noto_sans_jp/OFL.txt
     - assets/fonts/material_symbols_rounded/LICENSE
+    # The splash's layers, from branding/icon/export.sh.
+    - assets/brand/
 
   # Licences and how the files were made: assets/fonts/README.md.
   fonts:

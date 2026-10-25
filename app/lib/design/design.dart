@@ -18,6 +18,7 @@ export 'components/ring.dart';
 export 'components/shelf.dart';
 export 'components/side_sheet.dart';
 export 'components/snack.dart';
+export 'components/splash_overlay.dart';
 export 'components/surfaces.dart';
 export 'components/track_row.dart';
 export 'components/view_selector.dart';

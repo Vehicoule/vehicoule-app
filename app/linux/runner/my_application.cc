@@ -54,6 +54,22 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
+  // The Mochi, installed in data/ next to the executable (CMakeLists.txt): the small
+  // variant (no note, no ground shadow) for the taskbar's small sizes.
+  g_autofree gchar* exe = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe != nullptr) {
+    g_autofree gchar* dir = g_path_get_dirname(exe);
+    GList* icons = nullptr;
+    const gchar* names[] = {"app_icon_small.png", "app_icon.png"};
+    for (const gchar* name : names) {
+      g_autofree gchar* path = g_build_filename(dir, "data", name, nullptr);
+      GdkPixbuf* icon = gdk_pixbuf_new_from_file(path, nullptr);
+      if (icon != nullptr) icons = g_list_append(icons, icon);
+    }
+    gtk_window_set_icon_list(window, icons);
+    g_list_free_full(icons, g_object_unref);
+  }
+
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
