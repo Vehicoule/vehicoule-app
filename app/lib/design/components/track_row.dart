@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/physics.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +31,10 @@ import 'snack.dart';
 ///   [onTap] (select), a double click [onDoubleTap] (play);
 /// - [handleIndex]: a drag handle for a `ReorderableList` (the queue).
 ///
+/// The keyboard (spec UI §4.4): Enter plays, Space is [onSelect] (else it falls through to
+/// play/pause), Delete is [onRemove], Menu or ⇧F10 opens the menu; inside a
+/// [VRovingFocus], ↑/↓ move between rows and Tab enters the list once.
+///
 /// [playing] overrides [NowPlayingScope].
 class VTrackRow extends StatefulWidget {
   const VTrackRow({
@@ -45,6 +51,7 @@ class VTrackRow extends StatefulWidget {
     this.onDoubleTap,
     required this.onPlayNext,
     this.onRemove,
+    this.onSelect,
     required this.quick,
     required this.groups,
     this.debugSwipe = 0,
@@ -60,6 +67,7 @@ class VTrackRow extends StatefulWidget {
   final VoidCallback? onDoubleTap;
   final VoidCallback onPlayNext;
   final VoidCallback? onRemove;
+  final VoidCallback? onSelect;
   final List<VAction> quick;
   final List<List<VAction>> groups;
 
@@ -77,9 +85,23 @@ class _VTrackRowState extends State<VTrackRow>
     value: widget.debugSwipe,
   );
   bool _hover = false, _focus = false, _armed = false;
+  final _node = FocusNode(debugLabel: 'track row');
+  _Roving? _roving;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final roving = VRovingFocus._of(context);
+    if (roving != _roving) {
+      _roving?.remove(_node);
+      _roving = roving?..add(_node);
+    }
+  }
 
   @override
   void dispose() {
+    _roving?.remove(_node);
+    _node.dispose();
     _dx.dispose();
     super.dispose();
   }
@@ -312,6 +334,21 @@ class _VTrackRowState extends State<VTrackRow>
       (widget.wide ? widget.onDoubleTap ?? _tap : _tap)();
       return KeyEventResult.handled;
     }
+    if (k == LogicalKeyboardKey.space && widget.onSelect != null) {
+      widget.onSelect!();
+      return KeyEventResult.handled;
+    }
+    if ((k == LogicalKeyboardKey.delete || k == LogicalKeyboardKey.backspace) &&
+        widget.onRemove != null) {
+      widget.onRemove!();
+      return KeyEventResult.handled;
+    }
+    if ((k == LogicalKeyboardKey.arrowDown ||
+            k == LogicalKeyboardKey.arrowUp) &&
+        (_roving?.move(_node, k == LogicalKeyboardKey.arrowDown ? 1 : -1) ??
+            false)) {
+      return KeyEventResult.handled;
+    }
     if (k == LogicalKeyboardKey.contextMenu ||
         (k == LogicalKeyboardKey.f10 &&
             HardwareKeyboard.instance.isShiftPressed)) {
@@ -357,8 +394,14 @@ class _VTrackRowState extends State<VTrackRow>
         borderRadius: BorderRadius.circular(VRadius.small),
       ),
       child: Focus(
+        focusNode: _node,
+        // In a list, Tab stops on one row only: the last one focused.
+        skipTraversal: _roving?.skips(_node) ?? false,
         onKeyEvent: _key,
-        onFocusChange: (f) => setState(() => _focus = f),
+        onFocusChange: (f) {
+          setState(() => _focus = f);
+          if (f) _roving?.focused(_node);
+        },
         child: MouseRegion(
           onEnter: (_) => setState(() => _hover = true),
           onExit: (_) => setState(() => _hover = false),
@@ -425,5 +468,87 @@ class _VTrackRowState extends State<VTrackRow>
         ),
       ),
     );
+  }
+}
+
+/// A list or table of [VTrackRow]s with roving focus (spec UI §4.4): Tab enters it once,
+/// on the row last focused (the first at first), and ↑/↓ move between its rows.
+class VRovingFocus extends StatefulWidget {
+  const VRovingFocus({super.key, required this.child});
+
+  final Widget child;
+
+  static _Roving? _of(BuildContext c) =>
+      c.dependOnInheritedWidgetOfExactType<_RovingScope>()?.notifier;
+
+  @override
+  State<VRovingFocus> createState() => _VRovingFocusState();
+}
+
+class _VRovingFocusState extends State<VRovingFocus> {
+  final _roving = _Roving();
+
+  @override
+  void dispose() {
+    _roving.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _RovingScope(notifier: _roving, child: widget.child);
+}
+
+class _RovingScope extends InheritedNotifier<_Roving> {
+  const _RovingScope({required super.notifier, required super.child});
+}
+
+class _Roving extends ChangeNotifier {
+  final _rows = <FocusNode>{};
+  FocusNode? _current;
+  bool _disposed = false;
+
+  void add(FocusNode n) => _rows.add(n);
+
+  void remove(FocusNode n) {
+    _rows.remove(n);
+    if (_current != n) return;
+    _current = null;
+    // Rows leave while the tree is locked: they hear of it after.
+    scheduleMicrotask(() {
+      if (!_disposed) notifyListeners();
+    });
+  }
+
+  bool skips(FocusNode n) => _current != null && _current != n;
+
+  void focused(FocusNode n) {
+    if (_current == n) return;
+    _current = n;
+    notifyListeners();
+  }
+
+  /// Focuses the row [by] rows away, in their order on screen; false at an end.
+  bool move(FocusNode from, int by) {
+    double top(FocusNode n) => (n.context!.findRenderObject()! as RenderBox)
+        .localToGlobal(Offset.zero)
+        .dy;
+    final rows = [
+      for (final n in _rows)
+        if (n.context?.findRenderObject() case final RenderBox b
+            when b.attached)
+          n,
+    ]..sort((a, b) => top(a).compareTo(top(b)));
+    if (!rows.contains(from)) return false;
+    final i = rows.indexOf(from) + by;
+    if (i < 0 || i >= rows.length) return false;
+    rows[i].requestFocus();
+    return true;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

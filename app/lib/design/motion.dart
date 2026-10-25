@@ -228,6 +228,97 @@ Widget vContainerSource({required Object heroTag, required Widget child}) =>
 Page<T> vFadeThroughPage<T>({required LocalKey key, required Widget child}) =>
     _VPage<T>(key: key, child: child, kind: _Kind.fadeThrough);
 
+/// A shell's destinations, kept alive side by side: only [index] shows, ticks and takes
+/// input; a change fades through (the old one out in the first 35 %, the new one in and
+/// up from 92 %), a plain fade with "reduce motion".
+class VFadeThroughStack extends StatefulWidget {
+  const VFadeThroughStack({
+    super.key,
+    required this.index,
+    required this.children,
+  });
+
+  final int index;
+  final List<Widget> children;
+
+  @override
+  State<VFadeThroughStack> createState() => _VFadeThroughStackState();
+}
+
+class _VFadeThroughStackState extends State<VFadeThroughStack>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, value: 1);
+  int? _leaving;
+
+  @override
+  void didUpdateWidget(VFadeThroughStack old) {
+    super.didUpdateWidget(old);
+    if (old.index == widget.index) return;
+    _leaving = old.index;
+    _c.duration = reduceMotion(context)
+        ? VDurations.reduced
+        : VDurations.medium;
+    _c.forward(from: 0).whenCompleteOrCancel(() {
+      if (mounted) setState(() => _leaving = null);
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduced = reduceMotion(context);
+    final incoming = CurvedAnimation(
+      parent: _c,
+      curve: reduced
+          ? VCurves.linear
+          : const Interval(0.35, 1, curve: VCurves.emphasizedDecelerate),
+    );
+    final outgoing = ReverseAnimation(
+      CurvedAnimation(
+        parent: _c,
+        curve: reduced
+            ? VCurves.linear
+            : const Interval(0, 0.35, curve: VCurves.emphasizedAccelerate),
+      ),
+    );
+    final scale = reduced
+        ? kAlwaysCompleteAnimation
+        : Tween(begin: 0.92, end: 1.0).animate(incoming);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        for (final (i, child) in widget.children.indexed)
+          // The same widgets around each child whatever its state: it keeps its state.
+          Offstage(
+            offstage: i != widget.index && i != _leaving,
+            child: TickerMode(
+              enabled: i == widget.index,
+              child: IgnorePointer(
+                ignoring: i != widget.index,
+                child: FadeTransition(
+                  opacity: i == widget.index
+                      ? incoming
+                      : i == _leaving
+                      ? outgoing
+                      : kAlwaysCompleteAnimation,
+                  child: ScaleTransition(
+                    scale: i == widget.index ? scale : kAlwaysCompleteAnimation,
+                    child: child,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 /// Horizontal shared axis: the player's views, the first-launch steps. [key] names the
 /// current child; a new key slides it in from the right, or from the left with
 /// [reverse] (going back), while the old one leaves the other way.

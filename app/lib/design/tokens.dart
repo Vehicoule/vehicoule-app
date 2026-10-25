@@ -45,6 +45,13 @@ abstract final class VSize {
   /// The standard side sheet that holds the desktop "now playing" pane.
   static const sideSheet = 360.0;
 
+  /// The desktop's own title bar, the room it leaves for the macOS window buttons, and
+  /// the widest its search bar gets (desktop-2).
+  static const titleBar = 52.0, windowButtons = 76.0, titleSearch = 420.0;
+
+  /// The upright volume in the desktop strip.
+  static const stripVolume = 160.0;
+
   /// Icon sizes: inline badge, list and button icon, empty-state icon.
   static const iconSmall = 16.0, icon = 24.0, iconLarge = 48.0;
 
@@ -157,6 +164,9 @@ abstract final class VBreakpoints {
 
   /// Above this width the desktop "now playing" pane is open by default (spec UI §4.2).
   static const paneOpen = 1000.0;
+
+  /// The desktop window's smallest height (its smallest width is [expanded]).
+  static const windowMinHeight = 600.0;
 }
 
 WindowClass windowClassOf(double width) => width < VBreakpoints.medium

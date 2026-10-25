@@ -52,10 +52,18 @@ class VNavigationBar extends StatelessWidget {
 
 /// A pinned collection in the rail: its artwork stands for it when the rail is collapsed.
 class VPinned {
-  const VPinned(this.itemId, this.label, {this.kind = ArtKind.item});
+  const VPinned(
+    this.itemId,
+    this.label, {
+    this.kind = ArtKind.item,
+    this.droppable = false,
+  });
 
   final String itemId, label;
   final ArtKind kind;
+
+  /// Takes dropped tracks (Likés, Téléchargés, a playlist of the user's).
+  final bool droppable;
 }
 
 /// The rail (spec UI §4.2): the destinations, then « Épinglés »; collapsed (icons and
@@ -71,7 +79,16 @@ class VNavigationRail extends StatelessWidget {
     required this.onExpanded,
     this.fab,
     this.fabItems = const [],
+    this.trailing,
+    this.onDrop,
   });
+
+  /// At the rail's bottom: the domain (spec UI §4.2).
+  final Widget? trailing;
+
+  /// Tracks dropped on a pinned item: its index in [pinned] and the track ids. Null: the
+  /// pinned items take no drop.
+  final void Function(int pinned, List<String> ids)? onDrop;
 
   /// The selected destination's own FAB (spec UI §5.4), under the menu button: a FAB
   /// collapsed, an extended FAB expanded. Null where the destination has none.
@@ -145,6 +162,7 @@ class VNavigationRail extends StatelessWidget {
           ? M3ENavigationRailLabelBehavior.alwaysShow
           : M3ENavigationRailLabelBehavior.alwaysHide,
       leading: SizedBox(width: double.infinity, child: header),
+      trailing: trailing,
       selectedIndex: selected,
       onDestinationSelected: onSelected,
       sections: [
@@ -163,12 +181,20 @@ class VNavigationRail extends StatelessWidget {
           M3ENavigationRailSection(
             header: Text(l.railPinned),
             destinations: [
-              for (final p in pinned)
+              for (final (i, p) in pinned.indexed)
                 M3ENavigationRailDestination(
-                  icon: VArtwork(
-                    itemId: p.itemId,
-                    size: VSize.icon,
-                    kind: p.kind,
+                  // A drop target: hovered by a drag, the artwork turns to the
+                  // selected cookie with its check.
+                  icon: DragTarget<List<String>>(
+                    onWillAcceptWithDetails: (_) =>
+                        onDrop != null && p.droppable,
+                    onAcceptWithDetails: (d) => onDrop?.call(i, d.data),
+                    builder: (context, hovered, _) => VArtwork(
+                      itemId: p.itemId,
+                      size: VSize.icon,
+                      kind: p.kind,
+                      selected: hovered.isNotEmpty,
+                    ),
                   ),
                   label: p.label,
                 ),
@@ -188,11 +214,16 @@ class VSearchBar extends StatefulWidget {
   final ValueChanged<String>? onSubmitted;
 
   @override
-  State<VSearchBar> createState() => _VSearchBarState();
+  State<VSearchBar> createState() => VSearchBarState();
 }
 
-class _VSearchBarState extends State<VSearchBar> {
+class VSearchBarState extends State<VSearchBar> {
   final _controller = M3ESearchController();
+
+  /// Opens the search, its field focused (⌘F).
+  void open() {
+    if (!_controller.isOpen) _controller.openView();
+  }
 
   @override
   void dispose() {
@@ -502,7 +533,13 @@ class VLargeAppBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => M3EAppBar.sliver(
-    titleText: title,
+    // One line, shrunk to fit: M3E wraps a long title (« Bibliothèque » on a phone)
+    // past the height it gives it.
+    title: FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: AlignmentDirectional.centerStart,
+      child: Text(title, maxLines: 1),
+    ),
     leading: leading,
     actions: actions,
     variant: M3EAppBarVariant.largeFlexible,

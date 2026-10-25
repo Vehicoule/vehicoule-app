@@ -14,6 +14,7 @@ abstract final class VIcons {
   static const addToQueue = IconData(0xe03d, fontFamily: _f); // queue_music
   static const album = IconData(0xe019, fontFamily: _f);
   static const arrowBack = IconData(0xe5c4, fontFamily: _f);
+  static const arrowForward = IconData(0xe5c8, fontFamily: _f);
   static const bedtime = IconData(0xf159, fontFamily: _f);
   static const check = IconData(0xe668, fontFamily: _f);
   static const chevronRight = IconData(0xe5cc, fontFamily: _f);
@@ -76,6 +77,7 @@ abstract final class VIcons {
   static const pushPin = IconData(0xf10d, fontFamily: _f);
   static const selectAll = IconData(0xe162, fontFamily: _f);
   static const speaker = IconData(0xe32d, fontFamily: _f);
+  static const source = IconData(0xe87b, fontFamily: _f); // extension
 }
 
 /// An icon whose FILL and wght axes animate (the heart that fills, the active tab that
