@@ -568,16 +568,21 @@ mineure : une interface de plus).
 
 ```wit
 interface locale {
-    /// Content languages the user understands, best first (BCP 47: `fr-FR`, `en`, `ja`).
-    languages: func() -> list<string>;
+    /// BCP 47 tags, most preferred first (`fr-FR`, `fr`, `en`).
+    preferred-languages: func() -> list<string>;
     /// ISO 3166-1 alpha-2 region of the user (`FR`).
     region: func() -> string;
 }
 ```
 
-- `languages` renvoie la liste de §6.4 (« Langues que je comprends »), **trois au plus**, pour
-  limiter ce qu'un fournisseur apprend de l'utilisateur. `region` est celle du réglage, ou à
-  défaut celle du système.
+Même définition que la spec livres §4.5 (une seule interface pour les trois domaines).
+
+- `preferred-languages` renvoie la liste de §6.4 (« Langues que je comprends »), **trois au
+  plus**, pour limiter ce qu'un fournisseur apprend de l'utilisateur. `region` est celle du
+  réglage, ou à défaut celle du système.
+- L'hôte ajoute `Accept-Language` (construit depuis cette liste) aux requêtes `http` et
+  `session` d'un plugin qui n'en fixe pas : un fournisseur qui localise par en-tête répond
+  dans la bonne langue sans code dans le plugin.
 - Un plugin de catalogue demande ses métadonnées dans la première langue de la liste et se
   replie sur les suivantes, puis sur la langue originale (TMDB : paramètre `language`, avec
   repli par champ ; AniList : titres anglais ou romaji, pas de traduction). Chaque champ

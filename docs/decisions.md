@@ -19,4 +19,4 @@ remplacée ne doit plus être suivie. On ajoute en bas, on ne réécrit pas.
 | 2026-10-25 | Adresse du réseau local accordée par l'utilisateur à un seul plugin | surface d'attaque §2 | socle §4.3 (toute IP privée refusée) |
 | 2026-10-25 | Feeds à plusieurs miroirs | surface d'attaque §8 bis | socle §4.4 (une URL par feed) |
 | 2026-10-25 | Minuterie de sommeil d'app, qui vise toutes les sessions | navigation §5.1 | spec UI §5.5 / plan 7 (minuterie de la file) |
-| 2026-10-25 | Langues du contenu : réglage d'app (langues comprises, audio, sous-titres, forcés) ; interface hôte `locale` (langues BCP 47, région) dans `vehicoule:host` 1.1.0 | `2026-10-25-video-design.md` §4.7, §6.4 | socle §4.1 (aucune langue transmise aux plugins hors `resolve` et `browse`) |
+| 2026-10-25 | Langues du contenu : réglage d'app (langues comprises, audio, sous-titres, forcés) ; interface hôte `locale` (`preferred-languages` BCP 47, trois au plus ; `region` ; `Accept-Language` ajouté par l'hôte) dans `vehicoule:host` 1.1.0 | `2026-10-25-video-design.md` §4.7, §6.4 | socle §4.1 (aucune langue transmise aux plugins hors `resolve` et `browse`) |
