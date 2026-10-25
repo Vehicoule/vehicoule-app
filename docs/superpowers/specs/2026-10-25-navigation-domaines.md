@@ -240,48 +240,76 @@ Ce qui justifie le 3-en-1 : les domaines se parlent.
   génériques, à un anime ou un manga. À l'ouverture du lecteur de livres, une puce propose
   « Reprendre la bande-son ».
 
-## 6 bis. « C'est quel… ? »
+## 6 bis. « C'est quoi ? » : une seule reconnaissance pour les trois domaines
 
-Chaque domaine sait reconnaître ce que tu lui montres, par une capacité `identify` de son
-contrat :
+Un seul geste reconnaît ce que tu lui montres ou fais écouter, puis ouvre la bonne page dans le
+bon domaine. **Aucune clé à saisir, jamais.**
 
-| Domaine | Entrée | Fournisseur | Résultat |
-|---|---|---|---|
-| Anime | une capture d'écran | trace.moe (API ouverte) | la série, l'épisode et l'instant : l'app l'ouvre à ce moment-là (`?t=`, §3.1) |
-| Livres | une page ou une case | SauceNAO (clé gratuite saisie par l'utilisateur dans les réglages de la source) | le livre et le chapitre |
-| Musique | jusqu'à 12 s capturées au micro | voir « Reconnaître un son » ci-dessous | la page du titre |
-| Musique (desktop) | le son de l'ordinateur, capturé proprement | AcoustID (empreinte calculée en local par `rusty-chromaprint`, en Rust) | la page du titre |
+### Entrées
 
-**Reconnaître un son, comme Shazam.**
+- Le bouton « C'est quoi ? » (icône en forme de cookie) au bout de la search bar de chaque
+  domaine et de l'Accueil, ⌘K « C'est quoi ? », une **tuile des réglages rapides** Android, un
+  raccourci d'icône, le widget, le menu de la barre des menus macOS.
+- Partager une image ou un son vers l'app ouvre directement l'analyse.
+- Deux modes, dans un groupe de boutons connectés en bas : **Écouter · Montrer**. Le mode par
+  défaut est le dernier utilisé ; un son partagé ou une image partagée le choisit.
 
-- **Un geste** : le bouton micro de la search bar musique, une **tuile des réglages rapides**
-  Android, un raccourci d'icône (« C'est quel son ? »), le widget, le menu de la barre des menus
-  macOS. L'écoute démarre aussitôt : une grande forme M3E qui pulse avec le niveau du micro.
-- **Droit à la bonne page** : le résultat (titre, artiste, ISRC) est rattaché au catalogue
-  musique (Deezer par ISRC, sinon recherche), puis l'app ouvre la page du titre
-  (`vehicoule://t/…`, §3.1), avec ▶, like et « Ajouter à une playlist ». Rien trouvé après
-  12 s : « Je n'ai pas reconnu ce morceau. Rapproche-toi de la source du son. »
-- **« Reconnus »** : chaque reconnaissance est gardée, avec sa date, dans une tuile de la
-  Bibliothèque musique, même quand on ne lit pas le titre tout de suite.
-- **Fournisseur** : reconnaître un extrait bruité demande une base d'empreintes de dizaines de
-  millions de titres ; aucune n'est ouverte. La capacité `music.identify` reste donc un
-  plugin :
-  - feed officiel : AudD et ACRCloud, avec **la clé de l'utilisateur** (offres gratuites
-    limitées), saisie dans les réglages de la source ;
-  - feeds tiers : tout autre fournisseur, ajouté par un lien de source comme YouTube Music.
-  - Sans fournisseur installé, le bouton explique pourquoi et renvoie vers « Ajoute une
-    source ».
-- **Hors ligne** : l'extrait est gardé et reconnu au retour du réseau, avec une notification.
-- L'algorithme d'empreinte de Shazam (constellation de pics, publié en 2003) peut s'écrire en
-  Rust. Le blocage est la base de référence, pas le calcul.
+### Ce que fait le cœur
 
-- **Entrées** : partager une image ou un son vers l'app ; un bouton dans la search bar de
-  chaque domaine (appareil photo, micro) ; ⌘K « Identifier ».
-- **Vie privée** : seule l'entrée nécessaire part vers le fournisseur (l'image, ou l'empreinte
-  audio quand le fournisseur l'accepte), après un premier usage expliqué. Le micro n'est
-  demandé qu'au premier toucher sur le bouton.
-- Une reconnaissance faite pendant un épisode (« c'est quel son ? ») cherche d'abord dans les
-  génériques et chansons connus de la série (`themes`) avant d'appeler un fournisseur.
+| Entrée | Appels, en parallèle | Retenu |
+|---|---|---|
+| Son (12 s au plus, micro ; sur desktop, le son de l'ordinateur au choix) | `music.identify` ; pendant un épisode, d'abord les thèmes connus de la série (`anime.themes`) | le titre, rattaché au catalogue musique (Deezer par ISRC, sinon recherche) |
+| Image (photo, capture, image partagée) | `anime.identify` et `books.identify` | la meilleure confiance au-dessus du seuil ; à égalité, les deux en cartes |
+
+Résultat → la page de l'item par sa référence (§3.1) : un titre (▶, like, « Ajouter à une
+playlist »), un épisode **à l'instant trouvé**, un chapitre. Tout est gardé dans **« Reconnus »**
+(une tuile de la Bibliothèque de chaque domaine, et le filtre « Reconnus » de l'Historique).
+Hors ligne, l'entrée attend et part au retour du réseau, avec une notification.
+
+### Fournisseurs, sans clé de l'utilisateur
+
+- **Anime** : trace.moe, utilisable sans clé dans son quota gratuit.
+- **Livres** : SauceNAO sans clé dans son quota anonyme ; le spike vérifie que ce quota
+  existe toujours, sinon la capacité vient d'un feed tiers.
+- **Son** :
+  - **AcoustID**, dans le feed officiel, avec la clé d'application du projet (gratuite pour un
+    usage non commercial) : reconnaît le son propre (son de l'ordinateur sur desktop, fichier
+    partagé). L'empreinte est calculée en local par `rusty-chromaprint` (Rust) ; seule
+    l'empreinte part ;
+  - pour un extrait **capté au micro**, il faut une base d'empreintes de dizaines de millions
+    de titres, et aucune n'est ouverte. Ce fournisseur vient donc d'un **feed tiers**, ajouté
+    une fois par un lien de source, exactement comme YouTube Music (socle §4.4) : un toucher,
+    pas de clé.
+  - Sans fournisseur micro installé, le mode Écouter le dit en une phrase et renvoie vers
+    « Ajoute une source ».
+
+### L'écran, en M3E
+
+Un plein écran sur la surface du thème (`surfaceContainer`), sans dégradé, avec **une seule
+grande forme M3E au centre** (60 % de la largeur). La forme porte tout le sens, comme le
+langage des formes (spec UI §2.3, addendum §8) :
+
+- **Écouter** : la forme **respire avec le micro** (son échelle suit le niveau, ressort M3E),
+  et **morphe sans arrêt** entre les formes de décor (cookie → soleil → fleur → éclat…),
+  comme le loading indicator M3E en grand. Autour, l'**anneau ondulé** se remplit sur les
+  12 s : c'est le temps restant. Haptique légère sur les temps forts détectés.
+- **Montrer** : le viseur de l'appareil photo est **découpé dans la forme** (cookie). Toucher
+  la forme capture : l'image se fige, puis la forme **passe d'une forme de domaine à l'autre**
+  (cookie musique, pilule 16:9 anime, arche livres) pendant l'analyse.
+- **Trouvé** : la forme **se pose sur la forme du domaine trouvé**, avec une haptique
+  « sélection », puis grandit en **container transform** jusqu'à la page du résultat. Pour un
+  épisode, la pilule devient la vignette à l'instant trouvé ; pour un titre, le cookie devient
+  la pochette qui tourne.
+- **Plusieurs réponses** : la forme se divise en deux ou trois cartes (carousel), chacune dans
+  la forme de son domaine, avec sa confiance en mots (« Très probable », « Possible »).
+- **Rien trouvé** : la forme se dégonfle en cercle et s'arrête. Une phrase (« Je n'ai pas
+  reconnu ce morceau. Rapproche-toi de la source du son. »), puis « Réessayer ».
+- Texte sous la forme : une ligne, « J'écoute… » ou « Je regarde… », puis le résultat.
+- **Desktop** : le même écran dans un dialogue, et une option « Écouter l'ordinateur ».
+- **Réduire les animations** : forme fixe, anneau linéaire, fondu vers la page.
+
+Tout est dans `design/` : la grande forme (`VShapeStage`), réutilisée par le premier lancement
+et les états vides, qui ont déjà leurs grandes formes de décor.
 
 ## 7. Hors ligne et hors de l'app
 
@@ -399,8 +427,10 @@ entre dans la v1 musique (§12).
   - **liens de partage** (§3.1) : titres, albums, artistes, playlists ; App Links et liens
     universels (plan 5, Task 4 : le concentrateur de liens), page statique sur `vehicoule.com` ;
   - **M1** paroles romanisées et traduites, **M3** son par sortie audio (§13) ;
-  - **« C'est quel son ? »** (§6 bis) : capacité `music.identify` (contrat musique 1.2, mineure),
-    AcoustID sur desktop dans le feed officiel, bouton micro dans la search bar.
+  - **« C'est quoi ? »** (§6 bis), mode Écouter : capacité `music.identify` (contrat musique
+    1.2, mineure), AcoustID dans le feed officiel, l'écran à grande forme (`VShapeStage` dans
+    `design/`), la tuile des réglages rapides, « Reconnus ». Le mode Montrer arrive avec
+    l'anime et les livres.
 
 ## 13. Idées propres à un domaine
 

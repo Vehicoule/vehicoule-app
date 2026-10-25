@@ -262,7 +262,7 @@ interface identify {
   (« titre artiste ») et crée une relation `theme-song` (addendum §6) ; le titre se lit et se
   like comme n'importe quel titre.
 - `skip` : plugin AniSkip.
-- `identify` : plugin trace.moe (« C'est quel anime ? », addendum §6 bis).
+- `identify` : plugin trace.moe, sans clé, dans son quota gratuit (« C'est quoi ? », mode Montrer, addendum §6 bis).
 - Routage : liste de priorité par capacité, comme le socle §4.7.
 - **Source la plus fiable d'abord** : le cœur note chaque source en local, par série (taux de
   réussite de `videos`, temps jusqu'à la première image, hauteur obtenue, sur les 30 derniers
