@@ -373,7 +373,7 @@ playlists, sa progression et sa bibliothèque.
 - **Écran** : Réglages › Sauvegarde : « Sauvegarder maintenant », « Restaurer », la date de la
   dernière sauvegarde. Le premier lancement propose « Restaurer une sauvegarde » en plus de
   « Commencer ».
-- **Importer depuis une autre app** : Aniyomi et Mihon (spec vidéo §3.5), Trakt et Simkl ; les playlists
+- **Importer depuis une autre app** : Aniyomi (spec vidéo §3.5), Mihon (spec livres §3.6), Trakt et Simkl ; les playlists
   Deezer et YouTube Music s'importent déjà par lien (socle §3.2).
 - Livrée dès la v1 musique.
 

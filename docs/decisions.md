@@ -11,7 +11,7 @@ remplacée ne doit plus être suivie. On ajoute en bas, on ne réécrit pas.
 | 2026-10-25 | Proxy média local : mpv ne joint que 127.0.0.1 | `2026-10-25-surface-attaque.md` §2 | socle §3.1 (« pas de serveur local en v1 ») |
 | 2026-10-25 | libmpv + FFmpeg recompilés réduits à une liste blanche | surface d'attaque §3 | socle §1 (`media_kit_libs_*` tels quels) |
 | 2026-10-25 | Plan B YouTube : interface `js` en Boa natif (Rust), aucun moteur JS écrit en C | `2026-10-25-video-design.md` §4.5 | socle §4.5 (QuickJS natif) |
-| 2026-10-25 | `vehicoule:host` 1.1.0 : `types`, `session`, `challenge`, `oauth`, filtres, `settings-schema` | vidéo §4.5 | socle §4.1 (interfaces de l'hôte) |
+| 2026-10-25 | `vehicoule:host` 1.1.0 : `types`, `locale`, `session`, `challenge`, `oauth`, filtres, `settings-schema`, `credentials` | vidéo §4.5, §4.7 ; livres §4.5 | socle §4.1 (interfaces de l'hôte) |
 | 2026-10-25 | Retour OAuth par lien vérifié `https://vehicoule.com/oauth/…` | vidéo §4.5 | — |
 | 2026-10-25 | Rien en « plus tard », pas de découpage en versions : chaque idée va dans la spec de son domaine | règle de l'utilisateur | socle §11 et toutes les mentions « hors v1 » |
 | 2026-10-25 | Le domaine anime devient **Vidéos** (`video`) : films, séries, animés ; sortes `movie`, `show`, `season`, `episode`, `collection` | `2026-10-25-video-design.md` | `2026-10-25-anime-design.md` (sortes `anime`, `episode`) |

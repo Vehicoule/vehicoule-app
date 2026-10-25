@@ -57,7 +57,7 @@ besoin.
 | Tables communes (§5.2) | + `library_entries`, `categories`, `progress`, `bookmarks`, `source_bindings` (§3.2) ; `item_relations` (addendum §6) |
 | `vehicoule:host` | 1.1.0 : + `types`, `locale` (langues du contenu, §4.7), `session` (cookies), `challenge`, `oauth`, filtres, `settings-schema` (§4.5) ; `credentials` (spec livres §4.5) ; adresses du réseau local accordées par l'utilisateur (§4.6) |
 | SDK | + décompacteur, AES compatible CryptoJS, option `js` (Boa, moteur JS en Rust, compilé en WASM dans le composant) si le spike l'exige (§4.5) |
-| Manifeste (§4.3) | + `adult: bool` ; Réglages › Sources « Afficher les sources pour adultes », désactivé par défaut |
+| Manifeste (§4.3) | + `adult: bool` ; Sources › « Afficher les sources pour adultes », désactivé par défaut |
 | Crate `stream` (§3.4) | + HLS : variantes, segments avec reprise, AES-128, playlist locale réécrite, sous-titres à côté (§7) ; proxy local (surface d'attaque §2) |
 | Lecteur | + seconde session : `WatchState` dans le cœur, `VideoPlayerAdapter` côté Dart (§6.1) |
 | Plateforme | + tâche périodique (mise à jour de la bibliothèque, §5.5), seconde `MediaSession` Android, PiP, verrouillage de l'app (§8) |
