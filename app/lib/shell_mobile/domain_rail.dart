@@ -1,22 +1,27 @@
-// ☰ on a phone (spec UI §4.1): the expanded rail, modal, in place of a drawer: the
-// domains (Musique for now), then the global sections, Sources and Téléchargements.
+// ☰ on a phone (spec UI §4.1, addendum §2.1): the expanded rail, modal, in place of a
+// drawer: 1. the domains (Musique in v1), 2. the global sections (Téléchargements,
+// Sources, Réglages).
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../design/design.dart';
+import '../domains.dart';
 import '../l10n/app_localizations.dart';
+import '../router.dart';
 import 'mobile_shell.dart';
 
 class DomainRail extends StatelessWidget {
   const DomainRail({super.key});
 
-  static const _routes = ['/home', '/settings/sources', '/downloads'];
-
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final at = GoRouterState.of(context).uri.path;
-    final selected = _routes.lastIndexWhere((r) => at.startsWith(r));
+    final history = NavHistory.of(context);
+    final globals = globalSections(l);
+    final at = Uri.parse(history.location).path;
+    final global = globals.indexWhere(
+      (g) => at == g.$1 || at.startsWith('${g.$1}/'),
+    );
     void close() => Scaffold.of(context).closeDrawer();
     // The modal rail's sheet: under the status bar too, its end corners rounded.
     return Material(
@@ -32,18 +37,29 @@ class DomainRail extends StatelessWidget {
           width: VSize.railExpanded,
           child: VNavigationRail(
             destinations: [
-              VDestination(l.domainMusic, VIcons.musicNote),
-              VDestination(l.sourcesTitle, VIcons.source),
-              VDestination(l.downloadsTitle, VIcons.download),
+              for (final d in domains)
+                VDestination(domainLabel(l, d), domainIcon(d)),
             ],
             pinned: const [],
-            selected: selected < 0 ? 0 : selected,
+            selected: global < 0 ? domains.indexOf(history.domain) : -1,
             expanded: true,
             onExpanded: (_) => close(),
+            // A domain: its last destination, its branch keeping its stack.
             onSelected: (i) {
               close();
-              // Musique keeps the current destination; the others are pages.
-              if (i > 0) context.go(_routes[i]);
+              final shell = MobileShell.maybeOf(context)?.widget.shell;
+              final path = history.destinationOf(domains[i]);
+              if (shell != null) {
+                goDestination(shell, path);
+              } else {
+                context.go(path);
+              }
+            },
+            globals: [for (final g in globals) g.$2],
+            globalSelected: global < 0 ? null : global,
+            onGlobal: (i) {
+              close();
+              context.go(globals[i].$1);
             },
           ),
         ),

@@ -11,9 +11,11 @@ import 'package:material_ui/material_ui.dart';
 import 'app_scope.dart';
 import 'bridge/api/app.dart' show onboarding;
 import 'bridge/api/playback.dart' show notices;
+import 'bridge/api/settings.dart';
 import 'bridge/events.dart';
 import 'design/design.dart';
 import 'design/gallery.dart' show GalleryApp;
+import 'domains.dart';
 import 'l10n/app_localizations.dart';
 import 'l10n/errors.dart';
 import 'now_playing_model.dart';
@@ -25,10 +27,10 @@ import 'shell_mobile/domain_rail.dart';
 import 'shell_mobile/mobile_shell.dart';
 import 'theme_controller.dart';
 
-/// Destinations: /home, /explore, /library, /settings, each a branch that keeps its own
-/// stack. Album, artist, playlist and category pages open inside the branch they come
-/// from (`/<branch>/album/:id`, see [openItem]), so the rail keeps its selection and ←
-/// goes back where the user was.
+/// The branches (addendum §3): Accueil, then each destination of each domain, then the
+/// global sections (Téléchargements, Sources, Réglages), which no bar or rail shows as a
+/// destination. Entity pages open inside the branch they come from, prefixed by their
+/// domain (`/music/explore/album/:id`, `/home/music/album/:id`, see [openItem]).
 GoRouter buildRouter() {
   AppLocalizations l(BuildContext c) => AppLocalizations.of(c);
   Page<void> fade(GoRouterState s, Widget child) =>
@@ -49,27 +51,83 @@ GoRouter buildRouter() {
     routes: routes,
     pageBuilder: (c, s) => (container ? grow : fade)(s, page(c, s)),
   );
-  List<RouteBase> details() => [
-    for (final kind in ['album', 'artist', 'playlist', 'category'])
+  List<RouteBase> details(Iterable<String> kinds, {String prefix = ''}) => [
+    for (final kind in kinds)
       route(
-        '$kind/:id',
-        (c, s) => PlaceholderScreen(title: s.pathParameters['id']!),
+        '$prefix$kind/:id',
+        (c, s) => PlaceholderScreen(
+          title: s.pathParameters['id']!,
+          icon: VIcons.album,
+        ),
         container: true,
       ),
   ];
   // Placeholders until Tasks 6 and 7: each destination with its own FAB.
   void soon() {}
+  StatefulShellBranch branch(List<RouteBase> routes) =>
+      StatefulShellBranch(routes: routes);
+  Widget destination(BuildContext c, String path) => switch (path) {
+    '/music/explore' => PlaceholderScreen(
+      title: l(c).navExplore,
+      icon: VIcons.explore,
+    ),
+    '/music/library' => PlaceholderScreen(
+      title: l(c).navLibrary,
+      icon: VIcons.library,
+      fab: VAction(l(c).fabNew, VIcons.add, soon),
+      fabItems: [
+        VAction(l(c).actionNewPlaylist, VIcons.playlistAdd, soon),
+        VAction(l(c).actionImportLink, VIcons.addLink, soon),
+      ],
+    ),
+    _ => PlaceholderScreen(title: path, icon: VIcons.musicNote),
+  };
+  List<RouteBase> under(String path) => switch (path) {
+    '/music/explore' => details(kindsUnder(path)),
+    '/music/library' => [
+      route(
+        'liked',
+        (c, _) =>
+            PlaceholderScreen(title: l(c).likedTracks, icon: VIcons.favorite),
+        container: true,
+      ),
+      route(
+        'downloaded',
+        (c, _) => PlaceholderScreen(
+          title: l(c).downloadedTracks,
+          icon: VIcons.downloadDone,
+        ),
+        container: true,
+      ),
+      route(
+        'top',
+        (c, _) => PlaceholderScreen(title: l(c).topTracks, icon: VIcons.album),
+        container: true,
+      ),
+      route(
+        'history',
+        (c, _) =>
+            PlaceholderScreen(title: l(c).historyTitle, icon: VIcons.history),
+        container: true,
+      ),
+      ...details(kindsUnder(path)),
+    ],
+    _ => const [],
+  };
   return GoRouter(
-    initialLocation: '/home',
+    initialLocation: Routes.home,
     // The keyboard focus stays where the user put it (the rail, a row): a new page
     // doesn't take it, and Tab walks title bar → rail → content → pane (spec UI §4.4).
     requestFocus: false,
     redirect: _onboardingFirst,
     routes: [
-      GoRoute(path: '/', redirect: (_, _) => '/home'),
+      GoRoute(path: '/', redirect: (_, _) => Routes.home),
       route(
-        '/onboarding',
-        (c, _) => PlaceholderScreen(title: l(c).onboardingTitle),
+        Routes.onboarding,
+        (c, _) => PlaceholderScreen(
+          title: l(c).onboardingTitle,
+          icon: VIcons.musicNote,
+        ),
       ),
       if (kDebugMode)
         GoRoute(path: '/debug/gallery', builder: (_, _) => const GalleryApp()),
@@ -78,104 +136,142 @@ GoRouter buildRouter() {
         navigatorContainerBuilder: (_, shell, children) =>
             VFadeThroughStack(index: shell.currentIndex, children: children),
         branches: [
-          StatefulShellBranch(
-            routes: [
-              route(
-                '/home',
-                (c, _) => PlaceholderScreen(
-                  title: l(c).navHome,
-                  fab: VAction(l(c).fabLaunch, VIcons.launch, soon),
-                  fabItems: [
-                    VAction(l(c).launchShuffleLikes, VIcons.shuffle, soon),
-                    VAction(l(c).launchRadio, VIcons.radio, soon),
-                    VAction(l(c).launchResume, VIcons.history, soon),
-                  ],
-                ),
-                routes: details(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              route(
-                '/explore',
-                (c, _) => PlaceholderScreen(title: l(c).navExplore),
-                routes: details(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              route(
-                '/library',
-                (c, _) => PlaceholderScreen(
-                  title: l(c).navLibrary,
-                  fab: VAction(l(c).fabNew, VIcons.add, soon),
-                  fabItems: [
-                    VAction(l(c).actionNewPlaylist, VIcons.playlistAdd, soon),
-                    VAction(l(c).actionImportLink, VIcons.addLink, soon),
-                  ],
-                ),
-                routes: [
-                  route(
-                    'liked',
-                    (c, _) => PlaceholderScreen(title: l(c).likedTracks),
-                    container: true,
-                  ),
-                  route(
-                    'downloaded',
-                    (c, _) => PlaceholderScreen(title: l(c).downloadedTracks),
-                    container: true,
-                  ),
-                  route(
-                    'top',
-                    (c, _) => PlaceholderScreen(title: l(c).topTracks),
-                    container: true,
-                  ),
-                  route(
-                    'history',
-                    (c, _) => PlaceholderScreen(title: l(c).historyTitle),
-                    container: true,
-                  ),
-                  ...details(),
+          branch([
+            route(
+              Routes.home,
+              (c, _) => PlaceholderScreen(
+                title: l(c).navHome,
+                icon: VIcons.home,
+                home: true,
+                fab: VAction(l(c).fabLaunch, VIcons.play, soon),
+                fabItems: [
+                  VAction(l(c).launchShuffleLikes, VIcons.shuffle, soon),
+                  VAction(l(c).launchRadio, VIcons.radio, soon),
+                  VAction(l(c).launchResume, VIcons.history, soon),
                 ],
               ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              route(
-                '/settings',
-                (c, _) => PlaceholderScreen(title: l(c).navSettings),
-                routes: [
-                  route(
-                    'sources',
-                    (c, _) => PlaceholderScreen(
-                      title: l(c).sourcesTitle,
-                      fab: VAction(l(c).actionAddSource, VIcons.add, soon),
-                    ),
-                  ),
-                  route(
-                    'appearance',
-                    (c, _) => PlaceholderScreen(title: l(c).settingsAppearance),
-                  ),
-                  route(
-                    'diagnostics',
-                    (c, _) =>
-                        PlaceholderScreen(title: l(c).settingsDiagnostics),
-                  ),
-                ],
+              // Opened from Accueil, a page stays in its branch: /home/<domain>/…
+              routes: [
+                for (final d in domains)
+                  ...details(homeKinds(d), prefix: '${d.name}/'),
+              ],
+            ),
+          ]),
+          for (final d in domains)
+            for (final dest in destinationsOf(d))
+              branch([
+                route(
+                  dest.path,
+                  (c, _) => destination(c, dest.path),
+                  routes: under(dest.path),
+                ),
+              ]),
+          // The global sections: in the shells, never a destination.
+          branch([
+            route(
+              Routes.settings,
+              (c, _) => PlaceholderScreen(
+                title: l(c).navSettings,
+                icon: VIcons.settings,
+                global: true,
               ),
-              route(
-                '/downloads',
-                (c, _) => PlaceholderScreen(title: l(c).downloadsTitle),
+              routes: [
+                route(
+                  'appearance',
+                  (c, _) => PlaceholderScreen(
+                    title: l(c).settingsAppearance,
+                    icon: VIcons.palette,
+                  ),
+                ),
+                route(
+                  'diagnostics',
+                  (c, _) => PlaceholderScreen(
+                    title: l(c).settingsDiagnostics,
+                    icon: VIcons.info,
+                  ),
+                ),
+              ],
+            ),
+            route(
+              Routes.sources,
+              (c, _) => PlaceholderScreen(
+                title: l(c).sourcesTitle,
+                icon: VIcons.source,
+                global: true,
+                fab: VAction(l(c).actionAddSource, VIcons.add, soon),
               ),
-            ],
-          ),
+            ),
+            route(
+              Routes.downloads,
+              (c, _) => PlaceholderScreen(
+                title: l(c).downloadsTitle,
+                icon: VIcons.download,
+                global: true,
+              ),
+            ),
+          ]),
         ],
       ),
     ],
   );
+}
+
+/// Every path the app goes to by name: no other file writes a route (addendum §11.1).
+abstract final class Routes {
+  static const home = '/home',
+      onboarding = '/onboarding',
+      downloads = '/downloads',
+      sources = '/sources',
+      settings = '/settings';
+
+  /// The search results, in the domain's search destination.
+  static String search(Domain d, String query) =>
+      Uri(path: searchRoot(d), queryParameters: {'q': query}).toString();
+}
+
+/// The global sections, in their order in ☰ and at the bottom of the desktop rail.
+List<(String, VDestination)> globalSections(AppLocalizations l) => [
+  (Routes.downloads, VDestination(l.downloadsTitle, VIcons.download)),
+  (Routes.sources, VDestination(l.sourcesTitle, VIcons.source)),
+  (Routes.settings, VDestination(l.navSettings, VIcons.settings)),
+];
+
+/// The roots of the shell's branches, in branch order: Accueil, each destination of each
+/// domain, then the global sections' branch.
+final List<String> shellBranchRoots = [
+  home.path,
+  for (final d in domains)
+    for (final dest in destinationsOf(d)) dest.path,
+  Routes.settings,
+];
+
+/// The branch a location belongs to (the global sections share the last one).
+int branchOf(String location) {
+  final path = Uri.parse(location).path;
+  for (final (i, root) in shellBranchRoots.indexed) {
+    if (path == root || path.startsWith('$root/')) return i;
+  }
+  return shellBranchRoots.length - 1;
+}
+
+/// The destinations the bar and the rail show at [location]: Accueil, then those of the
+/// current domain (addendum §2.1).
+List<DomainDestination> visibleDestinations(Domain d) => [
+  home,
+  ...destinationsOf(d),
+];
+
+/// Which of [visibleDestinations] is selected at [location]; null on a global section.
+int? selectedDestination(String location, Domain d) {
+  final root = shellBranchRoots[branchOf(location)];
+  final i = visibleDestinations(d).indexWhere((x) => x.path == root);
+  return i < 0 ? null : i;
+}
+
+/// Goes to a destination, its branch keeping its own stack.
+void goDestination(StatefulNavigationShell shell, String path) {
+  final i = shellBranchRoots.indexOf(path);
+  shell.goBranch(i, initialLocation: i == shell.currentIndex);
 }
 
 /// The first launch goes through /onboarding until `onboarding().done`.
@@ -192,53 +288,122 @@ Future<String?> _onboardingFirst(BuildContext _, GoRouterState s) async {
   return null;
 }
 
-/// Opens an album, artist, playlist or category page inside the current destination;
-/// [heroTag] is the source's (route + shelf + id) for the container transform.
-void openItem(BuildContext context, String id, {Object? heroTag}) {
+/// Opens an album, artist, playlist or category page inside the current branch,
+/// prefixed by its domain (`/home/music/album/:id`, `/music/explore/album/:id`); from a
+/// global section, in the domain's search destination. [heroTag] is the source's (route
+/// + shelf + id) for the container transform. The one builder of entity paths.
+void openItem(
+  BuildContext context,
+  String id, {
+  Object? heroTag,
+  Domain domain = Domain.music,
+}) {
   final kind = id.split(':').first;
-  final at = GoRouterState.of(context).uri.pathSegments.firstOrNull;
-  final branch = const {'home', 'library'}.contains(at) ? at : 'explore';
-  context.go('/$branch/$kind/${Uri.encodeComponent(id)}', extra: heroTag);
+  final at = GoRouterState.of(context).uri.path;
+  final root = shellBranchRoots[branchOf(at)];
+  final String base;
+  if (root == home.path) {
+    base = '${home.path}/${domain.name}';
+  } else if (root.startsWith('/${domain.name}/') &&
+      kindsUnder(root).contains(kind)) {
+    base = root;
+  } else {
+    base = searchRoot(domain);
+  }
+  context.go('$base/$kind/${Uri.encodeComponent(id)}', extra: heroTag);
 }
 
-/// The destinations of the bar and the rail, in branch order.
-List<VDestination> shellDestinations(AppLocalizations l) => [
-  VDestination(l.navHome, VIcons.home),
-  VDestination(l.navExplore, VIcons.explore),
-  VDestination(l.navLibrary, VIcons.library),
-  VDestination(l.navSettings, VIcons.settings),
-];
-
-/// A screen still to come (Tasks 6 and 7): its large app bar (☰ on a phone), the offline
-/// chip, and its FAB.
+/// A screen still to come (Tasks 6 and 7): its large app bar (☰ on a phone), Accueil's
+/// domain chips, the offline chip, its design empty state (`VEmptyState`) and its FAB.
 class PlaceholderScreen extends StatelessWidget {
   const PlaceholderScreen({
     super.key,
     required this.title,
+    required this.icon,
     this.fab,
     this.fabItems = const [],
+    this.home = false,
+    this.global = false,
   });
 
   final String title;
+  final IconData icon;
   final VAction? fab;
   final List<VAction> fabItems;
 
+  /// Accueil: the domain chips under its title (addendum §4).
+  final bool home;
+
+  /// A global section: on a phone, ← back to where the user was (it isn't in the bar).
+  final bool global;
+
   @override
-  Widget build(BuildContext context) => ScreenFab(
-    action: fab,
-    items: fabItems,
-    // Its own surface: a route outside the shells (onboarding) has nothing behind it.
-    child: Material(
-      color: Theme.of(context).colorScheme.surface,
-      child: CustomScrollView(
-        slivers: [
-          VLargeAppBar(title: title, leading: domainMenuButton(context)),
-          const OfflineChipSliver(),
-          const SliverFillRemaining(hasScrollBody: false),
-        ],
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final back = global && MobileShell.maybeOf(context) != null;
+    return ScreenFab(
+      action: fab,
+      items: fabItems,
+      // Its own surface: a route outside the shells (onboarding) has nothing behind it.
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        child: CustomScrollView(
+          slivers: [
+            VLargeAppBar(
+              title: title,
+              leading: back
+                  ? VIconButton(
+                      icon: VIcons.arrowBack,
+                      label: l.actionHistoryBack,
+                      onPressed: NavHistory.of(context).back,
+                    )
+                  : domainMenuButton(context),
+            ),
+            if (home) const DomainChips(),
+            const OfflineChipSliver(),
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: VEmptyState(icon: icon, message: l.emptyScreen),
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+/// Accueil's filter chips under its title (Tout · Musique · Anime · Livres, addendum §4):
+/// hidden while there is one domain, a choice with nothing to choose.
+class DomainChips extends StatelessWidget {
+  const DomainChips({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (domains.length < 2) return const SliverToBoxAdapter();
+    final l = AppLocalizations.of(context);
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: VSpace.s16,
+          vertical: VSpace.s8,
+        ),
+        child: Wrap(
+          spacing: VSpace.s8,
+          children: [
+            for (final d in domains)
+              VChip(
+                label: domainLabel(l, d),
+                icon: domainIcon(d),
+                filter: true,
+                onPressed: () {},
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// The shell for the window's width class (spec UI §4.3): compact and medium → the
@@ -274,12 +439,43 @@ class AdaptiveShell extends StatelessWidget {
 class NavHistory extends ChangeNotifier {
   NavHistory(this._router) {
     _router.routerDelegate.addListener(_moved);
+    _restoreDomain();
   }
+
+  static const _domainKey = 'ui.domain';
 
   final GoRouter _router;
   final _back = <String>[], _forward = <String>[];
   String? _at;
   bool _travelling = false;
+
+  /// `ui.domain`: the domain of Accueil alone and of the global sections.
+  Domain _stored = domains.first;
+
+  /// The last destination visited in each domain (changing domain goes back to it).
+  final _last = <Domain, String>{};
+
+  /// Where the user is.
+  String get location => _at ?? Routes.home;
+
+  /// The current domain (addendum §3): the location's, else `ui.domain`.
+  Domain get domain => domainOf(_at ?? Routes.home, stored: _stored);
+
+  /// Where switching to [d] lands: its last destination, its first at the first visit.
+  String destinationOf(Domain d) => _last[d] ?? destinationsOf(d).first.path;
+
+  Future<void> _restoreDomain() async {
+    try {
+      final saved = await uiPref(key: _domainKey);
+      final d = Domain.values.asNameMap()[saved];
+      if (d != null && namedDomain(_at ?? '') == null) {
+        _stored = d;
+        notifyListeners();
+      }
+    } on Object {
+      // No core yet (tests without one): the first domain.
+    }
+  }
 
   bool get canGoBack => _back.isNotEmpty;
   bool get canGoForward => _forward.isNotEmpty;
@@ -296,8 +492,24 @@ class NavHistory extends ChangeNotifier {
     }
     _travelling = false;
     _at = to;
+    // The domain follows the content: a location naming one makes it the current one,
+    // remembered for Accueil, the global sections and the next launch.
+    final named = namedDomain(to);
+    if (named != null) {
+      final root = shellBranchRoots[branchOf(to)];
+      if (destinationsOf(named).any((d) => d.path == root)) _last[named] = root;
+      if (named != _stored) {
+        _stored = named;
+        setUiPref(key: _domainKey, value: named.name).ignore();
+      } else {
+        // Written at each change, and once at the first visit.
+        _written ??= setUiPref(key: _domainKey, value: named.name)..ignore();
+      }
+    }
     notifyListeners();
   }
+
+  Future<void>? _written;
 
   void back() => _travel(_back, _forward);
 
@@ -352,6 +564,7 @@ class VehicouleApp extends StatefulWidget {
 class VehicouleAppState extends State<VehicouleApp> {
   final router = buildRouter();
   late final _history = NavHistory(router);
+  final _miniPlayerRect = ValueNotifier<Rect?>(null);
   late final StreamSubscription<Notice> _notices;
 
   @override
@@ -419,6 +632,7 @@ class VehicouleAppState extends State<VehicouleApp> {
       theme: widget.theme,
       online: widget.online,
       playback: widget.playback,
+      miniPlayerRect: _miniPlayerRect,
       child: _HistoryScope(
         notifier: _history,
         child: ListenableBuilder(

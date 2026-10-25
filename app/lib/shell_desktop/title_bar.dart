@@ -68,10 +68,7 @@ class TitleBar extends StatelessWidget {
                     // Task 6: suggestions_view.dart.
                     suggestions: (_, _) => const [],
                     onSubmitted: (q) => context.go(
-                      Uri(
-                        path: '/explore',
-                        queryParameters: {'q': q},
-                      ).toString(),
+                      Routes.search(NavHistory.of(context).domain, q),
                     ),
                   ),
                 ),
@@ -80,12 +77,12 @@ class TitleBar extends StatelessWidget {
             VIconButton(
               icon: VIcons.download,
               label: l.downloadsTitle,
-              onPressed: () => context.go('/downloads'),
+              onPressed: () => context.go(Routes.downloads),
             ),
             VIconButton(
               icon: VIcons.source,
               label: l.sourcesTitle,
-              onPressed: () => context.go('/settings/sources'),
+              onPressed: () => context.go(Routes.sources),
             ),
             const SizedBox(width: VSpace.s8),
           ],

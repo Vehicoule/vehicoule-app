@@ -196,7 +196,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await settle(tester);
-    expect(location(tester), '/explore');
+    expect(location(tester), '/music/explore');
   });
 
   testWidgets('menu bar items and shortcuts share one intent table', (

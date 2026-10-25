@@ -8,6 +8,7 @@ import 'package:material_ui/material_ui.dart';
 import '../app_scope.dart';
 import '../bridge/api/settings.dart';
 import '../design/design.dart';
+import '../domains.dart';
 import '../l10n/app_localizations.dart';
 import '../router.dart';
 import '../screen_fab.dart';
@@ -33,14 +34,36 @@ class _DesktopShellState extends State<DesktopShell> {
   bool? _pane;
   bool _rail = false, _immersive = false;
   final _search = GlobalKey<VSearchBarState>();
-  final _pinned = Pinned();
+  final _paneBox = GlobalKey();
+
+  /// The strip's or the pane's rect for the video window (addendum §5.2).
+  void _reportPane() {
+    if (!mounted) return;
+    final box = _paneBox.currentContext?.findRenderObject() as RenderBox?;
+    AppScope.of(context)
+        .miniPlayerRect
+        .value = box == null || !box.hasSize || box.size.isEmpty
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  /// The current domain's pinned items (`ui.pinned.<domain>`), reloaded with the domain.
+  Pinned? _pinned;
+
+  Pinned _pinnedOf(Domain d) {
+    final p = _pinned;
+    if (p != null && p.domain == d) return p;
+    p?.dispose();
+    return _pinned = Pinned(d)
+      ..addListener(() {
+        if (mounted) setState(() {});
+      })
+      ..load();
+  }
 
   @override
   void initState() {
     super.initState();
-    _pinned
-      ..addListener(() => setState(() {}))
-      ..load();
     _restore();
     vSnackLift.value = 0;
   }
@@ -59,7 +82,7 @@ class _DesktopShellState extends State<DesktopShell> {
 
   @override
   void dispose() {
-    _pinned.dispose();
+    _pinned?.dispose();
     super.dispose();
   }
 
@@ -82,22 +105,6 @@ class _DesktopShellState extends State<DesktopShell> {
     setState(() => _immersive = !_immersive);
   }
 
-  void _select(int i) {
-    final destinations = shellDestinations(AppLocalizations.of(context)).length;
-    if (i < destinations) {
-      widget.shell.goBranch(i, initialLocation: i == widget.shell.currentIndex);
-    } else {
-      context.go(Pinned.route(_pinned.ids[i - destinations]));
-    }
-  }
-
-  /// The pinned item open now, else the destination.
-  int _selected(int destinations) {
-    final at = GoRouterState.of(context).uri.toString();
-    final i = _pinned.ids.indexWhere((id) => Pinned.route(id) == at);
-    return i < 0 ? widget.shell.currentIndex : destinations + i;
-  }
-
   Widget _region(int order, Widget child) => FocusTraversalOrder(
     order: NumericFocusOrder(order.toDouble()),
     child: FocusTraversalGroup(policy: SkipEmptyScopes(), child: child),
@@ -108,25 +115,46 @@ class _DesktopShellState extends State<DesktopShell> {
     final l = AppLocalizations.of(context);
     final scope = AppScope.of(context);
     final scheme = Theme.of(context).colorScheme;
-    final destinations = shellDestinations(l);
-    // The domain at the rail's bottom: a chip once the rail is wide enough for its
-    // label (as its FAB), an icon while it grows and when collapsed.
-    final domain = LayoutBuilder(
-      builder: (context, box) => _rail && box.maxWidth >= VSize.railFabExtended
-          ? VChip(
-              label: l.domainMusic,
-              icon: VIcons.musicNote,
-              filter: true,
-              selected: true,
-              onPressed: () {},
-            )
-          : VIconButton(
-              icon: VIcons.musicNote,
-              label: l.domainMusic,
-              selected: true,
-              onPressed: () {},
-            ),
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reportPane());
+    final history = NavHistory.of(context);
+    final domain = history.domain;
+    final pinned = _pinnedOf(domain);
+    final visible = visibleDestinations(domain);
+    final destinations = [
+      for (final d in visible) VDestination(d.label(l), d.icon),
+    ];
+    final at = Uri.parse(history.location).path;
+    final pinnedAt = pinned.ids.indexWhere((id) => pinned.route(id) == at);
+    final selected = pinnedAt >= 0
+        ? destinations.length + pinnedAt
+        : selectedDestination(history.location, domain) ?? -1;
+    final globals = globalSections(l);
+    final global = globals.indexWhere(
+      (g) => at == g.$1 || at.startsWith('${g.$1}/'),
     );
+    // Changing domain: a FAB menu of the domains, hidden while there is one (U12).
+    final domainMenu = domains.length < 2
+        ? null
+        : LayoutBuilder(
+            builder: (context, box) => VScreenFab(
+              action: VAction(
+                domainLabel(l, domain),
+                domainIcon(domain),
+                () {},
+              ),
+              items: [
+                for (final d in domains)
+                  VAction(
+                    domainLabel(l, d),
+                    domainIcon(d),
+                    () => goDestination(widget.shell, history.destinationOf(d)),
+                    selected: d == domain,
+                  ),
+              ],
+              extended: _rail && box.maxWidth >= VSize.railFabExtended,
+              startAligned: true,
+            ),
+          );
     final main = ScreenFabHost(
       builder: (context, action, items, bar) => Row(
         children: [
@@ -134,18 +162,22 @@ class _DesktopShellState extends State<DesktopShell> {
             2,
             VNavigationRail(
               destinations: destinations,
-              pinned: _pinned.items(l),
-              selected: _selected(destinations.length),
-              onSelected: _select,
+              pinned: pinned.items(l),
+              selected: selected,
+              onSelected: (i) => i < destinations.length
+                  ? goDestination(widget.shell, visible[i].path)
+                  : context.go(
+                      pinned.route(pinned.ids[i - destinations.length]),
+                    ),
               expanded: _rail,
               onExpanded: _toggleRail,
               fab: action,
               fabItems: items,
-              trailing: Padding(
-                padding: const EdgeInsets.all(VSpace.s8),
-                child: domain,
-              ),
-              onDrop: (i, ids) => _pinned.drop(_pinned.ids[i], ids),
+              trailing: domainMenu,
+              globals: [for (final g in globals) g.$2],
+              globalSelected: global < 0 ? null : global,
+              onGlobal: (i) => context.go(globals[i].$1),
+              onDrop: (i, ids) => pinned.drop(pinned.ids[i], ids),
             ),
           ),
           Expanded(
@@ -193,7 +225,7 @@ class _DesktopShellState extends State<DesktopShell> {
         if (hasTitleBar) {
           _search.currentState?.open();
         } else {
-          context.go('/explore');
+          context.go(searchRoot(domain));
         }
       },
       onPane: _togglePane,
@@ -226,6 +258,7 @@ class _DesktopShellState extends State<DesktopShell> {
                                 _region(
                                   4,
                                   NowPlayingPane(
+                                    key: _paneBox,
                                     open: _paneOpen,
                                     onToggle: _togglePane,
                                     onImmersive: _toggleImmersive,
@@ -241,6 +274,9 @@ class _DesktopShellState extends State<DesktopShell> {
                 ),
               ),
             ),
+            // The floating video window's layer: over the pane and the strip, under
+            // the immersive view and the overlays.
+            const VideoLayer(),
             if (_immersive)
               Positioned.fill(child: ImmersivePlayer(onExit: _toggleImmersive)),
           ],

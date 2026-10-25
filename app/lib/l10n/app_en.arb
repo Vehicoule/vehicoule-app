@@ -195,5 +195,6 @@
   "pinnedKindAlbum": "Album",
   "pinnedKindArtist": "Artist",
   "shortcutSearchApple": "⌘F",
-  "shortcutSearchOther": "Ctrl+F"
+  "shortcutSearchOther": "Ctrl+F",
+  "emptyScreen": "Nothing here yet."
 }

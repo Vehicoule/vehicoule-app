@@ -48,10 +48,10 @@ void main() {
       tester
           .state<VehicouleAppState>(find.byType(VehicouleApp))
           .router
-          .go('/home/album/${Uri.encodeComponent('album:Cheese')}');
+          .go('/home/music/album/${Uri.encodeComponent('album:Cheese')}');
       await settle(tester, 12);
       final at = location(tester);
-      expect(at, startsWith('/home/album/'));
+      expect(at, startsWith('/home/music/album/'));
       final sheet = tester.state<NowPlayingSheetState>(
         find.byType(NowPlayingSheet),
       );
@@ -172,18 +172,19 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('V1: « Lancer » is never ▶, on a phone and in the rail', (
-    tester,
-  ) async {
-    final r = Rig();
-    await r.pump(tester);
-    final fab = tester.widget<VScreenFab>(find.byType(VScreenFab));
-    expect(fab.action.icon, VIcons.launch);
-    expect(fab.action.icon, isNot(VIcons.play));
-    await r.pump(tester, size: desktop);
-    final rail = tester.widget<VNavigationRail>(find.byType(VNavigationRail));
-    expect(rail.fab!.icon, isNot(VIcons.play));
-  });
+  testWidgets(
+    'Accueil\'s FAB menu is « Lancer » with ▶, on a phone and in the rail',
+    (tester) async {
+      final r = Rig();
+      await r.pump(tester);
+      final fab = tester.widget<VScreenFab>(find.byType(VScreenFab));
+      expect(fab.action.label, 'Lancer');
+      expect(fab.action.icon, VIcons.play);
+      await r.pump(tester, size: desktop);
+      final rail = tester.widget<VNavigationRail>(find.byType(VNavigationRail));
+      expect(rail.fab!.icon, VIcons.play);
+    },
+  );
 
   testWidgets('V2: the volume handle stays inside the component', (
     tester,
@@ -210,7 +211,7 @@ void main() {
     (tester) async {
       final r = Rig();
       r.api.playlistRows = const [_blue];
-      r.api.prefs['ui.pinned'] = '["liked","downloaded","playlist:blue"]';
+      r.api.prefs['ui.pinned.music'] = '["liked","downloaded","playlist:blue"]';
       await r.pump(tester, size: desktop);
       Finder cover(String id) => find.descendant(
         of: find.byType(VNavigationRail),

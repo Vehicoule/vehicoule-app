@@ -1,5 +1,6 @@
-// « Épinglés » in the desktop rail (spec UI §4.2): ids in `ui.pinned` (JSON), Likés and
-// Téléchargés by default. Each is a page and a drop target for a selection of tracks.
+// « Épinglés » in the desktop rail (spec UI §4.2), per domain (addendum §2.3): ids in
+// `ui.pinned.<domain>` (JSON), Likés and Téléchargés by default. Each is a page and a drop
+// target for a selection of tracks.
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -9,10 +10,17 @@ import '../bridge/api/library.dart';
 import '../bridge/api/settings.dart';
 import '../bridge/library.dart';
 import '../design/design.dart';
+import '../domains.dart';
 import '../l10n/app_localizations.dart';
 
 class Pinned extends ChangeNotifier {
-  static const _key = 'ui.pinned', liked = 'liked', downloaded = 'downloaded';
+  Pinned(this.domain);
+
+  static const liked = 'liked', downloaded = 'downloaded';
+
+  final Domain domain;
+
+  String get _key => 'ui.pinned.${domain.name}';
 
   List<String> _ids = const [liked, downloaded];
   final _titles = <String, String>{};
@@ -73,12 +81,29 @@ class Pinned extends ChangeNotifier {
   bool _droppable(String id) =>
       id == liked || id == downloaded || _playlists.contains(id);
 
-  /// Where a pinned item leads.
-  static String route(String id) => switch (id) {
-    liked => '/library/liked',
-    downloaded => '/library/downloaded',
-    _ => '/library/${id.split(':').first}/${Uri.encodeComponent(id)}',
-  };
+  /// Pins [id] (last), saved at once.
+  Future<void> pin(String id) async {
+    if (_ids.contains(id)) return;
+    _ids = [..._ids, id];
+    await setUiPref(key: _key, value: jsonEncode(_ids));
+    notifyListeners();
+  }
+
+  Future<void> unpin(String id) async {
+    _ids = [..._ids.where((i) => i != id)];
+    await setUiPref(key: _key, value: jsonEncode(_ids));
+    notifyListeners();
+  }
+
+  /// Where a pinned item leads: the domain's library.
+  String route(String id) {
+    final library = libraryRoot(domain);
+    return switch (id) {
+      liked => '$library/liked',
+      downloaded => '$library/downloaded',
+      _ => '$library/${id.split(':').first}/${Uri.encodeComponent(id)}',
+    };
+  }
 
   /// Tracks dropped on [id]: added to the playlist, liked, or downloaded.
   Future<void> drop(String id, List<String> tracks) async {

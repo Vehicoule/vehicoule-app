@@ -1356,7 +1356,7 @@ class _FabSectionState extends State<_FabSection> {
                 corner(
                   VFabMenu(
                     label: l.fabLaunch,
-                    icon: VIcons.launch,
+                    icon: VIcons.play,
                     items: [
                       VAction(l.launchShuffleLikes, VIcons.shuffle, _noop),
                       VAction(l.launchRadio, VIcons.radio, _noop),
@@ -1889,7 +1889,7 @@ class _NavigationSectionState extends State<_NavigationSection> {
         onExpanded: (_) {},
         // The selected destination's own FAB: Accueil launches, Bibliothèque creates.
         fab: switch (_tab) {
-          0 => VAction(l.fabLaunch, VIcons.launch, _noop),
+          0 => VAction(l.fabLaunch, VIcons.play, _noop),
           2 => VAction(l.fabNew, VIcons.add, _noop),
           _ => null,
         },

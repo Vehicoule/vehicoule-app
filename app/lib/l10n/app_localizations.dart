@@ -1231,6 +1231,12 @@ abstract class AppLocalizations {
   /// In fr, this message translates to:
   /// **'Ctrl+F'**
   String get shortcutSearchOther;
+
+  /// A screen with nothing to show yet (its VEmptyState).
+  ///
+  /// In fr, this message translates to:
+  /// **'Rien ici pour l\'instant.'**
+  String get emptyScreen;
 }
 
 class _AppLocalizationsDelegate

@@ -16,7 +16,7 @@ visuelle, les composants, les écrans et les deux nouveautés de cœur qu'ils de
 | §1 Design : « Material 3 officiel + nos tokens ; `material_3_expressive` seulement pour les composants manquants » | `material_ui` (la bibliothèque Material officielle, sortie du SDK) + `material_3_expressive` 1.2.0 pour les composants M3E, les deux derrière `app/lib/design/` (section 3) |
 | §1 / §3.2 Accueil « uniquement des données locales, pas de flux éditorial » | Accueil = fil personnel, préparé une fois par jour à partir de tes données et des plugins (section 6.1). Le contenu éditorial reste dans Explorer |
 | §11 « Accueil éditorial (classements, nouveautés) : hors v1 » | En v1 : capacité `music.browse`, implémentée par le plugin Deezer (section 7.1) |
-| Barre du bas Accueil / Recherche / Bibliothèque | Accueil / Explorer / Bibliothèque / Réglages (Home / Explore / Library / Settings) |
+| Barre du bas Accueil / Recherche / Bibliothèque | Accueil / Explorer / Bibliothèque (Home / Explore / Library) ; Réglages, Sources et Téléchargements sont des sections globales (addendum navigation entre domaines §2.1) |
 
 Le reste du socle ne bouge pas.
 
@@ -190,13 +190,13 @@ listes vides) est dans `docs/voice.md`.
 
 ### 4.1 Téléphone
 
-- **Barre de navigation M3E** classique, fixe en bas : Accueil, Explorer, Bibliothèque, Réglages.
+- **Barre de navigation M3E** classique, fixe en bas : Accueil, puis les destinations du domaine courant (musique : Explorer, Bibliothèque). Réglages n'est pas une destination (addendum navigation entre domaines §2.1) ; une section globale s'ouvre en page, sans barre, avec ←.
 - **Grande app bar qui se replie** en haut de chaque onglet : grand titre, actions de l'onglet,
   ☰ à gauche. Pas de barre de logo.
 - **☰ ouvre le rail déplié M3E en modal**. Il remplace le tiroir, qui n'est plus recommandé en
   M3E. Il contient :
-  - les domaines : Musique, puis Anime et Manga quand ils existent ;
-  - les sections globales : Sources, Téléchargements.
+  - les domaines : Musique, puis Anime et Livres quand ils existent ;
+  - les sections globales : Téléchargements, Sources, Réglages.
 
   La barre du bas montre les destinations du domaine courant.
 - **Mini-lecteur** flottant au-dessus de la barre (section 5.3).
@@ -212,10 +212,17 @@ listes vides) est dans `docs/voice.md`.
     règles que 6.2) en menu déroulant sous le champ ; Entrée ouvre les résultats dans Explorer ;
   - à droite, les téléchargements en cours, puis Sources.
 - **Rail à gauche**, replié (icônes) ↔ déplié :
-  - les quatre destinations ;
-  - puis **« Épinglés »** : Likés, Téléchargés et les collections que l'utilisateur épingle
-    (pochettes seules quand le rail est replié). Ce sont aussi des cibles de glisser-déposer ;
-  - en bas, le domaine (Musique / Anime / Manga), qui remplace le ☰ du mobile.
+  - Accueil et les destinations du domaine courant (3 en musique) ;
+  - puis **« Épinglés » du domaine courant** (`ui.pinned.<domaine>`) : Likés, Téléchargés et
+    les collections que l'utilisateur épingle, en pochettes de 32 dp (titre et sous-titre
+    quand le rail est déplié). Ce sont aussi des cibles de glisser-déposer : la ligne entière
+    se borde en tirets avec « déposer ici » ;
+  - en bas, le choix du domaine (un FAB menu, masqué tant qu'il n'y a qu'un domaine), puis les
+    sections globales Téléchargements, Sources, Réglages, qui remplacent le ☰ du mobile.
+- **Routes** (addendum navigation entre domaines §3) : `/home`, `/music/explore`,
+  `/music/library/…` ; une page d'entité s'ouvre dans la branche d'où elle vient, préfixée par
+  le domaine (`/home/music/album/:id`, `/music/explore/album/:id`) ; `/downloads`, `/sources`,
+  `/settings/…` sont globales. Le domaine courant se lit dans la route (`domainOf`).
 - **Pages en largeur** :
   - en-tête horizontal (pochette à gauche, titre et actions à droite) ;
   - les listes de titres deviennent un tableau : #, titre + artistes, album, durée, ⋮. C'est la
@@ -364,7 +371,7 @@ file, like), puis des groupes séparés par des espaces. Même menu sur mobile e
 | Carousel multi-browse | Artiste (albums) |
 | Étagère (titre + rangée horizontale de cartes 108) | Accueil, Explorer |
 | FAB étendu → FAB | Sources : « Ajouter une source » (ouvre la feuille §6.7) ; sur desktop, le FAB de la destination se place en haut du rail |
-| FAB menu | Bibliothèque : « Nouvelle » (nouvelle playlist, importer un lien) ; Accueil : « Lancer » (mélanger mes likés, radio de ce que j'écoute, reprendre la dernière écoute) |
+| FAB menu | Bibliothèque : « Nouvelle » (nouvelle playlist, importer un lien) ; Accueil : « Lancer », icône ▶ (`play_arrow`) pleine (mélanger mes likés, radio de ce que j'écoute, reprendre la dernière écoute) |
 | Split button | Toute collection qui se lit, qui se réduit en FAB lecture au défilement : album, playlist, Top 50, genre : « Lire » \| ▾ (aléatoire, lire ensuite, ajouter à la file) ; artiste, likés, téléchargés : « Aléatoire » \| ▾ (lire dans l'ordre, radio, lire ensuite, ajouter à la file) |
 | Groupe de boutons connectés | Lecteur (like / playlist / télécharger), sélecteur Paroles · Lecteur · File, rangée rapide des menus, choix des Réglages |
 | Loading indicator M3E | Résultats de recherche, chargement de page, premier lancement |

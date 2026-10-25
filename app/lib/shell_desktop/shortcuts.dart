@@ -10,6 +10,8 @@ import 'package:material_ui/material_ui.dart';
 import '../app_scope.dart';
 import '../bridge/api/library.dart' show refreshHome;
 import '../design/design.dart';
+import '../domains.dart';
+import '../now_playing_model.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/player.dart';
 import '../router.dart';
@@ -69,7 +71,11 @@ class DesktopShortcuts extends StatelessWidget {
 
   Map<ShellCommand, _Entry> _table(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final playback = AppScope.of(context).playback;
+    final music = AppScope.of(context).playback;
+    // The playback keys act on the session sessionTarget names (addendum §5.3).
+    NowPlayingModel session() => switch (sessionTarget(context)) {
+      PlaybackSession.music => music,
+    };
     final history = NavHistory.of(context);
     void volume(double by) => player.setVolume(player.volume.value + by);
     return {
@@ -77,7 +83,7 @@ class DesktopShortcuts extends StatelessWidget {
         const SingleActivator(LogicalKeyboardKey.space),
         l.actionPlayPause,
         _Menu.playback,
-        playback.playPause,
+        () => session().playPause(),
       ),
       ShellCommand.seekBack: _Entry(
         const SingleActivator(LogicalKeyboardKey.arrowLeft),
@@ -95,13 +101,13 @@ class DesktopShortcuts extends StatelessWidget {
         const SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true),
         l.actionPrevious,
         _Menu.playback,
-        playback.previous,
+        () => session().previous(),
       ),
       ShellCommand.next: _Entry(
         const SingleActivator(LogicalKeyboardKey.arrowRight, shift: true),
         l.actionNext,
         _Menu.playback,
-        playback.next,
+        () => session().next(),
       ),
       ShellCommand.volumeUp: _Entry(
         _cmd(LogicalKeyboardKey.arrowUp),
@@ -119,7 +125,7 @@ class DesktopShortcuts extends StatelessWidget {
         _cmd(LogicalKeyboardKey.keyL),
         l.actionLike,
         _Menu.playback,
-        playback.like,
+        () => session().like(),
       ),
       ShellCommand.search: _Entry(
         _cmd(LogicalKeyboardKey.keyF),
@@ -143,7 +149,7 @@ class DesktopShortcuts extends StatelessWidget {
         _cmd(LogicalKeyboardKey.comma),
         l.navSettings,
         _Menu.go,
-        () => GoRouter.of(context).go('/settings'),
+        () => GoRouter.of(context).go(Routes.settings),
       ),
       ShellCommand.refresh: _Entry(
         _cmd(LogicalKeyboardKey.keyR),

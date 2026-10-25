@@ -78,9 +78,6 @@ abstract final class VIcons {
   static const selectAll = IconData(0xe162, fontFamily: _f);
   static const speaker = IconData(0xe32d, fontFamily: _f);
   static const source = IconData(0xe87b, fontFamily: _f); // extension
-
-  /// « Lancer » (Accueil's FAB menu): a quick start, never ▶ (that's the ⏯ under it).
-  static const launch = IconData(0xea0b, fontFamily: _f); // bolt
 }
 
 /// An icon whose FILL and wght axes animate (the heart that fills, the active tab that

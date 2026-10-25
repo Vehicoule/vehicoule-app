@@ -256,5 +256,9 @@
   },
   "@trayShow": {
     "description": "Windows/Linux tray menu: bring the window back."
+  },
+  "emptyScreen": "Rien ici pour l'instant.",
+  "@emptyScreen": {
+    "description": "A screen with nothing to show yet (its VEmptyState)."
   }
 }

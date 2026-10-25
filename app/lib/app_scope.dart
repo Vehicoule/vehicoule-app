@@ -17,6 +17,7 @@ class AppScope extends InheritedWidget {
     required this.theme,
     required this.online,
     required this.playback,
+    required this.miniPlayerRect,
     required super.child,
   });
 
@@ -27,6 +28,11 @@ class AppScope extends InheritedWidget {
   /// What plays (the shells' players, [NowPlayingScope]).
   final NowPlayingModel playback;
 
+  /// The mini player's toolbar (or the desktop strip, or pane) in global coordinates,
+  /// written by the shell after each layout: what the video window docks to
+  /// (addendum §5.2). Null while there is none.
+  final ValueNotifier<Rect?> miniPlayerRect;
+
   static AppScope of(BuildContext c) =>
       c.dependOnInheritedWidgetOfExactType<AppScope>()!;
 
@@ -35,7 +41,8 @@ class AppScope extends InheritedWidget {
       old.player != player ||
       old.theme != theme ||
       old.online != online ||
-      old.playback != playback;
+      old.playback != playback ||
+      old.miniPlayerRect != miniPlayerRect;
 }
 
 /// Under a destination's app bar: « Hors ligne · … » while offline (spec UI §6.9).
@@ -62,4 +69,14 @@ class OfflineChipSliver extends StatelessWidget {
             ),
     ),
   );
+}
+
+/// The layer between the shell's players (mini player, strip, pane) and what floats over
+/// them (sheets, dialogs, snackbars): the floating video window lives here (addendum §5.2,
+/// §11.7). Nothing is drawn in it in v1.
+class VideoLayer extends StatelessWidget {
+  const VideoLayer({super.key});
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

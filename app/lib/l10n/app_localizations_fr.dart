@@ -607,4 +607,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get shortcutSearchOther => 'Ctrl+F';
+
+  @override
+  String get emptyScreen => 'Rien ici pour l\'instant.';
 }

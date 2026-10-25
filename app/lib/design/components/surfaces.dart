@@ -90,10 +90,20 @@ class VNavigationRail extends StatelessWidget {
     this.fabItems = const [],
     this.trailing,
     this.onDrop,
+    this.globals = const [],
+    this.globalSelected,
+    this.onGlobal,
   });
 
-  /// At the rail's bottom: the domain (spec UI §4.2).
+  /// At the rail's bottom, above the global sections: the domain's FAB menu (spec UI
+  /// §4.2, addendum §2.1).
   final Widget? trailing;
+
+  /// The global sections at the very bottom (Téléchargements, Sources, Réglages): never
+  /// destinations, selected while the user is in one ([globalSelected]).
+  final List<VDestination> globals;
+  final int? globalSelected;
+  final ValueChanged<int>? onGlobal;
 
   /// Tracks dropped on a pinned item: its index in [pinned] and the track ids. Null: the
   /// pinned items take no drop.
@@ -182,8 +192,8 @@ class VNavigationRail extends StatelessWidget {
               selected: selected - destinationCount,
               onSelected: (i) => onSelected(destinationCount + i),
               onDrop: onDrop,
-              // Room under the last item for the domain.
-              bottom: trailing == null ? 0 : VSize.menuTarget + VSpace.s16,
+              // Room under the last item for the domain and the global sections.
+              bottom: _bottomHeight,
             ),
       trailingAtBottom: false,
       selectedIndex: selected,
@@ -202,31 +212,65 @@ class VNavigationRail extends StatelessWidget {
         ),
       ],
     );
-    final bottom = trailing;
-    if (bottom == null) return railed;
-    // The domain stays at the rail's bottom, over the end of a long list.
+    if (trailing == null && globals.isEmpty) return railed;
+    // The domain and the global sections stay at the rail's bottom, over the end of a
+    // long list.
+    final start =
+        rail.expandedItemInset +
+        rail.indicatorLeading -
+        (VSize.pinnedArt - VSize.icon) / 2 -
+        _PinnedList._slotInset;
     return Stack(
       children: [
         railed,
         Positioned(
-          left: 0,
-          right: 0,
+          left: _PinnedList._slotInset,
+          right: _PinnedList._slotInset,
           bottom: VSpace.s8,
-          child: Padding(
-            padding: EdgeInsetsDirectional.only(
-              start: expanded ? rail.expandedItemInset : 0,
-            ),
-            child: Align(
-              alignment: expanded
-                  ? AlignmentDirectional.centerStart
-                  : Alignment.center,
-              child: bottom,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (trailing case final t?)
+                Align(
+                  alignment: expanded
+                      ? AlignmentDirectional.centerStart
+                      : Alignment.center,
+                  child: Padding(
+                    padding: EdgeInsetsDirectional.only(
+                      start: expanded ? start : 0,
+                      bottom: VSpace.s8,
+                    ),
+                    child: t,
+                  ),
+                ),
+              for (final (i, g) in globals.indexed)
+                _PinnedRow(
+                  leading: SizedBox.square(
+                    dimension: VSize.pinnedArt,
+                    child: Center(
+                      child: VSymbol(g.icon, filled: i == globalSelected),
+                    ),
+                  ),
+                  label: g.label,
+                  expanded: expanded,
+                  selected: i == globalSelected,
+                  dropping: false,
+                  start: start,
+                  onTap: () => onGlobal?.call(i),
+                ),
+            ],
           ),
         ),
       ],
     );
   }
+
+  /// The height the bottom block takes, kept free under the pinned list.
+  double get _bottomHeight =>
+      (trailing == null ? 0 : VSize.menuTarget + VSpace.s8) +
+      globals.length * VSize.menuTarget +
+      VSpace.s16;
 }
 
 /// The pinned collections under the destinations: cover (and, expanded, title and
@@ -293,7 +337,13 @@ class _PinnedList extends StatelessWidget {
               onWillAcceptWithDetails: (_) => onDrop != null && p.droppable,
               onAcceptWithDetails: (d) => onDrop?.call(i, d.data),
               builder: (context, hovered, _) => _PinnedRow(
-                item: p,
+                leading: VArtwork(
+                  itemId: p.itemId,
+                  size: VSize.pinnedArt,
+                  kind: p.kind,
+                ),
+                label: p.label,
+                subtitle: p.subtitle,
                 expanded: expanded,
                 selected: i == selected,
                 dropping: hovered.isNotEmpty,
@@ -308,9 +358,13 @@ class _PinnedList extends StatelessWidget {
   }
 }
 
+/// A row of the rail's lists: a pinned collection (its cover) or a global section (its
+/// glyph); title and subtitle when the rail is expanded.
 class _PinnedRow extends StatelessWidget {
   const _PinnedRow({
-    required this.item,
+    required this.leading,
+    required this.label,
+    this.subtitle,
     required this.expanded,
     required this.selected,
     required this.dropping,
@@ -318,7 +372,9 @@ class _PinnedRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final VPinned item;
+  final Widget leading;
+  final String label;
+  final String? subtitle;
   final bool expanded, selected, dropping;
   final double start;
   final VoidCallback onTap;
@@ -332,14 +388,10 @@ class _PinnedRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(VRadius.small),
     );
     final subtitle = [
-      ?item.subtitle,
+      ?this.subtitle,
       if (dropping) l.pinnedDropHere,
     ].join(' · ');
-    final cover = VArtwork(
-      itemId: item.itemId,
-      size: VSize.pinnedArt,
-      kind: item.kind,
-    );
+    final cover = leading;
     Widget content(bool wide) => wide
         ? Row(
             children: [
@@ -351,7 +403,7 @@ class _PinnedRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.label,
+                      label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -376,7 +428,7 @@ class _PinnedRow extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: [item.label, if (subtitle.isNotEmpty) subtitle].join(', '),
+      label: [label, if (subtitle.isNotEmpty) subtitle].join(', '),
       excludeSemantics: true,
       onTap: onTap,
       child: VFocusRing(

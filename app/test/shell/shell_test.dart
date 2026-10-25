@@ -16,7 +16,7 @@ void main() {
     final r = Rig();
     await r.pump(tester, size: const Size(400, 860));
     expect(find.byType(VNavigationBar), findsOneWidget);
-    for (final d in ['Accueil', 'Explorer', 'Bibliothèque', 'Réglages']) {
+    for (final d in ['Accueil', 'Explorer', 'Bibliothèque']) {
       expect(
         find.descendant(
           of: find.byType(VNavigationBar),
@@ -38,12 +38,12 @@ void main() {
       await r.pump(tester);
       await tester.tap(label('Ouvrir le menu').first);
       await settle(tester);
-      for (final t in ['Musique', 'Sources', 'Téléchargements']) {
+      for (final t in ['Musique', 'Sources', 'Téléchargements', 'Réglages']) {
         expect(find.text(t), findsOneWidget, reason: t);
       }
       await tester.tap(find.text('Sources'));
       await settle(tester, 12);
-      expect(location(tester), '/settings/sources');
+      expect(location(tester), '/sources');
       expect(
         find.text('Musique'),
         findsNothing,
@@ -92,7 +92,7 @@ void main() {
     tester,
   ) async {
     final r = Rig();
-    r.api.prefs['ui.pinned'] = '["liked","downloaded","album:Cheese"]';
+    r.api.prefs['ui.pinned.music'] = '["liked","downloaded","album:Cheese"]';
     await r.pump(tester, size: desktop);
     r.backend.playings.add(true);
     await settle(tester);
@@ -183,7 +183,7 @@ void main() {
         isUserPlaylist: true,
       ),
     ];
-    r.api.prefs['ui.pinned'] = '["liked","downloaded","playlist:blue"]';
+    r.api.prefs['ui.pinned.music'] = '["liked","downloaded","playlist:blue"]';
     await r.pump(tester, size: desktop);
     final targets = tester
         .widgetList<DragTarget<List<String>>>(
@@ -232,13 +232,13 @@ void main() {
       ),
     );
     await settle(tester);
-    expect(location(tester), '/explore');
+    expect(location(tester), '/music/explore');
     await tester.tap(label('Page précédente'));
     await settle(tester);
     expect(location(tester), '/home');
     await tester.tap(label('Page suivante'));
     await settle(tester);
-    expect(location(tester), '/explore');
+    expect(location(tester), '/music/explore');
   }, variant: mac);
 
   testWidgets('first launch redirects to onboarding', (tester) async {
@@ -248,7 +248,7 @@ void main() {
     expect(find.byType(VNavigationBar), findsNothing);
   });
 
-  testWidgets('the rail expands, with its domain, and stays so', (
+  testWidgets('the rail expands, with its global sections, and stays so', (
     tester,
   ) async {
     final r = Rig();
@@ -260,7 +260,9 @@ void main() {
       isTrue,
     );
     expect(r.api.prefs['ui.rail_expanded'], 'true');
-    expect(find.text('Musique'), findsOneWidget);
+    // One domain: no domain selector; the global sections at the bottom.
+    expect(find.text('Musique'), findsNothing);
+    expect(find.text('Réglages'), findsOneWidget);
     await r.pump(tester, size: desktop);
     expect(
       tester.widget<VNavigationRail>(find.byType(VNavigationRail)).expanded,

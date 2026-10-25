@@ -8,6 +8,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../app_scope.dart';
 import '../design/design.dart';
+import '../domains.dart';
 import '../features/music/now_playing/now_playing_sheet.dart';
 import '../l10n/app_localizations.dart';
 import '../router.dart';
@@ -61,8 +62,16 @@ class MobileShellState extends State<MobileShell> {
   /// ☰: the modal rail.
   void openMenu() => _scaffold.currentState?.openDrawer();
 
-  void _go(int i) =>
-      widget.shell.goBranch(i, initialLocation: i == widget.shell.currentIndex);
+  final _mini = GlobalKey();
+
+  /// The mini player's rect for the video window (addendum §5.2), after each layout.
+  void _reportMini() {
+    if (!mounted) return;
+    final box = _mini.currentContext?.findRenderObject() as RenderBox?;
+    AppScope.of(context).miniPlayerRect.value = box == null || !box.hasSize
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+  }
 
   @override
   void dispose() {
@@ -76,10 +85,19 @@ class MobileShellState extends State<MobileShell> {
     final l = AppLocalizations.of(context);
     final scope = AppScope.of(context);
     final playback = scope.playback;
+    final history = NavHistory.of(context);
+    final domain = history.domain;
+    final visible = visibleDestinations(domain);
+    final selected = selectedDestination(history.location, domain);
+    final destinations = [
+      for (final d in visible) VDestination(d.label(l), d.icon),
+    ];
+    void go(int i) => goDestination(widget.shell, visible[i].path);
     final body = ScreenFabHost(
       builder: (context, action, items, bar) => ListenableBuilder(
         listenable: playback,
         builder: (context, _) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _reportMini());
           return VFabDock(
             onTop: (top) {
               _dockTop = top;
@@ -94,6 +112,7 @@ class MobileShellState extends State<MobileShell> {
                 (playback.track == null
                     ? null
                     : MiniPlayer(
+                        key: _mini,
                         extent: _extent,
                         onArtworkRect: (r) => _miniArt.value = r,
                         onOpen: () => _sheet.currentState?.open(),
@@ -104,63 +123,74 @@ class MobileShellState extends State<MobileShell> {
     );
     return DesktopShortcuts(
       player: scope.player,
-      focusSearch: () => context.go('/explore'),
-      child: FocusTraversalGroup(
-        policy: SkipEmptyScopes(),
-        child: Stack(
-          children: [
-            // Behind the open player the shell is out of reach: no focus, no
-            // screen-reader nodes (spec UI §4.4, §8).
-            ValueListenableBuilder(
-              valueListenable: _extent,
-              builder: (context, extent, shell) => ExcludeFocus(
-                excluding: extent >= 1,
-                child: ExcludeSemantics(excluding: extent >= 1, child: shell),
-              ),
-              child: Scaffold(
-                key: _scaffold,
-                drawer: const DomainRail(),
-                body: widget.medium
-                    ? Row(
-                        children: [
-                          SafeArea(
-                            right: false,
-                            child: VNavigationRail(
-                              destinations: shellDestinations(l),
-                              pinned: const [],
-                              selected: widget.shell.currentIndex,
-                              onSelected: _go,
-                              expanded: false,
-                              onExpanded: (_) => openMenu(),
+      focusSearch: () => context.go(searchRoot(domain)),
+      // A global section isn't in the bar: back returns where the user was.
+      child: BackButtonListener(
+        onBackButtonPressed: () async {
+          if (selected != null || !history.canGoBack) return false;
+          history.back();
+          return true;
+        },
+        child: FocusTraversalGroup(
+          policy: SkipEmptyScopes(),
+          child: Stack(
+            children: [
+              // Behind the open player the shell is out of reach: no focus, no
+              // screen-reader nodes (spec UI §4.4, §8).
+              ValueListenableBuilder(
+                valueListenable: _extent,
+                builder: (context, extent, shell) => ExcludeFocus(
+                  excluding: extent >= 1,
+                  child: ExcludeSemantics(excluding: extent >= 1, child: shell),
+                ),
+                child: Scaffold(
+                  key: _scaffold,
+                  drawer: const DomainRail(),
+                  body: widget.medium
+                      ? Row(
+                          children: [
+                            SafeArea(
+                              right: false,
+                              child: VNavigationRail(
+                                destinations: destinations,
+                                pinned: const [],
+                                selected: selected ?? -1,
+                                onSelected: go,
+                                expanded: false,
+                                onExpanded: (_) => openMenu(),
+                              ),
                             ),
-                          ),
-                          Expanded(child: body),
-                        ],
-                      )
-                    : body,
-                bottomNavigationBar: widget.medium
-                    ? null
-                    : VNavigationBar(
-                        key: _bar,
-                        destinations: shellDestinations(l),
-                        selected: widget.shell.currentIndex,
-                        onSelected: _go,
-                      ),
+                            Expanded(child: body),
+                          ],
+                        )
+                      : body,
+                  // A global section is a page of its own: no bar (it has ←).
+                  bottomNavigationBar: widget.medium || selected == null
+                      ? null
+                      : VNavigationBar(
+                          key: _bar,
+                          destinations: destinations,
+                          selected: selected,
+                          onSelected: go,
+                        ),
+                ),
               ),
-            ),
-            Positioned.fill(
-              child: ListenableBuilder(
-                listenable: playback,
-                builder: (context, _) => playback.track == null
-                    ? const SizedBox.shrink()
-                    : NowPlayingSheet(
-                        key: _sheet,
-                        extent: _extent,
-                        from: _miniArt,
-                      ),
+              // The floating video window's layer: over the players, under the sheets.
+              const VideoLayer(),
+              Positioned.fill(
+                child: ListenableBuilder(
+                  listenable: playback,
+                  builder: (context, _) => playback.track == null
+                      ? const SizedBox.shrink()
+                      : NowPlayingSheet(
+                          key: _sheet,
+                          extent: _extent,
+                          from: _miniArt,
+                        ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
