@@ -77,7 +77,7 @@ Le domaine courant n'est **pas un état à part** : il se lit dans la route (§3
 | Épinglés du rail | par domaine | `ui.pinned.<domaine>` |
 | Téléchargements | global | une page, une section par domaine, une seule barre de stockage |
 | Sources | global | rangées par origine (spec UI §6.7) ; une ligne dit ce que la source ajoute, domaines compris |
-| Réglages | global | sections générales, puis une section par domaine (Lecture musique, Lecteur vidéo, Lecteur de livres) |
+| Réglages | global | sections générales (dont **Langues** : langues du contenu, spec vidéo §6.4, valables pour tous les domaines), puis une section par domaine (Lecture musique, Lecteur vidéo, Lecteur de livres) |
 
 ## 3. Routes
 

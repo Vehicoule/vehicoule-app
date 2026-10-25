@@ -55,7 +55,7 @@ besoin.
 |---|---|
 | `items.kind` (§5.1) | + `movie`, `show`, `season`, `episode`, `collection` (les livres ajoutent `book`, `chapter`). **`anime` n'est pas une sorte** |
 | Tables communes (§5.2) | + `library_entries`, `categories`, `progress`, `bookmarks`, `source_bindings` (§3.2) ; `item_relations` (addendum §6) |
-| `vehicoule:host` | 1.1.0 : + `types`, `session` (cookies), `challenge`, `oauth`, filtres, `settings-schema` (§4.5) ; `credentials` (spec livres §4.5) ; adresses du réseau local accordées par l'utilisateur (§4.6) |
+| `vehicoule:host` | 1.1.0 : + `types`, `locale` (langues du contenu, §4.7), `session` (cookies), `challenge`, `oauth`, filtres, `settings-schema` (§4.5) ; `credentials` (spec livres §4.5) ; adresses du réseau local accordées par l'utilisateur (§4.6) |
 | SDK | + décompacteur, AES compatible CryptoJS, option `js` (Boa, moteur JS en Rust, compilé en WASM dans le composant) si le spike l'exige (§4.5) |
 | Manifeste (§4.3) | + `adult: bool` ; Réglages › Sources « Afficher les sources pour adultes », désactivé par défaut |
 | Crate `stream` (§3.4) | + HLS : variantes, segments avec reprise, AES-128, playlist locale réécrite, sous-titres à côté (§7) ; proxy local (surface d'attaque §2) |
@@ -310,7 +310,7 @@ interface source {
 
     enum stream-format { hls, file }
     enum sub-format { ass, srt, vtt }
-    record subtitle { url: string, lang: string, label: option<string>, format: sub-format, sdh: bool, headers: list<tuple<string, string>> }
+    record subtitle { url: string, lang: string, label: option<string>, format: sub-format, sdh: bool, forced: bool, headers: list<tuple<string, string>> }
     record audio-track { url: string, lang: string, label: option<string> }
     record video {
         url: string,
@@ -561,6 +561,35 @@ Sans feed tiers, l'app doit déjà servir, et légalement. Le feed officiel livr
     rattachement au catalogue (§3.3) et sous-titres à côté (`.ass`, `.srt`).
   - Les mêmes dossiers servent à la musique locale.
 
+### 4.7 Langue transmise aux plugins : `locale`
+
+Une fonction de l'hôte, commune à tous les domaines, dans `vehicoule:host` 1.1.0 (version
+mineure : une interface de plus).
+
+```wit
+interface locale {
+    /// Content languages the user understands, best first (BCP 47: `fr-FR`, `en`, `ja`).
+    languages: func() -> list<string>;
+    /// ISO 3166-1 alpha-2 region of the user (`FR`).
+    region: func() -> string;
+}
+```
+
+- `languages` renvoie la liste de §6.4 (« Langues que je comprends »), **trois au plus**, pour
+  limiter ce qu'un fournisseur apprend de l'utilisateur. `region` est celle du réglage, ou à
+  défaut celle du système.
+- Un plugin de catalogue demande ses métadonnées dans la première langue de la liste et se
+  replie sur les suivantes, puis sur la langue originale (TMDB : paramètre `language`, avec
+  repli par champ ; AniList : titres anglais ou romaji, pas de traduction). Chaque champ
+  renvoyé dit sa langue quand le fournisseur la donne.
+- Le cœur garde le cache **par langue** : changer de langues recharge les fiches à la
+  prochaine ouverture, sans tout effacer.
+- La même interface sert à la musique (paroles traduites M1, régions des classements), aux
+  livres (métadonnées, langue des scans) et aux sous-titres (`subtitles.query.langs` part de
+  cette liste).
+- Les fonctions qui reçoivent déjà une langue ou une région en paramètre (`music.resolve`,
+  `browse`) la gardent ; `locale` sert aux plugins qui n'en reçoivent pas.
+
 ## 5. Écrans
 
 ### 5.1 Destinations
@@ -594,10 +623,14 @@ Accueil (commun, addendum §4) · **Bibliothèque** · **Nouveautés** · **Hist
 
 Réglages › Vidéos › « Titres en » :
 
-- films et séries : **titre dans la langue de l'app** quand il existe (TMDB), sinon le titre
-  original ; ou toujours le titre original ;
-- animés : romaji, anglais, natif, ou **français quand il existe** (TMDB, puis synonymes
-  AniList, puis l'anglais).
+- films et séries : **titre dans la première de mes langues** qui en a un (TMDB), sinon le
+  titre original ; ou toujours le titre original ;
+- animés : romaji, anglais, natif, ou **dans mes langues quand il existe** (TMDB, puis
+  synonymes AniList, puis l'anglais), réglé à part des films et séries.
+
+Les titres et synopsis dans une écriture de droite à gauche (arabe, hébreu) sont isolés
+(`Directionality` par texte, isolation bidi) : ils s'affichent justes dans une interface
+de gauche à droite, et inversement.
 
 Le choix s'applique partout : grilles, pages, notifications, Reprendre, partage. La recherche
 cherche toujours dans tous les titres.
@@ -709,18 +742,12 @@ source » (spec UI §6.7), comme pour la musique.
 - **Contrôles** : ⏯, ±10 s, épisode précédent / suivant, vitesse (0,25 à 3), pistes audio et
   sous-titres, qualité (variantes), rapport d'image (ajuster, remplir, étirer), verrouillage
   de l'écran, rotation forcée.
-- **Pistes audio (VO / VF…)** : Réglages › Vidéos › « Langue audio » : **originale** (défaut)
-  ou une langue choisie (« français, sinon originale »), séparément pour les animés. Le choix
-  fait sur un titre est retenu pour ce titre. Une source qui sert la VO et la VF en deux
-  entrées (`audio-lang`) est choisie selon ce réglage.
-- **Sous-titres** :
-  - défaut intelligent : **affichés quand l'audio n'est pas dans ta langue**, masqués sinon ;
-    retenu par titre ;
-  - ASS (anime) rendus par libass dans libmpv, style d'origine et polices embarquées
-    respectés ; SRT et VTT (films et séries) avec le style de l'utilisateur. Option « Imposer
-    mon style » (taille, police, contour, position), y compris pour les ASS. Décalage ± ;
-  - « Chercher des sous-titres » : la capacité `subtitles` (OpenSubtitles), avec le hachage
-    du fichier quand il est local.
+- **Pistes audio et sous-titres** : choisis selon les langues de l'utilisateur (§6.4), retenus
+  par titre. Rendu : ASS (anime) par libass dans libmpv, style d'origine et polices embarquées
+  respectés ; SRT et VTT (films et séries) avec le style de l'utilisateur. Option « Imposer
+  mon style » (taille, police, contour, position), y compris pour les ASS. Décalage ±.
+  « Chercher des sous-titres » : la capacité `subtitles` (OpenSubtitles), avec le hachage du
+  fichier quand il est local.
 - **Double sous-titres** (`secondary-sid`) : deux pistes affichées ensemble, la seconde en
   haut. En pause, toucher une ligne la copie.
 - **Sous-titres pour sourds et malentendants** : un filtre retire, ou garde seuls, les
@@ -759,6 +786,52 @@ source » (spec UI §6.7), comme pour la musique.
 - **Desktop** : `/watch` occupe toute la fenêtre ; double-clic = plein écran système ; les
   raccourcis visent la vidéo (addendum §5.3) : Espace, ← → ±10 s, ↑ ↓ volume, F plein écran,
   S passer le segment, N épisode suivant, V pistes de sous-titres, [ ] vitesse.
+
+### 6.4 Langues du contenu
+
+Réglages › **Langues** (réglage de l'app, partagé par tous les domaines, dans
+`settings_shared`). L'interface reste en français ou en anglais ; ces réglages portent sur le
+**contenu**.
+
+- **Langues que je comprends** : une liste ordonnée, préremplie avec les langues du système
+  (Android et macOS donnent une liste ordonnée), modifiable par glisser. Elle sert aux
+  titres, aux métadonnées (§4.7), aux sous-titres et à la règle ci-dessous.
+- **Langue audio** : une liste ordonnée dont **« Originale »** (VO) est un élément comme les
+  autres : par exemple « Originale, français » ou « Français, originale ». Deux listes, une
+  pour les **films et séries** (défaut : « Originale »), une pour les **animés** (défaut :
+  « Originale »).
+- **Sous-titres** :
+  - langues : une liste ordonnée (défaut : les langues que je comprends) ;
+  - quand : **« Seulement si l'audio n'est pas dans une de mes langues »** (défaut),
+    « Toujours », « Jamais » ;
+  - **sous-titres forcés** (les passages en langue étrangère d'un film doublé ou en VO) :
+    toujours affichés quand l'audio est dans une de mes langues et qu'une piste forcée existe
+    dans une de mes langues de sous-titres ; désactivables ;
+  - SDH : « Préférer les sous-titres pour sourds et malentendants », désactivé par défaut.
+
+**Choix des pistes** (Rust décide, à chaque épisode ou film) :
+
+1. Un choix fait sur ce titre (audio ou sous-titres) passe avant tout, et suit les épisodes
+   suivants.
+2. **Audio** : la première entrée de la liste audio disponible. « Originale » = la piste dont la
+   langue est `original-language` du titre ; une piste sans langue (`und`) seule est prise
+   pour l'originale. Une source qui sert VO et VF comme deux entrées (`audio-lang`) est
+   choisie de la même façon, avant même de lancer la lecture.
+3. **Sous-titres** :
+   - si l'audio choisi est dans une de mes langues : aucune piste, sauf une piste **forcée**
+     dans une de mes langues de sous-titres ;
+   - sinon (ou si la règle est « Toujours ») : la première de mes langues de sous-titres
+     disponible, SDH ou non selon la préférence ; à défaut, « Chercher des sous-titres » est
+     proposé en une ligne ;
+   - des sous-titres incrustés dans une de mes langues (`hardsub-lang`) comptent comme
+     présents : aucune piste en plus.
+4. Les pistes viennent de deux endroits : celles que la source déclare (`video.audio`,
+   `video.subtitles`, avec `forced` et `sdh`) et celles du conteneur, lues par mpv (langue et
+   drapeaux `forced` / `default` de MKV et MP4) et remontées au cœur par `VideoEvent`. Le
+   cœur fusionne les deux listes, puis choisit.
+
+**Double sous-titres** : la seconde piste par défaut est la langue originale quand elle
+existe en texte (utile pour apprendre une langue).
 
 ## 7. Téléchargements
 
@@ -810,7 +883,12 @@ source » (spec UI §6.7), comme pour la musique.
   - téléchargement HLS (reprise de segment, AES-128, playlist réécrite, domaines refusés) ;
   - fichiers locaux : reconnaissance des noms sur un corpus de noms réels ;
   - détection d'intro sur deux épisodes enregistrés ;
-  - imports (`.tachibk`, listes de trackers).
+  - imports (`.tachibk`, listes de trackers) ;
+  - **choix des pistes** (§6.4) : table de cas (VO seule, VO + VF, piste `und`, forcés dans un
+    film doublé, sous-titres incrustés, choix retenu par titre), listes du conteneur et de la
+    source fusionnées ;
+  - `locale` : trois langues au plus envoyées, repli de langue des métadonnées, cache par
+    langue.
 - **`plugin-host`** : `oauth` (le jeton n'atteint jamais le composant), `send-authorized` refusé
   hors des domaines déclarés, `settings-schema` et filtres ; boîte à cookies isolée par
   plugin ; adresse locale accordée à un seul plugin (refusée aux autres) ; un composant de test
