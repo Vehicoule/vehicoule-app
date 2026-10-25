@@ -866,7 +866,7 @@ class _FlightDemo extends StatefulWidget {
 
 class _FlightDemoState extends State<_FlightDemo> {
   final _stack = GlobalKey();
-  double _extent = 0;
+  double _extent = 0.35;
   Rect? _from, _to;
 
   /// A global rect, in the frame's coordinates.
