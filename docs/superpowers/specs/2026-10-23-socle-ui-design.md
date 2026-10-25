@@ -360,18 +360,24 @@ file, like), puis des groupes séparés par des espaces. Même menu sur mobile e
 | Carousel héros | Accueil (découverte, mixes) |
 | Carousel multi-browse | Artiste (albums) |
 | Étagère (titre + rangée horizontale de cartes 108) | Accueil, Explorer |
-| FAB étendu → FAB | Album / playlist : « Lire », qui se réduit au défilement |
-| FAB menu | Bibliothèque : nouvelle playlist, importer un lien |
-| Split button | Album / playlist : « Lire » \| ▾ (aléatoire, lire ensuite, ajouter à la file) |
+| FAB étendu → FAB | Sources : « Ajouter une source » (ouvre la feuille §6.7) ; sur desktop, le FAB de la destination se place en haut du rail |
+| FAB menu | Bibliothèque : « Nouvelle » (nouvelle playlist, importer un lien) ; Accueil : « Lancer » (mélanger mes likés, radio de ce que j'écoute, reprendre la dernière écoute) |
+| Split button | Toute collection qui se lit, qui se réduit en FAB lecture au défilement : album, playlist, Top 50, genre : « Lire » \| ▾ (aléatoire, lire ensuite, ajouter à la file) ; artiste, likés, téléchargés : « Aléatoire » \| ▾ (lire dans l'ordre, radio, lire ensuite, ajouter à la file) |
 | Groupe de boutons connectés | Lecteur (like / playlist / télécharger), sélecteur Paroles · Lecteur · File, rangée rapide des menus, choix des Réglages |
 | Loading indicator M3E | Résultats de recherche, chargement de page, premier lancement |
 | Progress ondulé | Anneau du disque (lecteur, mini-lecteur, bande desktop), bord en vague, téléchargements |
-| Toolbar flottante | Mini-lecteur (+ FAB ⏯), sélection multiple |
+| Toolbar flottante | Mini-lecteur (+ FAB ⏯) ; sélection multiple (+ FAB « Lire » ; ajouter à une playlist, télécharger, like, retirer dans la toolbar) |
 | FAB | ⏯ du mini-lecteur (devient le loading indicator pendant un chargement) |
 | Chips | Filtres de recherche et de bibliothèque |
 | Listes en groupes arrondis | Réglages |
 | Snackbar, dialogues, badges, switch, tirer pour rafraîchir | Où l'usage M3 les place |
 | Squelettes | Toute zone qui charge ; même taille que le contenu final |
+
+**Règle d'emploi** (guide M3) : un seul FAB ou split button par écran, pour son action
+principale. Un FAB menu regroupe plusieurs lancements ou créations d'un même écran. Un split
+button, c'est une action principale et ses variantes. Les groupes de boutons connectés servent
+aux bascules indépendantes (like / playlist / télécharger) et aux choix ; jamais à une action
+principale.
 
 ### 5.5 Le lecteur : un seul widget `NowPlaying`, trois tailles
 
