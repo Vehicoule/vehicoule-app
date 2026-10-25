@@ -147,18 +147,26 @@ class _M3EScope extends StatelessWidget {
         gap: 2,
       ),
     );
-    if (!reduced) return base;
+    // Every circular progress is one continuous ring, played meeting the track with
+    // no gap (spec UI §5.5, like the artwork's ring); linear bars keep M3E's gap.
+    final progress = base.progressIndicatorTheme;
+    final ring = base.copyWith(
+      progressIndicatorTheme: progress.copyWith(
+        circular: progress.circular.copyWith(gapSize: 0),
+      ),
+    );
+    if (!reduced) return ring;
     // "Reduce motion" (spec UI §5.6): the components' own springs land at once.
-    return base.copyWith(
-      buttonTheme: base.buttonTheme.copyWith(shapeSpring: _instant),
-      buttonGroupTheme: base.buttonGroupTheme.copyWith(
+    return ring.copyWith(
+      buttonTheme: ring.buttonTheme.copyWith(shapeSpring: _instant),
+      buttonGroupTheme: ring.buttonGroupTheme.copyWith(
         neighborSquishSpring: _instant,
       ),
-      toolbarTheme: base.toolbarTheme.copyWith(
+      toolbarTheme: ring.toolbarTheme.copyWith(
         labelSpring: _instant,
         expandSpring: _instant,
       ),
-      fabMenuTheme: base.fabMenuTheme.copyWith(
+      fabMenuTheme: ring.fabMenuTheme.copyWith(
         expandSpring: _instant,
         fabShapeSpring: _instant,
         expandStagger: Duration.zero,

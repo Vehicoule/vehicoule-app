@@ -503,15 +503,17 @@ void ringGeometryTests() {
           );
           last = a;
         }
-        // The rest runs from after the played part back to just before the top.
-        final rest = g.rest(0.25, turn: turn, gap: 4);
-        for (final p in rest) {
+        // The rest runs from the played part's end back to the top, end to end.
+        final rest = g.rest(0.25, turn: turn);
+        expect(rest.first, played.last, reason: '$why: no hole at the head');
+        expect(rest.last, played.first, reason: '$why: none at 12 o\'clock');
+        for (final p in rest.skip(1).take(rest.length - 2)) {
           final a = _clockwise(p, c);
           expect(a, inExclusiveRange(math.pi / 2, 2 * math.pi), reason: why);
         }
       }
       expect(g.played(0, turn: 0), isEmpty);
-      expect(g.rest(1, turn: 0, gap: 4), isEmpty);
+      expect(g.rest(1, turn: 0), isEmpty);
     }
     final cookie = VRingGeometry(vRingOutline(ArtShape.cookie, box), c);
     final radii = cookie.played(1, turn: 0).map(radius);

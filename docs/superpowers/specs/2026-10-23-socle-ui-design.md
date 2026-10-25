@@ -366,8 +366,8 @@ file, like), puis des groupes séparés par des espaces. Même menu sur mobile e
 
 - Le couple officiel M3E, flottant au-dessus de la barre de navigation :
   - une **toolbar flottante** en pilule, qui contient la pochette du disque (forme cookie qui
-    tourne pendant la lecture, avec l'anneau ondulé de progression), le titre, l'artiste et
-    like ;
+    tourne pendant la lecture, avec l'anneau de progression, continu comme celui du lecteur,
+    5.5), le titre, l'artiste et like ;
   - à côté, un **FAB carré arrondi ⏯**. Il morphe entre lecture et pause et, pendant un
     chargement, devient le loading indicator M3E (formes qui se transforment).
 - Gestes, sur la toolbar :
@@ -473,6 +473,11 @@ est plus haut que nécessaire.
   - Pendant la lecture, elle tourne lentement (un tour en 20 s). En pause, elle morphe en carré
     arrondi, et la pochette entière redevient visible.
   - Autour, l'**anneau ondulé est la progression**. On le fait glisser pour avancer.
+  - C'est **un anneau continu** : la partie jouée part de 12 h et rejoint la piste sans
+    écart, ni à la tête ni à 12 h, et sans indicateur d'arrêt (celui-ci appartient aux
+    barres linéaires). Même règle pour l'anneau du mini-lecteur et de la bande, et pour tous
+    les indicateurs circulaires du design (téléchargement, progression circulaire) ; les
+    barres linéaires gardent l'écart M3E.
     Sémantique : un slider accessible, avec ←/→ au clavier.
   - Les temps sont sous l'anneau, en une ligne centrée.
 - **Vague.** La pochette est en pleine largeur, et son **bord bas est une onde** qui ondule

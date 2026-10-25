@@ -134,26 +134,25 @@ class VRingGeometry {
     ];
   }
 
-  /// The rest of the track, leaving [gap] (length) on both sides of the played part.
-  List<Offset> rest(
-    double progress, {
-    required double turn,
-    required double gap,
-  }) {
+  /// The rest of the track, on screen: from where the played part ends, clockwise,
+  /// back to 12 o'clock. The two meet end to end: one continuous ring.
+  List<Offset> rest(double progress, {required double turn}) {
     final top = _top(turn);
     final played = _count(progress, top);
-    if (played >= points.length) return const [];
-    final skip = played == 0 ? 0 : (gap / step).ceil() + 1;
-    final n = points.length - played - 2 * skip;
+    final n = points.length;
+    if (played >= n) return const [];
+    // Starts on the played part's last sample, so no hole between them.
+    final from = played == 0 ? 0 : played - 1;
     return [
-      for (var k = 0; k < n; k++)
-        _turned(points[(top + played + skip + k) % points.length], turn),
-      if (played == 0) _turned(points[top], turn),
+      for (var k = from; k < n; k++) _turned(points[(top + k) % n], turn),
+      _turned(points[top], turn),
     ];
   }
 }
 
-/// Paints the ring: the played part in `primary`, the rest in the track colour.
+/// Paints the ring (spec UI §5.5): the played part in `primary`, the rest in the track
+/// colour, one continuous line. Butt ends: the played colour stops exactly at the
+/// progress, and starts exactly at 12 o'clock.
 class VRingPainter extends CustomPainter {
   const VRingPainter({
     required this.geometry,
@@ -182,19 +181,18 @@ class VRingPainter extends CustomPainter {
     final pen = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
+      ..strokeCap = StrokeCap.butt
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(
-      _line(geometry.rest(progress, turn: turn, gap: stroke)),
+      _line(geometry.rest(progress, turn: turn)),
       pen..color = track,
     );
     canvas.drawPath(
       _line(geometry.played(progress, turn: turn)),
       pen..color = played,
     );
-    // No stop indicator: that is the linear bar's. On a closed ring the track ends
-    // just before 12 o'clock, where the played part starts, and a played dot there
-    // read as progress before the start.
+    // No stop indicator: that is the linear bar's (a played dot at the track's end
+    // read, on a closed ring, as progress before 12 o'clock).
   }
 
   @override

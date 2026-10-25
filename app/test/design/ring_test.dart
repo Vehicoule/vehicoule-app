@@ -1,11 +1,12 @@
 // The ring's played part (spec UI §5.5): from 12 o'clock clockwise to the progress,
-// nothing of the played colour anywhere else, the two gaps the same (user report: a
-// played dash just left of 12 o'clock).
+// nothing of the played colour anywhere else (user report: a played dash just left of
+// 12 o'clock), and one continuous ring: no hole, no overlap where played meets rest.
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_3_expressive/material_3_expressive.dart' show M3ETheme;
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/design/design.dart';
 
@@ -40,12 +41,31 @@ double _angle(int x, int y) {
 }
 
 void main() {
+  testWidgets('circular indicators are continuous, linear ones keep their gap', (
+    tester,
+  ) async {
+    late BuildContext ctx;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: vTheme(brightness: Brightness.light, seed: VPresets.seeds.first),
+        builder: vAppBuilder,
+        home: Builder(
+          builder: (c) {
+            ctx = c;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    final t = M3ETheme.of(ctx).progressIndicatorTheme;
+    expect(t.circular.gapSize, 0);
+    expect(t.linear.gapSize, greaterThan(0));
+  });
+
   for (final shape in [ArtShape.circle, ArtShape.cookie]) {
     for (final p in [0.0, 0.01, 0.5, 0.99, 1.0]) {
       test('$shape at $p: played only on its clockwise arc', () async {
         final px = await _paint(p, shape);
-        // A round cap reaches half the stroke past each end of the arc.
-        final slack = (_stroke / 2 + 1) / (_size / 2) * 180 / math.pi;
         final played = <double>[], track = <double>[];
         for (var y = 0; y < _size; y++) {
           for (var x = 0; x < _size; x++) {
@@ -56,17 +76,31 @@ void main() {
             if (b > 200 && r < 60) track.add(a);
           }
         }
+        // A butt end: the played colour stops at its arc, give or take a pixel.
+        final edge = 1.5 / (_size / 2) * 180 / math.pi;
         for (final a in played) {
-          final inside =
-              a <= p * 360 + slack || a >= 360 - slack; // the start's cap
+          final inside = a <= p * 360 + edge || a >= 360 - edge;
           expect(inside, isTrue, reason: 'played pixel at $a° for p = $p');
         }
-        if (p > 0.005 && p < 0.9) {
-          // The gaps after the played end and before 12 o'clock are equal.
-          final after =
-              track.where((a) => a > p * 360).reduce(math.min) - p * 360;
-          final before = 360 - track.reduce(math.max);
-          expect(after, closeTo(before, slack), reason: 'gaps $after / $before');
+        // Continuous: every degree of the ring is painted, once.
+        final painted = List.filled(360, 0);
+        for (final a in [...played, ...track]) {
+          painted[a.floor() % 360]++;
+        }
+        for (var d = 0; d < 360; d++) {
+          expect(painted[d], greaterThan(0), reason: 'a hole at $d° for p = $p');
+        }
+        if (p > 0 && p < 1) {
+          // Where they meet (the head, 12 o'clock), no pixel mixes the two colours.
+          var mixed = 0;
+          for (var y = 0; y < _size; y++) {
+            for (var x = 0; x < _size; x++) {
+              final i = (y * _size.toInt() + x) * 4;
+              final r = px.getUint8(i), b = px.getUint8(i + 2);
+              if (r > 80 && b > 80) mixed++;
+            }
+          }
+          expect(mixed, lessThanOrEqualTo(2 * _stroke), reason: 'an overlap');
         }
       });
     }

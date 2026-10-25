@@ -1882,7 +1882,8 @@ class _NavigationSectionState extends State<_NavigationSection> {
     ];
     Widget rail(bool expanded) => _screen(
       expanded ? VSize.sideSheet : VSize.strip + VSpace.s32,
-      VSize.sideSheet * 1.6,
+      // Tall enough for the pinned list above the domain menu.
+      VSize.phoneDemo,
       VNavigationRail(
         destinations: _destinations(l),
         pinned: pinned,
