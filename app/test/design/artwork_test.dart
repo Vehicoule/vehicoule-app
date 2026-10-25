@@ -310,9 +310,8 @@ void main() {
     await tester.pump();
     expect(seeks.last, 1.0);
 
-    // The keyboard steps, at once, from what the ring shows: here the player never
-    // applied the drag (progress stays 0.2), so wait for the held seek to give way.
-    await tester.pump(VDurations.long * 3);
+    // The keyboard steps, at once, from the progress the parent passes: here the
+    // player never applied the drag, so 0.2.
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
@@ -378,96 +377,92 @@ void main() {
     expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
-  testWidgets(
-    'after a drag the ring keeps the new place until the player catches up',
-    (tester) async {
-      final progress = ValueNotifier(0.2);
-      final seeks = <double>[];
-      await tester.pumpWidget(
-        harness(
-          Center(
-            child: ValueListenableBuilder(
-              valueListenable: progress,
-              builder: (context, p, _) => VArtwork(
-                itemId: 'a',
-                size: 200,
-                playing: false,
-                progress: p,
-                onSeek: seeks.add,
-              ),
-            ),
-          ),
-          reduce: true,
-        ),
-      );
-      final c = tester.getCenter(find.byType(VArtwork));
-      String shown() => tester
-          .getSemantics(find.bySemanticsLabel('Position de lecture').first)
-          .value;
-      await tester.dragFrom(
-        c + const Offset(0, 97),
-        const Offset(-1, -1),
-      ); // about 50 %
-      await tester.pump();
-      expect(seeks, hasLength(1));
-      expect(
-        shown(),
-        isNot(pct(0.2)),
-        reason: 'no snap back to the old position',
-      );
-      expect(shown(), pct(seeks.single));
-      // The player catches up: the real position shows again.
-      progress.value = seeks.single;
-      await tester.pump();
-      expect(shown(), pct(seeks.single));
-      // A seek the player never applies gives way after a moment.
-      await tester.dragFrom(
-        c + const Offset(97, 0),
-        const Offset(0, -1),
-      ); // about 25 %
-      await tester.pump();
-      expect(shown(), isNot(pct(seeks.first)));
-      await tester.pump(VDurations.long * 3);
-      expect(shown(), pct(seeks.first));
-    },
-  );
-
-  testWidgets(
-    'a second arrow during a held seek goes on from where the ring shows',
-    (tester) async {
-      final seeks = <double>[];
-      await tester.pumpWidget(
-        harness(
-          Center(
-            child: VArtwork(
+  testWidgets('a seek shows the given progress with no timer left', (
+    tester,
+  ) async {
+    final progress = ValueNotifier(0.2);
+    final seeks = <double>[];
+    await tester.pumpWidget(
+      harness(
+        Center(
+          child: ValueListenableBuilder(
+            valueListenable: progress,
+            builder: (context, p, _) => VArtwork(
               itemId: 'a',
               size: 200,
               playing: false,
-              progress: 0.2,
+              progress: p,
+              onSeek: seeks.add,
+            ),
+          ),
+        ),
+        reduce: true,
+      ),
+    );
+    final c = tester.getCenter(find.byType(VArtwork));
+    String shown() => tester
+        .getSemantics(find.bySemanticsLabel('Position de lecture').first)
+        .value;
+    await tester.dragFrom(
+      c + const Offset(0, 97),
+      const Offset(-1, -1),
+    ); // about 50 %
+    await tester.pump();
+    expect(seeks, hasLength(1));
+    // The player adapter publishes the target at once; the ring holds nothing itself.
+    expect(shown(), pct(0.2));
+    progress.value = seeks.single;
+    await tester.pump();
+    expect(shown(), pct(seeks.single));
+    await tester.tapAt(c + const Offset(97, 0)); // about 25 %
+    await tester.pump();
+    expect(seeks, hasLength(2));
+    expect(shown(), pct(seeks.first));
+    // No pump to wait out: a timer left behind would fail the test here.
+  });
+
+  testWidgets('arrow keys step from the progress the parent passes', (
+    tester,
+  ) async {
+    final progress = ValueNotifier(0.2);
+    final seeks = <double>[];
+    await tester.pumpWidget(
+      harness(
+        Center(
+          child: ValueListenableBuilder(
+            valueListenable: progress,
+            builder: (context, p, _) => VArtwork(
+              itemId: 'a',
+              size: 200,
+              playing: false,
+              progress: p,
               onSeek: seeks.add,
               seekStep: 0.1,
             ),
           ),
-          reduce: true,
         ),
-      );
-      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-      await tester.pump();
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pump();
-      // The player hasn't caught up yet (progress still 0.2): the next press starts at 0.3.
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pump();
-      expect(seeks, [closeTo(0.3, 1e-9), closeTo(0.4, 1e-9)]);
-      expect(
-        tester
-            .getSemantics(find.bySemanticsLabel('Position de lecture').first)
-            .value,
-        pct(0.4),
-      );
-      await tester.pump(VDurations.long * 3);
-    },
-  );
+        reduce: true,
+      ),
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    // The parent hasn't passed the new progress yet: the next press starts at 0.2 again.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    progress.value = 0.3;
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(seeks, [closeTo(0.3, 1e-9), closeTo(0.3, 1e-9), closeTo(0.4, 1e-9)]);
+    expect(
+      tester
+          .getSemantics(find.bySemanticsLabel('Position de lecture').first)
+          .value,
+      pct(0.3),
+    );
+  });
 }
 
 double _clockwise(Offset p, Offset c) {

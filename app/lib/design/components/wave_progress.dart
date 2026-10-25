@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
@@ -82,40 +81,11 @@ class VSeekable extends StatefulWidget {
 class _VSeekableState extends State<VSeekable> {
   double? _drag;
 
-  /// Where the last seek went, shown until the player's progress comes near it (or for
-  /// a moment, if it never does): no snap back to the old place for one round trip.
-  double? _held;
-  Timer? _hold;
+  /// The player publishes a seek's target at once (platform/player.dart): nothing is held
+  /// here.
+  double get _shown => (_drag ?? widget.progress).clamp(0.0, 1.0);
 
-  double get _shown => (_drag ?? _held ?? widget.progress).clamp(0.0, 1.0);
-
-  @override
-  void didUpdateWidget(VSeekable old) {
-    super.didUpdateWidget(old);
-    final held = _held;
-    if (held != null && (widget.progress - held).abs() <= 0.01) _release();
-  }
-
-  @override
-  void dispose() {
-    _hold?.cancel();
-    super.dispose();
-  }
-
-  void _release() {
-    _hold?.cancel();
-    _hold = null;
-    _held = null;
-  }
-
-  void _seek(double p) {
-    setState(() => _held = p);
-    _hold?.cancel();
-    _hold = Timer(VDurations.long * 2, () {
-      if (mounted) setState(_release);
-    });
-    widget.onSeek?.call(p);
-  }
+  void _seek(double p) => widget.onSeek?.call(p);
 
   void _move(Offset local, Size size) {
     var next = widget.mapping(local, size);
@@ -142,8 +112,7 @@ class _VSeekableState extends State<VSeekable> {
     final pct = NumberFormat.percentPattern(l.localeName);
     final p = _shown;
     final step = widget.step;
-    // From what the slider shows (a held seek included), so it moves and announces
-    // the value it seeks to.
+    // From what the slider shows, so it announces the value it seeks to.
     void by(double d) => _seek((_shown + d).clamp(0.0, 1.0));
     return Semantics(
       slider: true,
