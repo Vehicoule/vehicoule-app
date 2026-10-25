@@ -28,8 +28,8 @@ class VAction {
 }
 
 abstract final class VMenu {
-  static const quickKey = ValueKey('vmenu.quick');
-  static const width = 280.0;
+  static const quickKey = ValueKey('vmenu.quick'),
+      panelKey = ValueKey('vmenu.panel');
 }
 
 /// The expressive menu (spec UI §5.2), the same on mobile and desktop: the [quick] row as
@@ -120,7 +120,8 @@ class _MenuRoute extends PopupRoute<void> {
     );
 
     final panel = ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: VMenu.width),
+      key: VMenu.panelKey,
+      constraints: const BoxConstraints(maxWidth: VSize.menu),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -142,12 +143,13 @@ class _MenuRoute extends PopupRoute<void> {
                   ],
                 ),
               ),
-            for (final group in groups) ...[
+            for (final (gi, group) in groups.indexed) ...[
               const SizedBox(height: VSpace.s8),
               surface(
                 M3EMenuContent(
                   closeOnSelect: true,
-                  autofocusFirst: false,
+                  // The menu takes the keyboard: its first item has focus, ↑/↓ move.
+                  autofocusFirst: gi == 0,
                   onSelect: (_) {},
                   nodes: [
                     M3EMenuGroup.entries(

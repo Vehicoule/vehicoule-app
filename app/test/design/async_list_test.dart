@@ -73,4 +73,106 @@ void main() {
       expect(find.text('broken'), findsNothing);
     },
   );
+
+  testWidgets('a stream-backed list follows its stream', (tester) async {
+    final items = StreamController<List<String>>();
+    addTearDown(items.close);
+    await tester.pumpWidget(
+      harness(
+        CustomScrollView(
+          slivers: [
+            VAsyncList<String>.stream(
+              watch: () => items.stream,
+              builder: (context, list) => SliverList.builder(
+                itemCount: list.length,
+                itemBuilder: (_, i) => Text(list[i]),
+              ),
+              empty: VEmptyState(icon: VIcons.queue, message: fr().emptyLikes),
+              errorText: (e) => 'broken',
+            ),
+          ],
+        ),
+        reduce: true,
+      ),
+    );
+    expect(find.byType(VLoading), findsOneWidget);
+    items.add(['Get Lucky']);
+    await tester.pump();
+    expect(find.text('Get Lucky'), findsOneWidget);
+    items.add(['Get Lucky', 'Je veux']);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Je veux'), findsOneWidget);
+    items.add([]);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text(fr().emptyLikes), findsOneWidget);
+  });
+
+  testWidgets('a new reload key loads again, the same key does not', (
+    tester,
+  ) async {
+    var loads = 0;
+    Widget list(Object key) => CustomScrollView(
+      slivers: [
+        VAsyncList<String>(
+          reloadKey: key,
+          load: () async {
+            loads++;
+            return ['Get Lucky'];
+          },
+          builder: (context, list) => SliverList.builder(
+            itemCount: list.length,
+            itemBuilder: (_, i) => Text(list[i]),
+          ),
+          empty: const SizedBox(),
+          errorText: (e) => 'broken',
+        ),
+      ],
+    );
+    await tester.pumpWidget(harness(list('a'), reduce: true));
+    await tester.pump();
+    await tester.pumpWidget(harness(list('a'), reduce: true));
+    await tester.pump();
+    expect(loads, 1, reason: 'a rebuild with new closures is not a reload');
+    await tester.pumpWidget(harness(list('b'), reduce: true));
+    await tester.pump();
+    expect(loads, 2);
+  });
+
+  testWidgets('a long list loads page by page, 100 at a time', (tester) async {
+    final asked = <(int, int)>[];
+    await tester.pumpWidget(
+      harness(
+        CustomScrollView(
+          slivers: [
+            VAsyncList<int>.paged(
+              page: (offset, limit) async {
+                asked.add((offset, limit));
+                final end = (offset + limit).clamp(0, 250);
+                return [for (var i = offset; i < end; i++) i];
+              },
+              itemBuilder: (context, n, i) =>
+                  SizedBox(height: VSize.trackRow, child: Text('row $n')),
+              empty: const SizedBox(),
+              errorText: (e) => 'broken',
+            ),
+          ],
+        ),
+        reduce: true,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(asked, [(0, 100)], reason: 'one page to start');
+    expect(find.text('row 0'), findsOneWidget);
+    // Scrolling near the end of what is loaded asks for the next page, until the end.
+    for (var i = 0; i < 30; i++) {
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -2000));
+      await tester.pump();
+      await tester.pump();
+    }
+    expect(asked, [(0, 100), (100, 100), (200, 100)]);
+    expect(find.text('row 249'), findsOneWidget);
+  });
 }

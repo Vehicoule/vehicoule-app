@@ -26,6 +26,10 @@ void main() {
       'Gap(8)',
       'BorderRadius.circular(12)',
       'Radius.circular(28)',
+      // What dart format produces: the literal on the next line.
+      'SizedBox(\n  height: 24,\n  child: x,\n)',
+      'EdgeInsetsDirectional.only(\n  start: 16,\n  end: VSpace.s4,\n)',
+      'BorderRadius.circular(\n  12,\n)',
     ]) {
       expect(offending([('sample', bad)], literal), hasLength(1), reason: bad);
     }

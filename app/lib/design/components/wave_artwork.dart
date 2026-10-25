@@ -28,9 +28,6 @@ class VWaveArtwork extends StatefulWidget {
   final ValueChanged<double> onSeek;
   final double seekStep;
 
-  /// How much the wave crops from the bottom of the picture.
-  static const crop = 10.0;
-
   @override
   State<VWaveArtwork> createState() => _VWaveArtworkState();
 }
@@ -86,41 +83,35 @@ class _VWaveArtworkState extends State<VWaveArtwork>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final w = widget.width;
+    // Only the bottom band (the edge) is grabbed; a drag shows where it will land.
     return SizedBox(
       width: w,
       height: w,
-      child: Stack(
-        children: [
-          AnimatedBuilder(
+      child: VSeekable(
+        progress: widget.progress,
+        onSeek: widget.onSeek,
+        step: widget.seekStep,
+        hit: (local, size) => local.dy >= size.height - VSize.menuTarget,
+        shape: const RoundedRectangleBorder(),
+        child: VArtworkPicture(itemId: widget.itemId, size: w),
+        builder: (context, shown, picture) => RepaintBoundary(
+          child: AnimatedBuilder(
             animation: Listenable.merge([_phase, _amp]),
             builder: (context, child) {
               final wave = _Wave(phase: _phase.value, amplitude: _amp.value);
               return CustomPaint(
                 foregroundPainter: _EdgePainter(
                   wave: wave,
-                  progress: widget.progress.clamp(0.0, 1.0),
+                  progress: shown,
                   played: scheme.primary,
                   rest: scheme.secondaryContainer,
                 ),
                 child: ClipPath(clipper: _WaveClipper(wave), child: child),
               );
             },
-            child: VArtworkPicture(itemId: widget.itemId, size: w),
+            child: picture,
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: VSize.menuTarget,
-            child: VSeekable(
-              progress: widget.progress,
-              onSeek: widget.onSeek,
-              step: widget.seekStep,
-              shape: const RoundedRectangleBorder(),
-              child: const SizedBox.expand(),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -131,13 +122,13 @@ class _Wave {
 
   final double phase, amplitude;
 
-  static const height = 5.0, length = 48.0;
-
   /// The edge's y at [x], for a box of [size].
   double y(double x, Size size) =>
       size.height -
-      VWaveArtwork.crop / 2 -
-      amplitude * height * math.sin((x / length + phase) * 2 * math.pi);
+      VSize.waveCrop / 2 -
+      amplitude *
+          VSize.waveAmplitude *
+          math.sin((x / VSize.waveLength + phase) * 2 * math.pi);
 
   Path edge(Size size, double from, double to) {
     final p = Path()..moveTo(from, y(from, size));

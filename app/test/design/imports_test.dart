@@ -10,11 +10,14 @@ final materialImport = RegExp(
 final m3eImport = RegExp(r'''import\s+['"]package:material_3_expressive/''');
 
 /// Own artwork, wave, ring or progress painters, and the stock controls the bricks wrap.
+/// Own painters (any name), pictures, rows, sheets, dialogs, menus and play/pause, and the
+/// stock controls the bricks wrap: outside design/, every one of these re-creates a brick.
 final ownBrick = RegExp(
-  r'class\s+\w*(Artwork|Art|Cover|Wave|Ring|Disc|Progress|Equalizer)\w*\s+extends\s+CustomPainter'
+  r'\bextends\s+CustomPainter\b'
   r'|\b(Slider|RangeSlider|CircularProgressIndicator|LinearProgressIndicator|RefreshProgressIndicator'
-  r'|SegmentedButton|MenuAnchor|PopupMenuButton|DropdownMenu|ToggleButtons)\s*[<(]'
-  r'|\bshowMenu\s*[<(]|\bM3E\w+|\bVArtworkPicture\b',
+  r'|SegmentedButton|MenuAnchor|PopupMenuButton|DropdownMenu|ToggleButtons|ListTile|AnimatedIcon'
+  r'|Image|Image\.file|Image\.network|FileImage|artworkFile)\s*[<(]'
+  r'|\b(showMenu|showModalBottomSheet|showDialog|showGeneralDialog)\b|\bM3E\w+|\bVArtworkPicture\b',
 );
 
 void main() {
@@ -54,10 +57,30 @@ void main() {
       'PopupMenuButton<int>(itemBuilder: b)',
       'M3EButtonGroup(actions: a)',
       'VArtworkPicture(itemId: id, size: 44)',
+      // Any painter, whatever its name: artwork, waves and rings live in design/.
+      'class _P extends CustomPainter {',
+      // Own artwork: pictures and the core's artwork cache go through VArtwork.
+      'ClipRRect(child: Image.file(File(path)))',
+      'Image(image: provider)',
+      'FileImage(File(path))',
+      'final p = await artworkFile(id: id, size: 44);',
+      // Own rows, sheets, dialogs, menus and play/pause.
+      'ListTile(title: Text(t.title))',
+      'showModalBottomSheet(context: c, builder: b)',
+      'showDialog<void>(context: c, builder: b)',
+      'showMenu(context: c, position: p, items: i)',
+      'AnimatedIcon(icon: AnimatedIcons.play_pause, progress: a)',
+      'class _Row extends StatelessWidget {}\nWidget build(c) => ListTile(\n  title: x,\n);',
     ]) {
       expect(offending([('sample', bad)], ownBrick), hasLength(1), reason: bad);
     }
     expect(offending([('sample', 'VTrackRow(track: t)')], ownBrick), isEmpty);
-    expect(offending(screens(), ownBrick), isEmpty);
+    expect(
+      offending([
+        ('sample', 'VArtwork(itemId: id, size: VSize.trackArt)'),
+      ], ownBrick),
+      isEmpty,
+    );
+    expect(offending(outsideDesign(), ownBrick), isEmpty);
   });
 }

@@ -27,6 +27,7 @@ import 'design.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  vRegisterFontLicenses();
   runApp(GalleryApp(covers: await GalleryCovers.start()));
 }
 
@@ -177,7 +178,7 @@ class _GalleryAppState extends State<GalleryApp> {
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(disableAnimations: _reduce),
         child: ArtworkResolver(
-          resolve: widget.covers?.resolve ?? (id, px) async => null,
+          resolve: widget.covers?.resolve ?? _noCover,
           child: vAppBuilder(context, child),
         ),
       ),
@@ -328,7 +329,6 @@ NowPlayingData _data({
   sourceTitle: _track.album!.title,
   playing: playing,
   loading: loading,
-  positionMs: 137000,
   durationMs: _track.durationMs!,
   liked: liked,
   download: DownloadStateView.running,
@@ -339,6 +339,11 @@ NowPlayingData _data({
 );
 
 void _noop() {}
+
+Future<ImageProvider?> _noCover(String id, int px) async => null;
+
+/// Where the still players stand.
+final _fixedPosition = ValueNotifier(137000);
 
 final _actions = NowPlayingActions(
   onPlayPause: _noop,
@@ -473,10 +478,19 @@ class _ArtworkSectionState extends State<_ArtworkSection> {
         ]),
         const SizedBox(height: VSpace.s24),
         _wrap([
-          VMosaicArtwork(itemIds: const [], size: VSize.shelfCard),
-          VMosaicArtwork(itemIds: [ids[4]], size: VSize.shelfCard),
-          VMosaicArtwork(itemIds: [ids[5], ids[6]], size: VSize.shelfCard),
-          VMosaicArtwork(itemIds: ids.sublist(7, 11), size: VSize.shelfCard),
+          for (final (i, m) in [
+            <String>[],
+            [ids[4]],
+            [ids[5], ids[6]],
+            ids.sublist(7, 11),
+          ].indexed)
+            VArtwork(
+              itemId: 'playlist:$i',
+              size: VSize.shelfCard,
+              mosaic: m,
+              playing: i == 3,
+              selected: i == 2,
+            ),
         ]),
         const SizedBox(height: VSpace.s24),
         _wrap([
@@ -597,7 +611,13 @@ class _PlayerSectionState extends State<_PlayerSection> {
   bool _playing = true, _liked = false, _shuffle = false;
   Repeat _repeat = Repeat.off;
   PlayerView _view = PlayerView.player;
-  int _position = 137000;
+  final _position = ValueNotifier(137000);
+
+  @override
+  void dispose() {
+    _position.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -606,7 +626,6 @@ class _PlayerSectionState extends State<_PlayerSection> {
       sourceTitle: _track.album!.title,
       playing: _playing,
       loading: false,
-      positionMs: _position,
       durationMs: _track.durationMs!,
       liked: _liked,
       download: null,
@@ -616,8 +635,8 @@ class _PlayerSectionState extends State<_PlayerSection> {
     final actions = NowPlayingActions(
       onPlayPause: () => setState(() => _playing = !_playing),
       onNext: _noop,
-      onPrevious: () => setState(() => _position = 0),
-      onSeek: (ms) => setState(() => _position = ms),
+      onPrevious: () => _position.value = 0,
+      onSeek: (ms) => _position.value = ms,
       onLike: () => setState(() => _liked = !_liked),
       onAddToPlaylist: _noop,
       onDownload: _noop,
@@ -626,6 +645,12 @@ class _PlayerSectionState extends State<_PlayerSection> {
           setState(() => _repeat = Repeat.values[(_repeat.index + 1) % 3]),
       onOutput: _noop,
       onCollapse: _noop,
+      onMenu: (anchor) => showVMenu(
+        context,
+        anchor: anchor,
+        quick: _quick(AppLocalizations.of(context)),
+        groups: _groups(AppLocalizations.of(context)),
+      ),
     );
     Widget lyrics(BuildContext c) => Padding(
       padding: const EdgeInsets.all(VSpace.s24),
@@ -656,6 +681,7 @@ class _PlayerSectionState extends State<_PlayerSection> {
       NowPlayingData? data,
       bool wide = false,
     }) => VNowPlaying(
+      position: _position,
       data: data ?? _data(),
       size: size,
       style: style,
@@ -677,6 +703,7 @@ class _PlayerSectionState extends State<_PlayerSection> {
             large.width,
             large.height,
             VNowPlaying(
+              position: _position,
               data: live,
               size: PlayerSize.large,
               style: PlayerStyle.disc,
@@ -691,6 +718,7 @@ class _PlayerSectionState extends State<_PlayerSection> {
             large.width,
             large.height,
             VNowPlaying(
+              position: _position,
               data: live,
               size: PlayerSize.large,
               style: PlayerStyle.wave,
@@ -758,6 +786,7 @@ class _PlayerSectionState extends State<_PlayerSection> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: VSpace.s8),
               child: VNowPlaying(
+                position: _position,
                 data: _data(),
                 size: PlayerSize.compact,
                 style: PlayerStyle.disc,
@@ -1178,6 +1207,7 @@ class _FeedbackSectionState extends State<_FeedbackSection> {
                 VSideSheet(
                   open: _sheet,
                   child: VNowPlaying(
+                    position: _fixedPosition,
                     data: _data(),
                     size: PlayerSize.medium,
                     style: PlayerStyle.disc,

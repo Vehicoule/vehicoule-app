@@ -21,7 +21,6 @@ void main() {
         for (final type in [
           VArtwork,
           VDecor,
-          VMosaicArtwork,
           VWaveArtwork,
           VWaveProgress,
           VDownloadIcon,

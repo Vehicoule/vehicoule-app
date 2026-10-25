@@ -105,4 +105,46 @@ void main() {
       expect(find.byKey(VSheet.dialogKey), findsOneWidget);
     },
   );
+
+  testWidgets('the menu takes the keyboard: its first item has focus', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        Builder(
+          builder: (context) => GestureDetector(
+            onTap: () => showVMenu(
+              context,
+              anchor: const Rect.fromLTWH(20, 20, 200, 56),
+              quick: const [],
+              groups: [
+                [
+                  VAction("Aller à l'album", VIcons.album, () {}),
+                  VAction("Aller à l'artiste", VIcons.person, () {}),
+                ],
+              ],
+            ),
+            child: const Text('open'),
+          ),
+        ),
+        reduce: true,
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump();
+    final focused = FocusManager.instance.primaryFocus?.context;
+    expect(focused, isNotNull);
+    expect(
+      find.ancestor(
+        of: find.byWidget(focused!.widget),
+        matching: find.byKey(VMenu.panelKey),
+      ),
+      findsOneWidget,
+    );
+    // ↓ moves to the next item.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.context, isNot(focused));
+  });
 }

@@ -48,6 +48,12 @@ Future<ui.Color?> seedFromArtwork(String path) {
   final seed = hit ?? _extract(path);
   _seeds[path] = seed;
   if (_seeds.length > _cacheSize) _seeds.remove(_seeds.keys.first);
+  // A failure isn't kept: the file may arrive later (a cover still downloading).
+  if (hit == null) {
+    seed.then((c) {
+      if (c == null && _seeds[path] == seed) _seeds.remove(path);
+    });
+  }
   return seed;
 }
 

@@ -5,6 +5,7 @@ import '../symbols.dart';
 import '../tokens.dart';
 import 'artwork.dart';
 import 'controls.dart';
+import 'focus_ring.dart';
 
 /// A shelf: a title and a horizontal row of cards that snaps to them, at a fixed height
 /// that grows with the text size (spec UI §5.4, §8).
@@ -135,35 +136,17 @@ class VCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      width: VSize.shelfCard,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(VRadius.small),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            VArtwork(itemId: itemId, size: VSize.shelfCard, kind: kind),
-            const SizedBox(height: VSpace.s8),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall,
-            ),
-            if (subtitle != null)
-              Text(
-                subtitle!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-          ],
-        ),
-      ),
+    final text = Theme.of(context).textTheme;
+    return _ArtCard(
+      itemId: itemId,
+      title: title,
+      subtitle: subtitle,
+      kind: kind,
+      onTap: onTap,
+      size: VSize.shelfCard,
+      gap: VSpace.s8,
+      titleStyle: text.titleSmall,
+      subtitleStyle: text.bodySmall,
     );
   }
 }
@@ -184,30 +167,98 @@ class VHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final text = Theme.of(context).textTheme;
+    return _ArtCard(
+      itemId: itemId,
+      title: title,
+      subtitle: subtitle,
+      kind: ArtKind.item,
+      onTap: onTap,
+      size: VSize.heroCard,
+      gap: VSpace.s12,
+      titleStyle: text.titleLarge,
+      subtitleStyle: text.bodyMedium,
+    );
+  }
+}
+
+/// A card: the whole card takes focus and taps; the keyboard ring follows the artwork's
+/// shape (rounded square, circle, or the cookie while it plays).
+class _ArtCard extends StatefulWidget {
+  const _ArtCard({
+    required this.itemId,
+    required this.title,
+    required this.subtitle,
+    required this.kind,
+    required this.onTap,
+    required this.size,
+    required this.gap,
+    required this.titleStyle,
+    required this.subtitleStyle,
+  });
+
+  final String itemId, title;
+  final String? subtitle;
+  final ArtKind kind;
+  final VoidCallback onTap;
+  final double size, gap;
+  final TextStyle? titleStyle, subtitleStyle;
+
+  @override
+  State<_ArtCard> createState() => _ArtCardState();
+}
+
+class _ArtCardState extends State<_ArtCard> {
+  final _node = FocusNode();
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final shape = artShapeFor(
+      kind: widget.kind,
+      playing: NowPlayingScope.isPlaying(context, widget.itemId),
+      selected: false,
+    );
     return SizedBox(
-      width: VSize.heroCard,
+      width: widget.size,
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(VRadius.large),
+        focusNode: _node,
+        onTap: widget.onTap,
+        // The ring shows focus; no grey highlight on top.
+        focusColor: const Color(0x00000000),
+        borderRadius: BorderRadius.circular(VRadius.small),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            VArtwork(itemId: itemId, size: VSize.heroCard),
-            const SizedBox(height: VSpace.s12),
+            VFocusRing(
+              node: _node,
+              shape: vArtBorder(shape, widget.size),
+              child: VArtwork(
+                itemId: widget.itemId,
+                size: widget.size,
+                kind: widget.kind,
+              ),
+            ),
+            SizedBox(height: widget.gap),
             Text(
-              title,
+              widget.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleLarge,
+              style: widget.titleStyle,
             ),
-            if (subtitle != null)
+            if (widget.subtitle != null)
               Text(
-                subtitle!,
+                widget.subtitle!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                style: widget.subtitleStyle?.copyWith(
+                  color: scheme.onSurfaceVariant,
                 ),
               ),
           ],

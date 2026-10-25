@@ -56,6 +56,31 @@ abstract final class VSize {
 
   /// Hero card width in a carousel.
   static const heroCard = 280.0;
+
+  /// The thin stroke of small progress icons (download).
+  static const iconStroke = 3.0;
+
+  /// How far inside the ring's edge a finger still grabs it.
+  static const ringHit = 24.0;
+
+  /// The wave edge: amplitude, wavelength and how much of the picture it crops.
+  static const waveAmplitude = 5.0, waveLength = 48.0, waveCrop = 10.0;
+
+  /// App bar height, and the artwork docked in it by a flexible header.
+  static const appBar = 64.0, dockedArt = 40.0;
+
+  /// The flexible header's artwork (compact, expanded) and its text block at 100 % text.
+  static const headerArt = 220.0, headerArtWide = 200.0, headerText = 72.0;
+
+  /// The player's artwork: largest in each size, smallest, and the room the blocks under
+  /// it need (title, actions, controls) at 100 % text.
+  static const playerArtLarge = 420.0,
+      playerArtMedium = 300.0,
+      playerArtMin = 120.0;
+  static const playerBlocks = 260.0;
+
+  /// The expressive menu's width.
+  static const menu = 280.0;
 }
 
 abstract final class VRadius {

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/bridge/queue.dart';
@@ -6,19 +8,22 @@ import 'package:vehicoule/design/design.dart';
 
 import 'harness.dart';
 
-NowPlayingData data({bool playing = true, bool loading = false}) =>
-    NowPlayingData(
-      track: sampleTracks[1],
-      sourceTitle: 'Random Access Memories',
-      playing: playing,
-      loading: loading,
-      positionMs: 120000,
-      durationMs: 369000,
-      liked: true,
-      download: null,
-      shuffle: false,
-      repeat: Repeat.off,
-    );
+NowPlayingData data({
+  bool playing = true,
+  bool loading = false,
+  Duration? sleepLeft,
+}) => NowPlayingData(
+  track: sampleTracks[1],
+  sourceTitle: 'Random Access Memories',
+  playing: playing,
+  loading: loading,
+  durationMs: 369000,
+  sleepLeft: sleepLeft,
+  liked: true,
+  download: null,
+  shuffle: false,
+  repeat: Repeat.off,
+);
 
 final calls = <String>[];
 final actions = NowPlayingActions(
@@ -43,8 +48,10 @@ Widget player({
   NowPlayingData? d,
   ValueChanged<PlayerView>? onView,
   Axis axis = Axis.horizontal,
+  ValueListenable<int>? position,
 }) => VNowPlaying(
   data: d ?? data(),
+  position: position ?? ValueNotifier(120000),
   size: size,
   style: style,
   view: view,
@@ -67,6 +74,12 @@ Future<void> show(
   await tester.pump();
   // M3E button groups run a short selection timer on update.
   await tester.pump(VDurations.short);
+}
+
+/// The playing cookie turns forever: wait for the transitions only.
+Future<void> settle(WidgetTester tester) async {
+  await tester.pump(VDurations.medium);
+  await tester.pump(VDurations.medium);
 }
 
 void main() {
@@ -94,6 +107,14 @@ void main() {
           expect(order[i], greaterThan(order[i - 1]), reason: '$why: block $i');
         }
         final times = top(VNowPlaying.progressKey);
+        if (style == PlayerStyle.wave) {
+          final title = tester.getRect(find.byKey(VNowPlaying.titleKey));
+          expect(
+            times - title.bottom,
+            greaterThanOrEqualTo(VSpace.s8),
+            reason: 'a gap under the artists',
+          );
+        }
         expect(
           times,
           greaterThan(order[1]),
@@ -117,6 +138,7 @@ void main() {
     await show(
       tester,
       VNowPlaying(
+        position: ValueNotifier(120000),
         data: data(),
         size: PlayerSize.large,
         style: PlayerStyle.disc,
@@ -259,5 +281,124 @@ void main() {
       await tester.pump();
       expect(calls.last, call, reason: label);
     }
+  });
+
+  testWidgets('position ticks rebuild only the ring and the times', (
+    tester,
+  ) async {
+    final position = ValueNotifier(120000);
+    await show(tester, player(position: position));
+    final controls = tester.widget(find.byType(VControls));
+    final header = tester.widget(find.byKey(VNowPlaying.headerKey));
+    position.value = 130000;
+    await tester.pump();
+    expect(find.text('2:10'), findsOneWidget);
+    expect(identical(tester.widget(find.byType(VControls)), controls), isTrue);
+    expect(
+      identical(tester.widget(find.byKey(VNowPlaying.headerKey)), header),
+      isTrue,
+    );
+  });
+
+  testWidgets(
+    'lyrics and queue shrink the big artwork into the compact header',
+    (tester) async {
+      tester.view.physicalSize = const Size(420, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final view = ValueNotifier(PlayerView.player);
+      Future<void> pumpPlayer({required bool reduce}) => tester.pumpWidget(
+        harness(
+          ValueListenableBuilder(
+            valueListenable: view,
+            builder: (context, v, _) =>
+                player(view: v, onView: (n) => view.value = n),
+          ),
+          reduce: reduce,
+        ),
+      );
+      await pumpPlayer(reduce: false);
+      await settle(tester);
+      final big = tester.getRect(find.byKey(VNowPlaying.artworkKey));
+      expect(big.width, greaterThan(200));
+
+      view.value = PlayerView.lyrics;
+      await tester.pump();
+      await tester.pump(VDurations.medium * 0.5);
+      expect(
+        find.byType(VArtwork),
+        findsOneWidget,
+        reason: 'one artwork that moves',
+      );
+      final mid = tester.getRect(find.byKey(VNowPlaying.artworkKey));
+      expect(mid.width, lessThan(big.width));
+      expect(mid.width, greaterThan(VSize.compactArt));
+      await settle(tester);
+      final small = tester.getRect(find.byKey(VNowPlaying.artworkKey));
+      expect(small.width, closeTo(VSize.compactArt, 0.5));
+      final slot = tester.getRect(find.byKey(VNowPlaying.compactArtKey));
+      expect(small.center.dx, closeTo(slot.center.dx, 0.5));
+      expect(small.center.dy, closeTo(slot.center.dy, 0.5));
+      expect(find.text('lyrics body'), findsOneWidget);
+
+      // Back: it grows again.
+      view.value = PlayerView.player;
+      await settle(tester);
+      expect(
+        tester.getRect(find.byKey(VNowPlaying.artworkKey)).width,
+        closeTo(big.width, 0.5),
+      );
+
+      // Reduce motion: a 150 ms fade, nothing flies.
+      await pumpPlayer(reduce: true);
+      view.value = PlayerView.queue;
+      await tester.pump();
+      await tester.pump(VDurations.reduced);
+      await tester.pump(VDurations.short);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(
+        tester.getRect(find.byKey(VNowPlaying.artworkKey)).width,
+        closeTo(VSize.compactArt, 0.5),
+      );
+    },
+  );
+
+  testWidgets('the sleep timer shows whole minutes left', (tester) async {
+    await show(tester, player(d: data(sleepLeft: const Duration(minutes: 30))));
+    expect(find.text('30 min'), findsOneWidget);
+    await show(
+      tester,
+      player(d: data(sleepLeft: const Duration(minutes: 29, seconds: 1))),
+    );
+    expect(find.text('30 min'), findsOneWidget);
+  });
+
+  testWidgets('the pane header never cuts « Lecture depuis … »', (
+    tester,
+  ) async {
+    await show(
+      tester,
+      SizedBox(
+        width: VSize.sideSheet,
+        child: VNowPlaying(
+          data: data(sleepLeft: const Duration(minutes: 24)),
+          position: ValueNotifier(0),
+          size: PlayerSize.medium,
+          style: PlayerStyle.disc,
+          view: PlayerView.player,
+          onView: (_) {},
+          actions: actions,
+          lyrics: (_) => const SizedBox(),
+          queue: (_) => const SizedBox(),
+          onImmersive: () {},
+        ),
+      ),
+    );
+    final from = find.text('Lecture depuis Random Access Memories');
+    expect(from, findsOneWidget);
+    expect(
+      tester.renderObject<RenderParagraph>(from).didExceedMaxLines,
+      isFalse,
+    );
   });
 }

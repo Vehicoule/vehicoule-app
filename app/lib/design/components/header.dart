@@ -47,7 +47,6 @@ class VFlexibleHeader extends StatelessWidget {
   final Widget fab;
 
   static const barKey = ValueKey('header.bar');
-  static const _bar = 64.0, _docked = 40.0;
 
   @override
   Widget build(BuildContext context) {
@@ -64,9 +63,9 @@ class VFlexibleHeader extends StatelessWidget {
             top: MediaQuery.paddingOf(context).top,
             width: width,
             wide: wide,
-            art: wide ? 200.0 : 220.0,
+            art: wide ? VSize.headerArtWide : VSize.headerArt,
             // Title, subtitle and the actions row under (or beside) the artwork.
-            text: 72.0 * scale,
+            text: VSize.headerText * scale,
             actionsHeight: VSize.menuTarget + VSpace.s16,
           ),
         );
@@ -91,12 +90,12 @@ class _Delegate extends SliverPersistentHeaderDelegate {
   final bool wide;
 
   @override
-  double get minExtent => top + VFlexibleHeader._bar;
+  double get minExtent => top + VSize.appBar;
 
   @override
   double get maxExtent => wide
-      ? top + VFlexibleHeader._bar + art + VSpace.s24
-      : top + VFlexibleHeader._bar + art + VSpace.s16 + text + actionsHeight;
+      ? top + VSize.appBar + art + VSpace.s24
+      : top + VSize.appBar + art + VSpace.s16 + text + actionsHeight;
 
   @override
   Widget build(
@@ -107,7 +106,7 @@ class _Delegate extends SliverPersistentHeaderDelegate {
     final theme = Theme.of(context);
     final t = (shrinkOffset / (maxExtent - minExtent)).clamp(0.0, 1.0);
     final margin = VSpace.margin(windowClassOf(width));
-    const bar = VFlexibleHeader._bar, docked = VFlexibleHeader._docked;
+    const bar = VSize.appBar, docked = VSize.dockedArt;
 
     final artSize = lerpDouble(art, docked, t)!;
     final artLeft = lerpDouble(wide ? margin : (width - art) / 2, margin, t)!;

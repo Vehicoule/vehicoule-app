@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../bridge/catalog.dart';
@@ -31,13 +32,14 @@ String vTime(int ms) {
   return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$sec' : '$m:$sec';
 }
 
+/// The player's slow state. The position is separate ([VNowPlaying.position]): it ticks
+/// many times a second and only the ring, the wave edge and the times follow it.
 class NowPlayingData {
   const NowPlayingData({
     required this.track,
     required this.sourceTitle,
     required this.playing,
     required this.loading,
-    required this.positionMs,
     required this.durationMs,
     required this.liked,
     required this.download,
@@ -53,7 +55,7 @@ class NowPlayingData {
   /// What the queue plays from ("Playing from …").
   final String sourceTitle;
   final bool playing, loading;
-  final int positionMs, durationMs;
+  final int durationMs;
   final bool liked;
   final DownloadStateView? download;
   final double? downloadProgress;
@@ -64,7 +66,7 @@ class NowPlayingData {
   final Duration? sleepLeft;
   final bool sleepEndOfTrack;
 
-  double get progress =>
+  double progressAt(int positionMs) =>
       durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
 }
 
@@ -86,7 +88,7 @@ class NowPlayingActions {
 
   final VoidCallback onPlayPause, onNext, onPrevious;
 
-  /// To a position in milliseconds.
+  /// To a position in milliseconds (once per gesture: on release, a tap or a key).
   final ValueChanged<int> onSeek;
   final VoidCallback onLike, onAddToPlaylist, onDownload, onShuffle, onRepeat;
   final VoidCallback? onOutput;
@@ -106,11 +108,14 @@ class NowPlayingActions {
 /// - medium (desktop pane) and large (full screen); [wide] puts the artwork left of the
 ///   blocks (landscape, immersive).
 ///
-/// In the lyrics and queue views the artwork shrinks into the compact header.
-class VNowPlaying extends StatelessWidget {
+/// In the lyrics and queue views the big artwork shrinks into the compact header: one
+/// artwork flies between the two places (a 150 ms fade with "reduce motion").
+/// [position] (ms) is listened to by the ring, the wave edge and the times only.
+class VNowPlaying extends StatefulWidget {
   const VNowPlaying({
     super.key,
     required this.data,
+    required this.position,
     required this.size,
     required this.style,
     required this.view,
@@ -126,6 +131,7 @@ class VNowPlaying extends StatelessWidget {
   });
 
   final NowPlayingData data;
+  final ValueListenable<int> position;
   final PlayerSize size;
   final PlayerStyle style;
   final PlayerView view;
@@ -147,19 +153,58 @@ class VNowPlaying extends StatelessWidget {
       progressKey = ValueKey('np.progress'),
       controlsKey = ValueKey('np.controls'),
       selectorKey = ValueKey('np.selector'),
-      compactKey = ValueKey('np.compact');
+      compactKey = ValueKey('np.compact'),
+      compactArtKey = ValueKey('np.compact.art');
+
+  @override
+  State<VNowPlaying> createState() => _VNowPlayingState();
+}
+
+class _VNowPlayingState extends State<VNowPlaying>
+    with SingleTickerProviderStateMixin {
+  /// 0 = the player view, 1 = lyrics or queue (the artwork in the compact header).
+  late final AnimationController _side = AnimationController(
+    vsync: this,
+    value: widget.view == PlayerView.player ? 0 : 1,
+  );
+
+  NowPlayingData get data => widget.data;
+  NowPlayingActions get actions => widget.actions;
+
+  @override
+  void didUpdateWidget(VNowPlaying old) {
+    super.didUpdateWidget(old);
+    final target = widget.view == PlayerView.player ? 0.0 : 1.0;
+    if (target != _side.value) {
+      _side.animateTo(
+        target,
+        duration: reduceMotion(context)
+            ? VDurations.reduced
+            : VDurations.medium,
+        curve: VCurves.emphasized,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _side.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (size == PlayerSize.compact) {
-      return axis == Axis.vertical ? _strip(context) : _compact(context);
+    if (widget.size == PlayerSize.compact) {
+      return widget.axis == Axis.vertical ? _strip(context) : _compact(context);
     }
     final scheme = Theme.of(context).colorScheme;
     return DecoratedBox(
       // The player's one gradient: a tint behind the artwork (spec UI §2.2).
       decoration: BoxDecoration(
         gradient: RadialGradient(
-          center: wide ? const Alignment(-0.5, 0) : const Alignment(0, -0.45),
+          center: widget.wide
+              ? const Alignment(-0.5, 0)
+              : const Alignment(0, -0.45),
           radius: 0.9,
           colors: [
             scheme.primaryContainer.withValues(alpha: 0.6),
@@ -171,39 +216,14 @@ class VNowPlaying extends StatelessWidget {
         child: Column(
           children: [
             _header(context),
-            Expanded(
-              child: vSharedAxis(
-                key: view == PlayerView.player ? PlayerView.player : 'side',
-                child: view == PlayerView.player
-                    ? _player(context)
-                    : Column(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: VSpace.s16,
-                            ),
-                            child: _compact(context),
-                          ),
-                          const SizedBox(height: VSpace.s8),
-                          Expanded(
-                            child: vSharedAxis(
-                              key: view,
-                              child: (view == PlayerView.lyrics
-                                  ? lyrics
-                                  : queue)(context),
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-            ),
-            ?volume,
+            Expanded(child: LayoutBuilder(builder: _body)),
+            ?widget.volume,
             Padding(
               padding: const EdgeInsets.all(VSpace.s16),
               child: VViewSelector(
-                key: selectorKey,
-                value: view,
-                onChanged: onView,
+                key: VNowPlaying.selectorKey,
+                value: widget.view,
+                onChanged: widget.onView,
               ),
             ),
           ],
@@ -218,67 +238,175 @@ class VNowPlaying extends StatelessWidget {
 
   void _seek(double p) => actions.onSeek((p * data.durationMs).round());
 
+  /// The big artwork's side for this body: as large as the size allows, leaving room for
+  /// the blocks under it (beside it when wide), and never taller than the body.
+  double _artSide(BuildContext context, BoxConstraints box) {
+    final maxArt = widget.size == PlayerSize.large
+        ? VSize.playerArtLarge
+        : VSize.playerArtMedium;
+    final times = MediaQuery.textScalerOf(context).scale(VSpace.s24);
+    final fits = box.maxHeight - VSpace.s8 - times;
+    final room = widget.wide ? box.maxWidth / 2 : box.maxWidth;
+    final tall = widget.wide ? fits : box.maxHeight - VSize.playerBlocks;
+    // The Wave style is full width (spec UI §5.5); the disc keeps a margin and a cap.
+    final wave = widget.style == PlayerStyle.wave;
+    final cap = wave ? room : maxArt;
+    final side = [
+      wave ? room : room - 2 * VSpace.s24,
+      tall,
+      cap,
+    ].reduce((a, b) => a < b ? a : b).clamp(VSize.playerArtMin, cap);
+    return side.clamp(0.0, fits < 0 ? 0.0 : fits);
+  }
+
+  Widget _body(BuildContext context, BoxConstraints box) {
+    final side = _artSide(context, box);
+    final big = widget.wide
+        ? Rect.fromLTWH((box.maxWidth / 2 - side) / 2, VSpace.s8, side, side)
+        : Rect.fromLTWH((box.maxWidth - side) / 2, VSpace.s8, side, side);
+    const slot = Rect.fromLTWH(
+      VSpace.s16,
+      0,
+      VSize.compactArt,
+      VSize.compactArt,
+    );
+    final reduced = reduceMotion(context);
+    return AnimatedBuilder(
+      animation: _side,
+      builder: (context, _) {
+        final t = _side.value;
+        final rect = reduced
+            ? (t < 0.5 ? big : slot)
+            : Rect.lerp(big, slot, t)!;
+        return Stack(
+          children: [
+            if (t < 1)
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: t > 0,
+                  child: Opacity(opacity: 1 - t, child: _player(context, side)),
+                ),
+              ),
+            if (t > 0)
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: t < 1,
+                  child: Opacity(opacity: t, child: _sideView(context)),
+                ),
+              ),
+            Positioned.fromRect(
+              rect: rect,
+              child: Opacity(
+                opacity: reduced ? (1 - 2 * t).abs() : 1,
+                child: KeyedSubtree(
+                  key: VNowPlaying.artworkKey,
+                  child: _art(rect.width, compact: t > 0.5),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _art(double side, {required bool compact}) => ValueListenableBuilder(
+    valueListenable: widget.position,
+    builder: (context, ms, _) {
+      final p = data.progressAt(ms);
+      // The compact header keeps the disc in both styles (spec UI §5.5).
+      if (widget.style == PlayerStyle.wave && !compact) {
+        return VWaveArtwork(
+          itemId: data.track.id,
+          width: side,
+          progress: p,
+          playing: data.playing,
+          onSeek: _seek,
+          seekStep: _seekStep,
+        );
+      }
+      return VArtwork(
+        itemId: data.track.id,
+        size: side,
+        playing: data.playing,
+        progress: p,
+        onSeek: _seek,
+        seekStep: _seekStep,
+        semanticLabel: data.track.album?.title,
+      );
+    },
+  );
+
   Widget _header(BuildContext context) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final sleep = data.sleepLeft;
     return Padding(
-      key: headerKey,
+      key: VNowPlaying.headerKey,
       padding: const EdgeInsets.symmetric(horizontal: VSpace.s8),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (actions.onCollapse != null)
-            VIconButton(
-              icon: VIcons.collapse,
-              label: l.actionCollapse,
-              onPressed: actions.onCollapse,
-            ),
-          const SizedBox(width: VSpace.s8),
-          Expanded(
+          Row(
+            children: [
+              if (actions.onCollapse != null)
+                VIconButton(
+                  icon: VIcons.collapse,
+                  label: l.actionCollapse,
+                  onPressed: actions.onCollapse,
+                ),
+              const Spacer(),
+              if (sleep != null || data.sleepEndOfTrack) ...[
+                VSymbol(
+                  VIcons.bedtime,
+                  size: VSize.iconSmall,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: VSpace.s4),
+                Text(
+                  data.sleepEndOfTrack
+                      ? l.sleepEndOfTrack
+                      : l.sleepMinutesLeft((sleep!.inSeconds / 60).ceil()),
+                  style: theme.textTheme.labelMedium,
+                ),
+                const SizedBox(width: VSpace.s8),
+              ],
+              if (actions.onOutput != null)
+                VIconButton(
+                  icon: VIcons.devices,
+                  label: l.actionOutput,
+                  onPressed: actions.onOutput,
+                ),
+              if (widget.onImmersive != null)
+                VIconButton(
+                  icon: VIcons.fullscreen,
+                  label: l.actionImmersive,
+                  onPressed: widget.onImmersive,
+                ),
+              if (actions.onMenu != null)
+                Builder(
+                  builder: (b) => VIconButton(
+                    icon: VIcons.more,
+                    label: l.actionMore,
+                    onPressed: () {
+                      final box = b.findRenderObject()! as RenderBox;
+                      actions.onMenu!(
+                        box.localToGlobal(Offset.zero) & box.size,
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+          // Its own line, wrapping if it must: never cut (a narrow pane has little room
+          // beside the icons).
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: VSpace.s8),
             child: Text(
               l.playingFrom(data.sourceTitle),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelLarge,
             ),
           ),
-          if (sleep != null || data.sleepEndOfTrack) ...[
-            VSymbol(
-              VIcons.bedtime,
-              size: VSize.iconSmall,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: VSpace.s4),
-            Text(
-              data.sleepEndOfTrack
-                  ? l.sleepEndOfTrack
-                  : l.sleepMinutesLeft(sleep!.inMinutes + 1),
-              style: theme.textTheme.labelMedium,
-            ),
-          ],
-          if (actions.onOutput != null)
-            VIconButton(
-              icon: VIcons.devices,
-              label: l.actionOutput,
-              onPressed: actions.onOutput,
-            ),
-          if (onImmersive != null)
-            VIconButton(
-              icon: VIcons.fullscreen,
-              label: l.actionImmersive,
-              onPressed: onImmersive,
-            ),
-          if (actions.onMenu != null)
-            Builder(
-              builder: (b) => VIconButton(
-                icon: VIcons.more,
-                label: l.actionMore,
-                onPressed: () {
-                  final box = b.findRenderObject()! as RenderBox;
-                  actions.onMenu!(box.localToGlobal(Offset.zero) & box.size);
-                },
-              ),
-            ),
         ],
       ),
     );
@@ -286,24 +414,24 @@ class VNowPlaying extends StatelessWidget {
 
   Widget _times(BuildContext context) {
     final style = Theme.of(context).textTheme.labelMedium;
-    return Row(
-      key: progressKey,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(vTime(data.positionMs), style: style),
-        Text(vTime(data.durationMs), style: style),
-      ],
+    return ValueListenableBuilder(
+      key: VNowPlaying.progressKey,
+      valueListenable: widget.position,
+      builder: (context, ms, _) => Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(vTime(ms), style: style),
+          Text(vTime(data.durationMs), style: style),
+        ],
+      ),
     );
   }
 
-  Widget _title(
-    BuildContext context, {
-    CrossAxisAlignment align = CrossAxisAlignment.start,
-  }) {
+  Widget _title(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
-      key: titleKey,
-      crossAxisAlignment: align,
+      key: VNowPlaying.titleKey,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           data.track.title,
@@ -332,7 +460,7 @@ class VNowPlaying extends StatelessWidget {
   Widget _actions(BuildContext context) {
     final l = AppLocalizations.of(context);
     return VConnectedGroup(
-      key: actionsKey,
+      key: VNowPlaying.actionsKey,
       actions: [
         _like(l),
         VAction(
@@ -353,8 +481,8 @@ class VNowPlaying extends StatelessWidget {
     );
   }
 
-  Widget _controls({bool compact = false}) => VControls(
-    key: controlsKey,
+  Widget _controls() => VControls(
+    key: VNowPlaying.controlsKey,
     playing: data.playing,
     loading: data.loading,
     shuffle: data.shuffle,
@@ -364,81 +492,79 @@ class VNowPlaying extends StatelessWidget {
     onPrevious: actions.onPrevious,
     onShuffle: actions.onShuffle,
     onRepeat: actions.onRepeat,
-    compact: compact,
   );
 
-  Widget _art(double side) => style == PlayerStyle.disc
-      ? VArtwork(
-          itemId: data.track.id,
-          size: side,
-          playing: data.playing,
-          progress: data.progress,
-          onSeek: _seek,
-          seekStep: _seekStep,
-          semanticLabel: data.track.album?.title,
-        )
-      : VWaveArtwork(
-          itemId: data.track.id,
-          width: side,
-          progress: data.progress,
-          playing: data.playing,
-          onSeek: _seek,
-          seekStep: _seekStep,
-        );
-
-  Widget _player(BuildContext context) => LayoutBuilder(
-    builder: (context, box) {
-      final maxArt = size == PlayerSize.large ? 420.0 : 300.0;
-      // Room left for the title, actions, times and controls under the artwork.
-      const below = 260.0;
-      final room = wide ? box.maxWidth / 2 : box.maxWidth;
-      final side = [
-        room - 2 * VSpace.s24,
-        box.maxHeight - (wide ? 0 : below),
-        maxArt,
-      ].reduce((a, b) => a < b ? a : b).clamp(120.0, maxArt);
-      final art = Column(
-        mainAxisSize: MainAxisSize.min,
+  /// The player view, with an empty square where the flying artwork sits.
+  Widget _player(BuildContext context, double side) {
+    final disc = widget.style == PlayerStyle.disc;
+    final artArea = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(height: VSpace.s8 + side),
+        if (disc) SizedBox(width: side, child: _times(context)),
+      ],
+    );
+    final blocks = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _title(context),
+        if (!disc) ...[const SizedBox(height: VSpace.s8), _times(context)],
+        const SizedBox(height: VSpace.s16),
+        Center(child: _actions(context)),
+        const SizedBox(height: VSpace.s16),
+        Center(child: _controls()),
+      ],
+    );
+    const pad = EdgeInsets.symmetric(
+      horizontal: VSpace.s24,
+      vertical: VSpace.s8,
+    );
+    if (widget.wide) {
+      return Row(
         children: [
-          KeyedSubtree(key: artworkKey, child: _art(side)),
-          if (style == PlayerStyle.disc)
-            SizedBox(width: side, child: _times(context)),
+          Expanded(
+            child: Align(alignment: Alignment.topCenter, child: artArea),
+          ),
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(padding: pad, child: blocks),
+            ),
+          ),
         ],
       );
-      final blocks = Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _title(context),
-          if (style == PlayerStyle.wave) _times(context),
-          const SizedBox(height: VSpace.s16),
-          Center(child: _actions(context)),
-          const SizedBox(height: VSpace.s16),
-          Center(child: _controls()),
-        ],
-      );
-      return SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(
-          horizontal: VSpace.s24,
-          vertical: VSpace.s8,
+    }
+    return Column(
+      children: [
+        artArea,
+        const SizedBox(height: VSpace.s8),
+        Expanded(
+          child: SingleChildScrollView(padding: pad, child: blocks),
         ),
-        child: wide
-            ? Row(
-                children: [
-                  Expanded(child: Center(child: art)),
-                  const SizedBox(width: VSpace.s24),
-                  Expanded(child: blocks),
-                ],
-              )
-            : Column(
-                children: [
-                  art,
-                  const SizedBox(height: VSpace.s16),
-                  blocks,
-                ],
+      ],
+    );
+  }
+
+  /// Lyrics or queue under the compact header, whose artwork slot the flying artwork fills.
+  Widget _sideView(BuildContext context) => Column(
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: VSpace.s16),
+        child: _compact(context, slot: true),
+      ),
+      const SizedBox(height: VSpace.s8),
+      Expanded(
+        child: widget.view == PlayerView.player
+            ? const SizedBox.shrink()
+            : vSharedAxis(
+                key: widget.view,
+                reverse: widget.view == PlayerView.lyrics,
+                child: (widget.view == PlayerView.lyrics
+                    ? widget.lyrics
+                    : widget.queue)(context),
               ),
-      );
-    },
+      ),
+    ],
   );
 
   Widget _playPause(AppLocalizations l) => data.loading
@@ -463,18 +589,29 @@ class VNowPlaying extends StatelessWidget {
     onPressed: _like(l).onSelected,
   );
 
-  Widget _compact(BuildContext context) {
+  /// Artwork (disc, ring), title, like, ⏯. With [slot], the artwork's place is left empty
+  /// for the player's flying artwork.
+  Widget _compact(BuildContext context, {bool slot = false}) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Row(
-      key: compactKey,
+      key: VNowPlaying.compactKey,
       children: [
-        VArtwork(
-          itemId: data.track.id,
-          size: VSize.compactArt,
-          playing: data.playing,
-          progress: data.progress,
-        ),
+        if (slot)
+          const SizedBox.square(
+            key: VNowPlaying.compactArtKey,
+            dimension: VSize.compactArt,
+          )
+        else
+          ValueListenableBuilder(
+            valueListenable: widget.position,
+            builder: (context, ms, _) => VArtwork(
+              itemId: data.track.id,
+              size: VSize.compactArt,
+              playing: data.playing,
+              progress: data.progressAt(ms),
+            ),
+          ),
         const SizedBox(width: VSpace.s12),
         Expanded(
           child: Column(
@@ -499,7 +636,7 @@ class VNowPlaying extends StatelessWidget {
           ),
         ),
         _likeButton(l),
-        if (inlinePlayPause) _playPause(l),
+        if (widget.inlinePlayPause) _playPause(l),
       ],
     );
   }
@@ -508,16 +645,19 @@ class VNowPlaying extends StatelessWidget {
   Widget _strip(BuildContext context) {
     final l = AppLocalizations.of(context);
     return Column(
-      key: compactKey,
+      key: VNowPlaying.compactKey,
       mainAxisSize: MainAxisSize.min,
       children: [
-        VArtwork(
-          itemId: data.track.id,
-          size: VSize.strip - VSpace.s16,
-          playing: data.playing,
-          progress: data.progress,
-          onSeek: _seek,
-          seekStep: _seekStep,
+        ValueListenableBuilder(
+          valueListenable: widget.position,
+          builder: (context, ms, _) => VArtwork(
+            itemId: data.track.id,
+            size: VSize.strip - VSpace.s16,
+            playing: data.playing,
+            progress: data.progressAt(ms),
+            onSeek: _seek,
+            seekStep: _seekStep,
+          ),
         ),
         const SizedBox(height: VSpace.s8),
         _likeButton(l),
@@ -527,7 +667,7 @@ class VNowPlaying extends StatelessWidget {
           label: l.actionNext,
           onPressed: actions.onNext,
         ),
-        ?volume,
+        ?widget.volume,
       ],
     );
   }

@@ -145,22 +145,92 @@ void main() {
     expect(seen, VDecorShape.values.toSet());
   });
 
-  testWidgets('mosaic artwork tiles 1, 2, 4 and 0 items', (tester) async {
-    Future<void> show(List<String> ids) => tester.pumpWidget(
-      harness(Center(child: VMosaicArtwork(itemIds: ids, size: 200))),
-    );
-    int pictures() => find.byType(VArtworkPicture).evaluate().length;
+  testWidgets(
+    'a playlist mosaic is a VArtwork: 1, 2, 4 and 0 tiles, cookie and check',
+    (tester) async {
+      Future<void> show(Widget w) =>
+          tester.pumpWidget(harness(Center(child: w), reduce: true));
+      int pictures() => find.byType(VArtworkPicture).evaluate().length;
+      VArtwork mosaic(
+        List<String> ids, {
+        bool? playing = false,
+        bool selected = false,
+      }) => VArtwork(
+        itemId: 'playlist:mine',
+        size: 200,
+        mosaic: ids,
+        playing: playing,
+        selected: selected,
+      );
 
-    await show(['a']);
-    expect(find.byType(VArtwork), findsOneWidget);
-    expect(pictures(), 1);
-    await show(['a', 'b']);
-    expect(pictures(), 4, reason: '2 tiles repeat into 2×2');
-    await show(['a', 'b', 'a', 'c', 'd', 'e']);
-    expect(pictures(), 4, reason: 'first four distinct');
-    await show([]);
-    expect(pictures(), 0);
-    expect(find.byIcon(VIcons.musicNote), findsOneWidget);
+      await show(mosaic(['a']));
+      expect(pictures(), 1);
+      await show(mosaic(['a', 'b']));
+      expect(pictures(), 4, reason: '2 tiles repeat into 2×2');
+      await show(mosaic(['a', 'b', 'a', 'c', 'd', 'e']));
+      expect(pictures(), 4, reason: 'first four distinct');
+      await show(mosaic([]));
+      expect(pictures(), 0);
+      expect(find.byIcon(VIcons.musicNote), findsOneWidget);
+      expect(
+        find.byKey(VArtwork.shapeKey(ArtShape.roundedSquare)),
+        findsOneWidget,
+      );
+
+      // The shape language applies: playing → cookie, selected → cookie + check.
+      await show(mosaic(['a', 'b'], playing: true));
+      expect(find.byKey(VArtwork.shapeKey(ArtShape.cookie)), findsOneWidget);
+      await show(mosaic(['a', 'b'], selected: true));
+      expect(find.bySemanticsLabel('Sélectionné'), findsOneWidget);
+      await show(
+        NowPlayingScope(
+          trackId: 'a',
+          contextId: 'playlist:mine',
+          playing: true,
+          child: mosaic(['a', 'b'], playing: null),
+        ),
+      );
+      expect(find.byKey(VArtwork.shapeKey(ArtShape.cookie)), findsOneWidget);
+    },
+  );
+
+  testWidgets('pictures are fetched at a few bucketed sizes', (tester) async {
+    final asked = <int>[];
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      harness(
+        const Column(
+          children: [
+            VArtwork(itemId: 'a', size: VSize.trackArt, playing: false),
+            VArtwork(itemId: 'b', size: 200, playing: false),
+            VArtwork(itemId: 'c', size: 201, playing: false),
+          ],
+        ),
+        resolve: (id, px) async {
+          asked.add(px);
+          return null;
+        },
+      ),
+    );
+    expect(asked, [64, 256, 256]);
+  });
+
+  testWidgets('the missing-cover note stays upright while the cookie turns', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        const Center(child: VArtwork(itemId: 'a', size: 200, playing: true)),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 3));
+    final note = find.byIcon(VIcons.musicNote);
+    final box = tester.renderObject<RenderBox>(note);
+    final rect = tester.getRect(note);
+    expect(rect.width, closeTo(box.size.width, 0.5), reason: 'not rotated');
+    expect(rect.height, closeTo(box.size.height, 0.5));
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('disc ring and wave edge seek like a slider', (tester) async {
@@ -191,29 +261,70 @@ void main() {
         ),
       ),
     );
-    final ring = find.byType(VArtwork);
-    final c = tester.getCenter(ring);
-    // A tap on the right of the ring is a quarter of the way.
-    await tester.tapAt(c + const Offset(98, 0));
-    expect(seeks.last, closeTo(0.25, 0.02));
-    // A drag along the ring seeks as it goes.
-    await tester.dragFrom(c + const Offset(0, 98), const Offset(-60, -40));
-    expect(seeks.last, inInclusiveRange(0.5, 0.9));
-    // The keyboard steps.
+    final c = tester.getCenter(find.byType(VArtwork));
+    String shown() => tester
+        .getSemantics(find.bySemanticsLabel('Position de lecture').first)
+        .value;
+
+    // The cover itself isn't the slider: only the ring is.
+    await tester.tapAt(c);
+    expect(seeks, isEmpty);
+    // A tap on the right of the ring is a quarter of the way, at once.
+    await tester.tapAt(c + const Offset(97, 0));
+    expect(seeks.single, closeTo(0.25, 0.02));
+
+    // A drag previews as it goes and seeks once, on release.
+    final drag = await tester.startGesture(c + const Offset(0, 97)); // 50 %
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await drag.moveBy(const Offset(-12, -10));
+      await tester.pump();
+    }
+    expect(seeks, hasLength(1), reason: 'nothing while dragging');
+    expect(
+      shown(),
+      isNot('20 %'),
+      reason: 'the ring shows where the finger is',
+    );
+    await drag.up();
+    await tester.pump();
+    expect(seeks, hasLength(2));
+    expect(seeks.last, inInclusiveRange(0.55, 0.85));
+
+    // Dragging across 12 o'clock stops at the end instead of jumping back to 0.
+    final top = await tester.startGesture(
+      c + const Offset(-60, -76),
+    ); // about 90 %
+    await tester.pump();
+    for (var i = 0; i < 8; i++) {
+      await top.moveBy(const Offset(15, 0));
+      await tester.pump();
+    }
+    await top.up();
+    await tester.pump();
+    expect(seeks.last, 1.0);
+
+    // The keyboard steps, at once.
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     expect(seeks.last, closeTo(0.3, 1e-9));
-    // An accessible slider.
     expect(
       tester.getSemantics(find.bySemanticsLabel('Position de lecture').first),
       isSemantics(isSlider: true),
     );
 
-    // The wave edge: the middle of the bottom edge is halfway.
+    // The wave edge: the middle of the bottom edge is halfway; a drag seeks once.
     final wave = tester.getRect(find.byType(VWaveArtwork));
     await tester.tapAt(Offset(wave.center.dx, wave.bottom - 4));
     expect(seeks.last, closeTo(0.5, 0.02));
+    final before = seeks.length;
+    await tester.dragFrom(
+      Offset(wave.left + 20, wave.bottom - 8),
+      const Offset(100, 0),
+    );
+    await tester.pump();
+    expect(seeks.length, before + 1);
     await tester.pump(const Duration(seconds: 1));
   });
 }

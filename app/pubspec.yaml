@@ -70,6 +70,12 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # The fonts' licences, for the licences page (vRegisterFontLicenses).
+  assets:
+    - assets/fonts/google_sans_flex/OFL.txt
+    - assets/fonts/noto_sans_jp/OFL.txt
+    - assets/fonts/material_symbols_rounded/LICENSE
+
   # Licences and how the files were made: assets/fonts/README.md.
   fonts:
     - family: GoogleSansFlex

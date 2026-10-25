@@ -126,19 +126,40 @@ class VPolygonBorder extends ShapeBorder {
 }
 
 final _cookie = M3EShapeKind.cookie12Sided.polygon;
-final _squares = <double, Morph>{};
+
+/// The border of an artwork shape at [size]: for clipping and for the focus ring.
+ShapeBorder vArtBorder(ArtShape shape, double size) => switch (shape) {
+  ArtShape.circle => const CircleBorder(),
+  ArtShape.cookie => VPolygonBorder(_cookie),
+  ArtShape.roundedSquare => RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(_cornerFor(size)),
+  ),
+};
+
+// The morph only depends on the corner's share of the size: a hundred steps at most.
+final _morphs = <int, Morph>{};
 
 /// Cookie (0) → rounded square (1), with the square's corner at this size.
-Morph _morphFor(double size) => _squares[size] ??= Morph(
-  _cookie,
-  RoundedPolygon.rectangle(
-    width: 1,
-    height: 1,
-    centerX: 0.5,
-    centerY: 0.5,
-    rounding: CornerRounding(radius: _cornerFor(size) / size),
-  ),
-);
+Morph _morphFor(double size) {
+  final share = (_cornerFor(size) / size * 100).round().clamp(1, 50);
+  return _morphs[share] ??= Morph(
+    _cookie,
+    RoundedPolygon.rectangle(
+      width: 1,
+      height: 1,
+      centerX: 0.5,
+      centerY: 0.5,
+      rounding: CornerRounding(radius: share / 100),
+    ),
+  );
+}
+
+const _buckets = [64, 128, 256, 512, 1024, 2048];
+
+/// The pixel size a picture is fetched and decoded at: the next bucket up, so a resize
+/// or an animated size asks the core for a handful of files, not one per frame.
+int vPictureBucket(double px) =>
+    _buckets.firstWhere((b) => b >= px, orElse: () => _buckets.last);
 
 class _MorphClipper extends CustomClipper<Path> {
   const _MorphClipper(this.morph, this.t);
@@ -156,13 +177,40 @@ class _MorphClipper extends CustomClipper<Path> {
   bool shouldReclip(_MorphClipper old) => old.t != t || old.morph != morph;
 }
 
+/// The cookie's current turn, so the missing-cover icon and the equalizer stay upright.
+class _Turn extends InheritedWidget {
+  const _Turn({required this.angle, required super.child});
+
+  final double angle;
+
+  static double of(BuildContext c) =>
+      c.dependOnInheritedWidgetOfExactType<_Turn>()?.angle ?? 0;
+
+  @override
+  bool updateShouldNotify(_Turn old) => old.angle != angle;
+}
+
+/// Undoes the cookie's turn for what must stay upright.
+class _Upright extends StatelessWidget {
+  const _Upright({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      Transform.rotate(angle: -_Turn.of(context), child: child);
+}
+
 /// The one artwork: shape by meaning, the slow spin of what's playing, the wavy ring.
 ///
 /// - item: rounded square; playing → a cookie turning once in 20 s, morphing back to the
 ///   square when it stops; selected → cookie + check;
 /// - artist: always a circle (playing → equalizer; selected → cookie + check);
+/// - [mosaic]: a user playlist without a picture, drawn from its first distinct tracks
+///   (1 → full, 2 → diagonal, 3 → repeated, 0 → the missing-cover look), with the same
+///   shapes;
 /// - [progress] draws the wavy ring around it (flat when not playing); [onSeek] makes the
-///   ring a slider.
+///   ring a slider (only the ring: the cover inside lets taps through).
 ///
 /// [playing] overrides [NowPlayingScope] (the gallery and the player pass it).
 class VArtwork extends StatefulWidget {
@@ -173,6 +221,7 @@ class VArtwork extends StatefulWidget {
     this.kind = ArtKind.item,
     this.playing,
     this.selected = false,
+    this.mosaic,
     this.progress,
     this.onSeek,
     this.seekStep = 0.05,
@@ -184,6 +233,7 @@ class VArtwork extends StatefulWidget {
   final ArtKind kind;
   final bool? playing;
   final bool selected;
+  final List<String>? mosaic;
   final double? progress;
   final ValueChanged<double>? onSeek;
   final double seekStep;
@@ -244,7 +294,7 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     if (reduced || _first) {
       _first = false;
       _morph.value = target;
-    } else if (_morph.value != target) {
+    } else if (_morph.value != target && !_morph.isAnimating) {
       _morph
           .animateWith(
             SpringSimulation(VSprings.spatial, _morph.value, target, 0),
@@ -260,6 +310,29 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     }
   }
 
+  Widget _picture(double art) {
+    final ids = widget.mosaic?.toSet().take(4).toList();
+    if (ids == null) {
+      return VArtworkPicture(
+        itemId: widget.itemId,
+        size: art,
+        kind: widget.kind,
+      );
+    }
+    if (ids.isEmpty) {
+      return _Picture(image: null, kind: ArtKind.item, size: art);
+    }
+    if (ids.length == 1) return VArtworkPicture(itemId: ids.first, size: art);
+    return Wrap(
+      children: [
+        // Two tracks sit on the diagonal; three repeat the first last.
+        for (final i
+            in ids.length == 2 ? const [0, 1, 1, 0] : const [0, 1, 2, 3])
+          VArtworkPicture(itemId: ids[i % ids.length], size: art / 2),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final reduced = reduceMotion(context);
@@ -268,28 +341,39 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
     final ring = widget.progress != null;
     final inset = ring ? VSize.ringStroke + VSize.ringGap : 0.0;
     final art = widget.size - 2 * inset;
+    final equalizer =
+        playing && (widget.kind == ArtKind.artist || art <= VSize.compactArt);
 
-    Widget picture = VArtworkPicture(
-      itemId: widget.itemId,
-      size: art,
-      kind: widget.kind,
+    // The picture, the equalizer's scrim and bars, all inside the shape.
+    final inside = Stack(
+      fit: StackFit.expand,
+      children: [
+        _picture(art),
+        if (equalizer) VEqualizer(size: art / 2, onArtwork: true),
+      ],
     );
 
+    Widget picture;
     if (shape == ArtShape.circle) {
-      picture = ClipOval(child: picture);
+      picture = ClipOval(child: inside);
     } else {
       final morph = _morphFor(art);
-      picture = AnimatedBuilder(
-        animation: Listenable.merge([_spin, _morph]),
-        builder: (context, child) => Transform.rotate(
-          // The turn fades out as the cookie becomes a square again.
-          angle: _spin.value * 2 * math.pi * (1 - _morph.value),
-          child: ClipPath(
-            clipper: _MorphClipper(morph, _morph.value),
-            child: child,
-          ),
+      picture = RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_spin, _morph]),
+          builder: (context, child) {
+            // The turn fades out as the cookie becomes a square again.
+            final angle = _spin.value * 2 * math.pi * (1 - _morph.value);
+            return Transform.rotate(
+              angle: angle,
+              child: ClipPath(
+                clipper: _MorphClipper(morph, _morph.value),
+                child: _Turn(angle: angle, child: child!),
+              ),
+            );
+          },
+          child: inside,
         ),
-        child: picture,
       );
     }
 
@@ -298,39 +382,40 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
       alignment: Alignment.center,
       children: [
         SizedBox.square(dimension: art, child: picture),
-        if (playing &&
-            (widget.kind == ArtKind.artist || art <= VSize.compactArt))
-          VEqualizer(size: art / 2),
         if (widget.selected) _Check(size: art),
       ],
     );
 
     if (ring) {
       final wave = playing && !reduced;
-      final p = widget.progress!.clamp(0.0, 1.0);
-      picture = Stack(
-        alignment: Alignment.center,
-        children: [
-          VSeekable(
-            progress: p,
-            onSeek: widget.onSeek,
-            step: widget.seekStep,
-            mapping: angularSeek,
-            shape: const CircleBorder(),
-            child: wave
-                ? M3EProgressIndicator.circularWavy(
-                    value: p,
-                    size: widget.size,
-                    strokeWidth: VSize.ringStroke,
-                  )
-                : M3EProgressIndicator.circular(
-                    value: p,
-                    size: widget.size,
-                    strokeWidth: VSize.ringStroke,
-                  ),
-          ),
-          IgnorePointer(child: picture),
-        ],
+      picture = VSeekable(
+        progress: widget.progress!,
+        onSeek: widget.onSeek,
+        step: widget.seekStep,
+        mapping: angularSeek,
+        angular: true,
+        hit: ringHit,
+        shape: const CircleBorder(),
+        child: IgnorePointer(child: picture),
+        builder: (context, shown, cover) => Stack(
+          alignment: Alignment.center,
+          children: [
+            RepaintBoundary(
+              child: wave
+                  ? M3EProgressIndicator.circularWavy(
+                      value: shown,
+                      size: widget.size,
+                      strokeWidth: VSize.ringStroke,
+                    )
+                  : M3EProgressIndicator.circular(
+                      value: shown,
+                      size: widget.size,
+                      strokeWidth: VSize.ringStroke,
+                    ),
+            ),
+            cover!,
+          ],
+        ),
       );
     }
 
@@ -342,9 +427,10 @@ class _VArtworkState extends State<VArtwork> with TickerProviderStateMixin {
   }
 }
 
-/// An item's bare picture at its display size (decoded at size × DPR), with a
-/// placeholder. For design components only (the wave artwork, decor, mosaic): screens use
-/// [VArtwork], which gives the shape its meaning (guarded in test/design).
+/// An item's bare picture at its display size (fetched and decoded at a bucketed
+/// size × DPR), with the missing-cover look. For design components only (the wave
+/// artwork, decor): screens use [VArtwork], which gives the shape its meaning (guarded in
+/// test/design).
 class VArtworkPicture extends StatefulWidget {
   const VArtworkPicture({
     super.key,
@@ -368,7 +454,7 @@ class _VArtworkPictureState extends State<VArtworkPicture> {
 
   @override
   Widget build(BuildContext context) {
-    _px = (widget.size * MediaQuery.devicePixelRatioOf(context)).round();
+    _px = vPictureBucket(widget.size * MediaQuery.devicePixelRatioOf(context));
     final resolve = ArtworkResolver.of(context);
     if (_for != (widget.itemId, _px, resolve)) {
       _for = (widget.itemId, _px, resolve);
@@ -390,6 +476,8 @@ class _VArtworkPictureState extends State<VArtworkPicture> {
   }
 }
 
+/// The picture, or the missing-cover look: a flat `surfaceContainerHighest` with a centred
+/// note (a person for an artist) in `onSurfaceVariant`, nothing else. The icon never turns.
 class _Picture extends StatelessWidget {
   const _Picture({required this.image, required this.kind, required this.size});
 
@@ -403,10 +491,12 @@ class _Picture extends StatelessWidget {
     final placeholder = ColoredBox(
       color: scheme.surfaceContainerHighest,
       child: Center(
-        child: VSymbol(
-          kind == ArtKind.artist ? VIcons.person : VIcons.musicNote,
-          size: size / 2,
-          color: scheme.onSurfaceVariant,
+        child: _Upright(
+          child: VSymbol(
+            kind == ArtKind.artist ? VIcons.person : VIcons.musicNote,
+            size: size / 2,
+            color: scheme.onSurfaceVariant,
+          ),
         ),
       ),
     );
@@ -454,12 +544,15 @@ class _Check extends StatelessWidget {
   }
 }
 
-/// Three bars that bounce while playing; still with "reduce motion". Spoken as "now
-/// playing".
+/// Three bars that bounce while playing (scale only, no layout per frame); still with
+/// "reduce motion". Spoken as "now playing". [onArtwork]: drawn straight over the
+/// picture, on a light scrim filling the artwork's shape; otherwise bars alone in
+/// `primary` (a numbered row).
 class VEqualizer extends StatefulWidget {
-  const VEqualizer({super.key, required this.size});
+  const VEqualizer({super.key, required this.size, this.onArtwork = false});
 
   final double size;
+  final bool onArtwork;
 
   @override
   State<VEqualizer> createState() => _VEqualizerState();
@@ -492,43 +585,51 @@ class _VEqualizerState extends State<VEqualizer>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final s = widget.size;
-    return Semantics(
-      label: AppLocalizations.of(context).nowPlaying,
-      child: Container(
-        width: s,
-        height: s,
-        decoration: BoxDecoration(
-          color: scheme.primaryContainer,
-          borderRadius: BorderRadius.circular(s / 4),
-        ),
-        child: AnimatedBuilder(
-          animation: _c,
-          builder: (context, _) => Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              for (var i = 0; i < 3; i++)
-                Container(
-                  width: s / 8,
-                  height:
-                      s *
-                      (0.3 +
-                          0.4 *
-                              (0.5 +
-                                  0.5 *
-                                      math.sin(
-                                        (_c.value + i / 3) * 2 * math.pi,
-                                      ))),
-                  margin: EdgeInsets.symmetric(horizontal: s / 24),
-                  decoration: BoxDecoration(
-                    color: scheme.onPrimaryContainer,
-                    borderRadius: BorderRadius.circular(s / 16),
+    final bars = RepaintBoundary(
+      child: SizedBox.square(
+        dimension: s,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var i = 0; i < 3; i++)
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: s / 24),
+                child: AnimatedBuilder(
+                  animation: _c,
+                  builder: (context, child) => Transform.scale(
+                    alignment: Alignment.bottomCenter,
+                    scaleY:
+                        0.35 +
+                        0.65 *
+                            (0.5 +
+                                0.5 *
+                                    math.sin((_c.value + i / 3) * 2 * math.pi)),
+                    child: child,
+                  ),
+                  child: Container(
+                    width: s / 8,
+                    height: s * 0.7,
+                    decoration: BoxDecoration(
+                      color: widget.onArtwork
+                          ? scheme.onPrimary
+                          : scheme.primary,
+                      borderRadius: BorderRadius.circular(s / 16),
+                    ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
+    );
+    return Semantics(
+      label: AppLocalizations.of(context).nowPlaying,
+      child: widget.onArtwork
+          ? ColoredBox(
+              color: scheme.scrim.withValues(alpha: 0.32),
+              child: Center(child: _Upright(child: bars)),
+            )
+          : bars,
     );
   }
 }
@@ -599,47 +700,6 @@ class VDecor extends StatelessWidget {
           ),
           ?child,
         ],
-      ),
-    );
-  }
-}
-
-/// A user playlist without a picture: its first distinct tracks in 2×2 (1 → full,
-/// 2–3 → 2×2 repeating), the missing-cover look when it is empty.
-class VMosaicArtwork extends StatelessWidget {
-  const VMosaicArtwork({super.key, required this.itemIds, required this.size});
-
-  final List<String> itemIds;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final ids = itemIds.toSet().take(4).toList();
-    if (ids.length == 1) {
-      return VArtwork(itemId: ids.first, size: size, playing: false);
-    }
-    final half = size / 2;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(_cornerFor(size)),
-      child: SizedBox.square(
-        dimension: size,
-        child: ids.isEmpty
-            // An empty playlist has the missing-cover look.
-            ? _Picture(image: null, kind: ArtKind.item, size: size)
-            : Wrap(
-                children: [
-                  // Two tracks sit on the diagonal; three repeat the first last.
-                  for (final i
-                      in ids.length == 2
-                          ? const [0, 1, 1, 0]
-                          : const [0, 1, 2, 3])
-                    VArtworkPicture(
-                      itemId: ids[i % ids.length],
-                      size: half,
-                      kind: ArtKind.item,
-                    ),
-                ],
-              ),
       ),
     );
   }

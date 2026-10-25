@@ -3,6 +3,8 @@
 /// for CJK. Variable axes are set explicitly: a weight alone doesn't move `wght`.
 library;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 abstract final class VFonts {
@@ -38,3 +40,22 @@ TextTheme vTextTheme(TextTheme base) => base.copyWith(
   labelMedium: _axes(base.labelMedium, rond: 0),
   labelSmall: _axes(base.labelSmall, rond: 0),
 );
+
+var _licensed = false;
+
+/// Puts the shipped fonts' licences on the app's licences page (once).
+void vRegisterFontLicenses() {
+  if (_licensed) return;
+  _licensed = true;
+  LicenseRegistry.addLicense(() async* {
+    for (final (name, file) in [
+      ('Google Sans Flex', 'google_sans_flex/OFL.txt'),
+      ('Noto Sans JP', 'noto_sans_jp/OFL.txt'),
+      ('Material Symbols Rounded', 'material_symbols_rounded/LICENSE'),
+    ]) {
+      yield LicenseEntryWithLineBreaks([
+        name,
+      ], await rootBundle.loadString('assets/fonts/$file'));
+    }
+  });
+}

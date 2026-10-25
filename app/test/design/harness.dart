@@ -20,12 +20,15 @@ Widget harness(
   builder: (context, child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(disableAnimations: reduce),
     child: ArtworkResolver(
-      resolve: resolve ?? (id, px) async => null,
+      resolve: resolve ?? _noCover,
       child: vAppBuilder(context, child),
     ),
   ),
   home: Scaffold(body: child),
 );
+
+/// One function for every build, so the resolver doesn't look new each time.
+Future<ImageProvider?> _noCover(String id, int px) async => null;
 
 AppLocalizations fr() => lookupAppLocalizations(const Locale('fr'));
 
@@ -38,13 +41,23 @@ Iterable<(String, String)> sources(String dir) sync* {
   }
 }
 
-/// The lines of [files] that match [bad], as "path:line: text".
+/// Where [bad] matches in [files], as "path:line: text" (the line where the match
+/// starts). It reads whole files, so a construct dart format split over several lines is
+/// caught; matches on a commented line are skipped.
 List<String> offending(Iterable<(String, String)> files, RegExp bad) => [
   for (final (path, text) in files)
-    for (final (i, line) in text.split('\n').indexed)
-      if (!line.trimLeft().startsWith('//') && bad.hasMatch(line))
-        '$path:${i + 1}: $line',
+    for (final m in bad.allMatches(text))
+      if (_line(text, m.start) case final line
+          when !line.$2.trimLeft().startsWith('//'))
+        '$path:${line.$1}: ${line.$2}',
 ];
+
+(int, String) _line(String text, int offset) {
+  final start = text.lastIndexOf('\n', offset == 0 ? 0 : offset - 1) + 1;
+  final end = text.indexOf('\n', offset);
+  final number = '\n'.allMatches(text.substring(0, start)).length + 1;
+  return (number, text.substring(start, end < 0 ? text.length : end));
+}
 
 /// Screens and shells: what the guards watch.
 Iterable<(String, String)> screens() => [

@@ -57,4 +57,27 @@ void main() {
       expect(await seedFromArtwork('/nope/missing.png'), isNull);
     });
   });
+
+  testWidgets('a failed extraction is tried again later', (tester) async {
+    await tester.runAsync(() async {
+      final dir = await Directory.systemTemp.createTemp('late');
+      final path = '${dir.path}/cover.png';
+      expect(await seedFromArtwork(path), isNull, reason: 'not there yet');
+      final rec = ui.PictureRecorder();
+      ui.Canvas(rec).drawRect(
+        const Rect.fromLTWH(0, 0, 112, 112),
+        Paint()..color = const Color(0xFF3E7C4F),
+      );
+      final png = await (await rec.endRecording().toImage(
+        112,
+        112,
+      )).toByteData(format: ui.ImageByteFormat.png);
+      await File(path).writeAsBytes(png!.buffer.asUint8List());
+      expect(
+        await seedFromArtwork(path),
+        isNotNull,
+        reason: 'the cover arrived',
+      );
+    });
+  });
 }

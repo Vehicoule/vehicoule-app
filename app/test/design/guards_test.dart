@@ -22,6 +22,11 @@ void main() {
       offending([('sample', 'color: Colors.red,')], rawColor),
       hasLength(1),
     );
+    // Over several lines, reported at the line where it starts.
+    expect(
+      offending([('sample', 'final c = Color(\n  0xFF00FF00,\n);')], rawColor),
+      ['sample:1: final c = Color('],
+    );
     expect(
       offending([('sample', 'color: scheme.primary,')], rawColor),
       isEmpty,
@@ -35,6 +40,7 @@ void main() {
       'ImageFilter.blur(sigmaX: 4)',
       'boxShadow: [BoxShadow()]',
       'gradient: LinearGradient(colors: c)',
+      'decoration: BoxDecoration(\n  boxShadow: [\n    BoxShadow(blurRadius: 8),\n  ],\n)',
     ]) {
       expect(
         offending([('sample', bad)], decoration),
@@ -54,6 +60,17 @@ void main() {
       offending([('sample', 'curve: Curves.easeIn,')], timing),
       hasLength(1),
     );
+    expect(
+      offending([
+        (
+          'sample',
+          'x(\n  duration: Duration(\n    milliseconds: 300,\n  ),\n)',
+        ),
+      ], timing),
+      ['sample:2:   duration: Duration('],
+    );
+    // A commented line is not code.
+    expect(offending([('sample', '// Duration(seconds: 1)')], timing), isEmpty);
     expect(
       offending([('sample', 'duration: VDurations.medium,')], timing),
       isEmpty,

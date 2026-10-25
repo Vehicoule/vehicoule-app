@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:vehicoule/design/design.dart';
@@ -54,5 +55,22 @@ void main() {
     final result = await androidTapTargetGuideline.evaluate(tester);
     expect(result.passed, isFalse);
     handle.dispose();
+  });
+
+  testWidgets('the shipped fonts are on the licences page', (tester) async {
+    await tester.runAsync(() async {
+      vRegisterFontLicenses();
+      final packages = <String>{
+        await for (final l in LicenseRegistry.licenses) ...l.packages,
+      };
+      expect(
+        packages,
+        containsAll([
+          'Google Sans Flex',
+          'Noto Sans JP',
+          'Material Symbols Rounded',
+        ]),
+      );
+    });
   });
 }

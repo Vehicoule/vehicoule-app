@@ -108,13 +108,21 @@ class _VRoute<T> extends PageRoute<T> {
   ) {
     final tag = _page.heroTag;
     if (tag == null) return _page.child;
-    return HeroMode(
-      enabled: !reduceMotion(context),
-      child: Hero(
-        tag: tag,
-        flightShuttleBuilder: _containerShuttle,
-        child: _page.child,
-      ),
+    // The flying surface is a sibling under the page, never its ancestor: the page may
+    // hold cards that are Heroes themselves.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        HeroMode(
+          enabled: !reduceMotion(context),
+          child: Hero(
+            tag: tag,
+            flightShuttleBuilder: _containerShuttle,
+            child: ColoredBox(color: Theme.of(context).colorScheme.surface),
+          ),
+        ),
+        _page.child,
+      ],
     );
   }
 
@@ -190,19 +198,32 @@ Page<T> vFadeThroughPage<T>({required LocalKey key, required Widget child}) =>
     _VPage<T>(key: key, child: child, kind: _Kind.fadeThrough);
 
 /// Horizontal shared axis: the player's views, the first-launch steps. [key] names the
-/// current child; a new key slides the new child in.
-Widget vSharedAxis({required Widget child, required Object key}) =>
-    _SharedAxis(childKey: key, child: child);
+/// current child; a new key slides it in from the right, or from the left with
+/// [reverse] (going back), while the old one leaves the other way.
+Widget vSharedAxis({
+  required Widget child,
+  required Object key,
+  bool reverse = false,
+}) => _SharedAxis(childKey: key, reverse: reverse, child: child);
 
 class _SharedAxis extends StatelessWidget {
-  const _SharedAxis({required this.childKey, required this.child});
+  const _SharedAxis({
+    required this.childKey,
+    required this.reverse,
+    required this.child,
+  });
 
   final Object childKey;
+  final bool reverse;
   final Widget child;
+
+  static const _shift = 0.08;
 
   @override
   Widget build(BuildContext context) {
     final reduced = reduceMotion(context);
+    final current = ValueKey(childKey);
+    final dir = reverse ? -1.0 : 1.0;
     return AnimatedSwitcher(
       duration: reduced ? VDurations.reduced : VDurations.medium,
       switchInCurve: VCurves.emphasizedDecelerate,
@@ -211,19 +232,23 @@ class _SharedAxis extends StatelessWidget {
         alignment: AlignmentDirectional.topStart,
         children: [...previous, ?current],
       ),
-      transitionBuilder: (child, a) => reduced
-          ? FadeTransition(opacity: a, child: child)
-          : FadeTransition(
-              opacity: a,
-              child: SlideTransition(
-                position: Tween(
-                  begin: const Offset(0.08, 0),
-                  end: Offset.zero,
-                ).animate(a),
-                child: child,
-              ),
-            ),
-      child: KeyedSubtree(key: ValueKey(childKey), child: child),
+      transitionBuilder: (c, a) {
+        if (reduced) return FadeTransition(opacity: a, child: c);
+        // The incoming child comes from `dir`; the outgoing one (its animation runs
+        // backwards) leaves towards `-dir`.
+        final from = c.key == current ? dir : -dir;
+        return FadeTransition(
+          opacity: a,
+          child: SlideTransition(
+            position: Tween(
+              begin: Offset(from * _shift, 0),
+              end: Offset.zero,
+            ).animate(a),
+            child: c,
+          ),
+        );
+      },
+      child: KeyedSubtree(key: current, child: child),
     );
   }
 }

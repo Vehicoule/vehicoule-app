@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:vehicoule/bridge/downloads.dart';
 import 'package:vehicoule/design/design.dart';
 
 import 'harness.dart';
@@ -86,6 +87,30 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets(
+    'a container-transform page may hold cards that open their own pages',
+    (tester) async {
+      // The destination is an album page with "more by this artist" cards: Heroes too.
+      await pushOnto(
+        tester,
+        (c) => vContainerTransformPage(
+          key: const ValueKey('p'),
+          heroTag: 'album:a',
+          child: Column(
+            children: [
+              c,
+              vContainerSource(heroTag: 'album:b', child: const Text('card')),
+            ],
+          ),
+        ),
+        reduce: false,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('card'), findsOneWidget);
+    },
+  );
+
   testWidgets('shared axis slides, or fades with reduce motion', (
     tester,
   ) async {
@@ -146,9 +171,52 @@ void main() {
     expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
+  testWidgets('shared axis goes back the way it came', (tester) async {
+    final key = ValueNotifier<int>(1);
+    var reverse = false;
+    await tester.pumpWidget(
+      harness(
+        KeyedSubtree(
+          key: const ValueKey('axis'),
+          child: ValueListenableBuilder(
+            valueListenable: key,
+            builder: (context, k, _) =>
+                vSharedAxis(key: k, reverse: reverse, child: Text('view $k')),
+          ),
+        ),
+      ),
+    );
+    double startOf(String t) => tester
+        .widget<SlideTransition>(
+          between(const ValueKey('axis'), find.text(t), SlideTransition),
+        )
+        .position
+        .value
+        .dx;
+    key.value = 2; // forward: in from the right
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(startOf('view 2'), greaterThan(0));
+    expect(
+      startOf('view 1'),
+      lessThanOrEqualTo(0),
+      reason: 'the old view leaves to the left',
+    );
+    await tester.pumpAndSettle();
+    reverse = true;
+    key.value = 1; // back: in from the left
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(startOf('view 1'), lessThan(0));
+    expect(startOf('view 2'), greaterThanOrEqualTo(0));
+    await tester.pumpAndSettle();
+  });
+
   test('haptics are silent on desktop', () {
     final calls = <MethodCall>[];
     TestWidgetsFlutterBinding.ensureInitialized();
+    // A failure half-way must not leak the platform into later tests.
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
           calls.add(call);
@@ -192,6 +260,7 @@ void main() {
                   progress: 0.3,
                   onSeek: (_) {},
                 ),
+                const VDownloadIcon(state: DownloadStateView.queued),
                 // A plain detector: a button's ink ripple would be motion of its own.
                 GestureDetector(
                   onTap: () => showVMenu(
