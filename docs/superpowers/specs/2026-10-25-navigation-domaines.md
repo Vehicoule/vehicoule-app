@@ -233,8 +233,9 @@ sa fenêtre a le focus, **la musique** sinon. Une seule fonction choisit la sess
   TV trouvées sur le réseau local ; même entrée dans l'en-tête du lecteur vidéo.
 - Musique et vidéo : la session garde sa file, son historique et sa progression ; le
   téléphone devient la télécommande (⏯, ±10 s, suivant, volume de la TV). Les sous-titres
-  externes sont envoyés quand la TV les accepte (SRT), sinon incrustés est hors de portée :
-  l'épisode joue sans, et l'écran le dit.
+  externes sont envoyés quand la TV les accepte (SRT, convertis depuis l'ASS sans le style) ;
+  sinon l'épisode joue sans sous-titres, et l'écran le dit avant de lancer. Les incruster
+  demanderait de réencoder la vidéo sur le téléphone.
 - Sécurité : surface d'attaque §2 (exception du proxy pour le seul appareil choisi).
 - Livré dès la v1 musique.
 
