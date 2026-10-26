@@ -1,3 +1,6 @@
 .DS_Store
 target/
 .superpowers/
+
+# Clés de signature du feed — jamais dans le dépôt
+*.key
